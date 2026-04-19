@@ -709,16 +709,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun fetchEpgSources(urls: List<String>, statusViews: Map<String, TextView> = emptyMap()) {
         thread {
+            fun applyEpgStatus(source: String, status: String) {
+                epgSourceStatus[source] = status
+                saveEpgStatusCache()
+                handler.post { statusViews[source]?.text = status }
+            }
+
             urls.forEach { sourceUrl ->
-                setEpgStatus(sourceUrl, "Загрузка файла: 0%", statusViews[sourceUrl])
-                val candidates = PlaylistEpgUtils.buildEpgUrlCandidates(sourceUrl)
+                applyEpgStatus(sourceUrl, "Загрузка файла: 0%")
                 var parsed = false
 
-                for (candidate in candidates) {
+                for (candidate in PlaylistEpgUtils.buildEpgUrlCandidates(sourceUrl)) {
                     try {
-                        setEpgStatus(sourceUrl, "Распаковка файла: 50%", statusViews[sourceUrl])
+                        applyEpgStatus(sourceUrl, "Распаковка файла: 50%")
                         parseEpgXml(getFinalInputStream(candidate))
-                        setEpgStatus(sourceUrl, "Чтение: 100%", statusViews[sourceUrl])
+                        applyEpgStatus(sourceUrl, "Чтение: 100%")
                         parsed = true
                         break
                     } catch (_: Exception) {
@@ -726,7 +731,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (!parsed) {
-                    setEpgStatus(sourceUrl, "Ошибка загрузки", statusViews[sourceUrl])
+                    applyEpgStatus(sourceUrl, "Ошибка загрузки")
                     Log.w("EPG", "Не удалось обработать источник EPG: $sourceUrl")
                 }
             }
