@@ -81,6 +81,19 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/btnApplyPlaylist"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_watch_button"
+            android:gravity="center"
+            android:padding="10dp"
+            android:text="Применить"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold" />
+
+        <TextView
             android:id="@+id/btnDeletePlaylist"
             android:layout_width="0dp"
             android:layout_height="wrap_content"

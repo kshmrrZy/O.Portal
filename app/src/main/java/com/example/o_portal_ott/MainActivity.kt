@@ -500,6 +500,7 @@ class MainActivity : AppCompatActivity() {
         val rgSourceType = view.findViewById<RadioGroup>(R.id.rgSourceType)
         val etSourceValue = view.findViewById<EditText>(R.id.etSourceValue)
         val btnAddOrUpdate = view.findViewById<TextView>(R.id.btnAddOrUpdatePlaylist)
+        val btnApply = view.findViewById<TextView>(R.id.btnApplyPlaylist)
         val btnDelete = view.findViewById<TextView>(R.id.btnDeletePlaylist)
 
         var profiles = getPlaylistProfiles().toMutableList()
@@ -558,6 +559,41 @@ class MainActivity : AppCompatActivity() {
             refreshSpinner()
             loadPlaylist(forceReload = true, showErrors = true)
             Toast.makeText(this, "Плейлист сохранён", Toast.LENGTH_SHORT).show()
+        }
+
+        btnApply.setOnClickListener {
+            if (selectedIndex !in profiles.indices) {
+                Toast.makeText(this, "Выберите профиль плейлиста", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val selected = profiles[selectedIndex]
+            val enteredName = etPlaylistName.text.toString().trim()
+            val finalName = enteredName.ifBlank { selected.name }
+            val value = etSourceValue.text.toString().trim()
+            val type = if (rgSourceType.checkedRadioButtonId == R.id.rbToken) "token" else "url"
+
+            if (value.isBlank()) {
+                Toast.makeText(this, "Введите токен или URL", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val duplicate = profiles.indexOfFirst { indexProfile ->
+                indexProfile.name.equals(finalName, true)
+            }.takeIf { it >= 0 && it != selectedIndex } ?: -1
+            if (duplicate >= 0) {
+                Toast.makeText(this, "Профиль с таким названием уже существует", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            profiles[selectedIndex] = selected.copy(name = finalName, type = type, value = value)
+            selectedIndex = profiles.indexOfFirst { it.name == finalName }.takeIf { it >= 0 } ?: selectedIndex
+            savePlaylistProfiles(profiles)
+            setSelectedPlaylistName(finalName)
+            refreshSpinner()
+            fillFields(selectedIndex)
+            loadPlaylist(forceReload = true, showErrors = true)
+            Toast.makeText(this, "Применено", Toast.LENGTH_SHORT).show()
         }
 
         btnDelete.setOnClickListener {
@@ -749,7 +785,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        return candidates.toList()
     }
 
     private fun setEpgStatus(source: String, status: String, targetView: TextView?) {
