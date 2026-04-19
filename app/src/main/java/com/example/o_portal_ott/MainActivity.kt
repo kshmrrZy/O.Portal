@@ -748,6 +748,14 @@ class MainActivity : AppCompatActivity() {
                 refreshLogo()
             }
         }
+
+        return candidates.toList()
+    }
+
+    private fun setEpgStatus(source: String, status: String, targetView: TextView?) {
+        epgSourceStatus[source] = status
+        saveEpgStatusCache()
+        handler.post { targetView?.text = status }
     }
 
     private fun getFinalInputStream(u: String): InputStream {
@@ -936,6 +944,7 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
         }
+
         return super.onKeyDown(keyCode, event)
     }
 
