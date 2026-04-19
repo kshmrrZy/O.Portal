@@ -28,6 +28,39 @@
         android:visibility="gone" />
 
     <LinearLayout
+        android:id="@+id/timerWarningPanel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="160dp"
+        android:background="@drawable/bg_reload_toast"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="12dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvTimerWarning"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Через 30 секунд произойдёт закрытие приложения"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/btnStopTimer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_watch_button"
+            android:gravity="center"
+            android:padding="8dp"
+            android:text="Остановить таймер"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/topInfoPanel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -177,7 +210,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@android:drawable/ic_media_pause"
+                android:src="@drawable/ic_pause"
                 app:tint="#FFFFFF" />
 
             <ImageButton
@@ -186,15 +219,26 @@
                 android:layout_height="48dp"
                 android:layout_marginStart="8dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@android:drawable/ic_lock_lock"
+                android:src="@drawable/ic_lock_open"
                 app:tint="#FFFFFF" />
 
-                <ImageButton
-                    android:id="@+id/btnSettings"
-                    android:layout_width="50dp"
-                    android:layout_height="50dp"
-                    android:src="@android:drawable/ic_menu_preferences"
-                    android:background="?attr/selectableItemBackgroundBorderless" />
+            <ImageButton
+                android:id="@+id/btnSettings"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:layout_marginStart="8dp"
+                android:src="@android:drawable/ic_menu_manage"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                app:tint="#FFFFFF" />
+
+            <ImageButton
+                android:id="@+id/btnSleepTimer"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:layout_marginStart="8dp"
+                android:src="@android:drawable/ic_lock_idle_alarm"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                app:tint="#FFFFFF" />
         </LinearLayout>
     </LinearLayout>
 
@@ -226,4 +270,3 @@
 
 
 </FrameLayout>
-
