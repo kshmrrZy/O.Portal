@@ -580,7 +580,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showEpgSelectionDialog() {
         if (availableEpgSources.isEmpty()) {
-            availableEpgSources = parseEpgSourcesFromPlaylist(currentPlaylistText)
+            availableEpgSources = extractEpgSourcesFromPlaylist(currentPlaylistText)
         }
         if (availableEpgSources.isEmpty()) {
             Toast.makeText(this, "В плейлисте не найден x-tvg-url", Toast.LENGTH_SHORT).show()
@@ -655,7 +655,7 @@ class MainActivity : AppCompatActivity() {
                 val content = URL(playlistUrl).readText()
                 currentPlaylistText = content
                 val parsedChannels = M3uParser.parse(content)
-                val parsedEpgUrls = parseEpgSourcesFromPlaylist(content)
+                val parsedEpgUrls = extractEpgSourcesFromPlaylist(content)
 
                 handler.post {
                     channels.clear()
@@ -710,15 +710,15 @@ class MainActivity : AppCompatActivity() {
     private fun fetchEpgSources(urls: List<String>, statusViews: Map<String, TextView> = emptyMap()) {
         thread {
             urls.forEach { sourceUrl ->
-                updateEpgStatus(sourceUrl, "Загрузка файла: 0%", statusViews[sourceUrl])
-                val candidates = normalizeEpgUrls(sourceUrl)
+                setEpgStatus(sourceUrl, "Загрузка файла: 0%", statusViews[sourceUrl])
+                val candidates = buildEpgUrlCandidates(sourceUrl)
                 var parsed = false
 
                 for (candidate in candidates) {
                     try {
-                        updateEpgStatus(sourceUrl, "Распаковка файла: 50%", statusViews[sourceUrl])
+                        setEpgStatus(sourceUrl, "Распаковка файла: 50%", statusViews[sourceUrl])
                         parseEpgXml(getFinalInputStream(candidate))
-                        updateEpgStatus(sourceUrl, "Чтение: 100%", statusViews[sourceUrl])
+                        setEpgStatus(sourceUrl, "Чтение: 100%", statusViews[sourceUrl])
                         parsed = true
                         break
                     } catch (_: Exception) {
@@ -726,7 +726,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (!parsed) {
-                    updateEpgStatus(sourceUrl, "Ошибка загрузки", statusViews[sourceUrl])
+                    setEpgStatus(sourceUrl, "Ошибка загрузки", statusViews[sourceUrl])
                     Log.w("EPG", "Не удалось обработать источник EPG: $sourceUrl")
                 }
             }
@@ -739,16 +739,16 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        return normalized.distinct()
+        return candidates.toList()
     }
 
-    private fun updateEpgStatus(source: String, status: String, targetView: TextView?) {
+    private fun setEpgStatus(source: String, status: String, targetView: TextView?) {
         epgSourceStatus[source] = status
         saveEpgStatusCache()
         handler.post { targetView?.text = status }
     }
 
-    private fun parseEpgSourcesFromPlaylist(content: String): List<String> {
+    private fun extractEpgSourcesFromPlaylist(content: String): List<String> {
         if (!content.contains("x-tvg-url=\"")) return emptyList()
 
         return content
@@ -760,40 +760,7 @@ class MainActivity : AppCompatActivity() {
             .distinct()
     }
 
-    private fun normalizeEpgUrls(url: String): List<String> {
-        val clean = url.trim()
-        if (clean.isBlank()) return emptyList()
-
-        val normalized = mutableListOf(clean)
-        if (!clean.endsWith(".xml.gz", true) && !clean.endsWith(".xml", true)) {
-            normalized += "$clean.xml.gz"
-            normalized += "$clean.xml"
-            normalized += clean.trimEnd('/') + "/xmltv.xml.gz"
-            normalized += clean.trimEnd('/') + "/epg.xml.gz"
-        }
-
-        return normalized.distinct()
-    }
-
-    private fun updateEpgStatus(source: String, status: String, targetView: TextView?) {
-        epgSourceStatus[source] = status
-        saveEpgStatusCache()
-        handler.post { targetView?.text = status }
-    }
-
-    private fun parseEpgSourcesFromPlaylist(content: String): List<String> {
-        if (!content.contains("x-tvg-url=\"")) return emptyList()
-
-        return content
-            .substringAfter("x-tvg-url=\"", "")
-            .substringBefore("\"")
-            .split(",")
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
-    }
-
-    private fun normalizeEpgUrls(url: String): List<String> {
+    private fun buildEpgUrlCandidates(url: String): List<String> {
         val clean = url.trim()
         if (clean.isBlank()) return emptyList()
 
