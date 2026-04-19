@@ -41,7 +41,7 @@ android {
 
 configurations.configureEach {
     exclude(group = "androidx.annotation", module = "annotation-experimental")
-    exclude(group = "androidx.coordinatorlayout", module = "coordinatorlayout")
+    exclude(group = "androidx.legacy", module = "legacy-support-core-ui")
 }
 
 dependencies {
@@ -52,7 +52,7 @@ dependencies {
 
     implementation("org.videolan.android:libvlc-all:3.6.0") {
         exclude(group = "androidx.annotation", module = "annotation-experimental")
-        exclude(group = "androidx.coordinatorlayout", module = "coordinatorlayout")
+        exclude(group = "androidx.legacy", module = "legacy-support-core-ui")
     }
     implementation("androidx.annotation:annotation-experimental:1.4.1")
     implementation("androidx.coordinatorlayout:coordinatorlayout:1.2.0")
