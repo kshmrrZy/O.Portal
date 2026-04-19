@@ -39,6 +39,10 @@ android {
     }
 }
 
+configurations.configureEach {
+    exclude(group = "androidx.annotation", module = "annotation-experimental")
+}
+
 dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
@@ -48,6 +52,7 @@ dependencies {
     implementation("org.videolan.android:libvlc-all:3.6.0") {
         exclude(group = "androidx.annotation", module = "annotation-experimental")
     }
+    implementation("androidx.annotation:annotation-experimental:1.4.1")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
