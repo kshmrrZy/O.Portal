@@ -738,6 +738,41 @@ class MainActivity : AppCompatActivity() {
                 refreshLogo()
             }
         }
+
+        return normalized.distinct()
+    }
+
+    private fun updateEpgStatus(source: String, status: String, targetView: TextView?) {
+        epgSourceStatus[source] = status
+        saveEpgStatusCache()
+        handler.post { targetView?.text = status }
+    }
+
+    private fun parseEpgSourcesFromPlaylist(content: String): List<String> {
+        if (!content.contains("x-tvg-url=\"")) return emptyList()
+
+        return content
+            .substringAfter("x-tvg-url=\"", "")
+            .substringBefore("\"")
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+
+    private fun normalizeEpgUrls(url: String): List<String> {
+        val clean = url.trim()
+        if (clean.isBlank()) return emptyList()
+
+        val normalized = mutableListOf(clean)
+        if (!clean.endsWith(".xml.gz", true) && !clean.endsWith(".xml", true)) {
+            normalized += "$clean.xml.gz"
+            normalized += "$clean.xml"
+            normalized += clean.trimEnd('/') + "/xmltv.xml.gz"
+            normalized += clean.trimEnd('/') + "/epg.xml.gz"
+        }
+
+        return normalized.distinct()
     }
 
     private fun updateEpgStatus(source: String, status: String, targetView: TextView?) {
@@ -959,6 +994,7 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
         }
+
         return super.onKeyDown(keyCode, event)
     }
 
