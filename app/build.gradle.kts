@@ -1,7 +1,7 @@
 // Модульный build.gradle.kts (папка app)
 plugins {
     id("com.android.application")
-    id("kotlin-android") // Используем короткое имя, чтобы не было конфликта
+    id("kotlin-android")
 }
 
 android {
@@ -20,7 +20,7 @@ android {
 
     buildFeatures {
         viewBinding = true
-            dataBinding = true
+        dataBinding = true
     }
 
     compileOptions {
@@ -31,25 +31,35 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
+
+    packaging {
+        resources {
+            excludes += "META-INF/*"
+        }
+    }
+}
+
+configurations.all {
+    resolutionStrategy {
+        force("androidx.annotation:annotation-experimental:1.4.1")
+    }
 }
 
 dependencies {
-    // Основные библиотеки Android
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
-    // LibVLC — заменяет ExoPlayer, включает в себя все кодеки
-    implementation("org.videolan.android:libvlc-all:3.6.0")
+    implementation("org.videolan.android:libvlc-all:3.6.0") {
+        exclude(group = "androidx.annotation", module = "annotation-experimental")
+    }
 
-    // OkHttp для загрузки плейлиста
+    implementation("androidx.annotation:annotation-experimental:1.4.1")
+
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-
-    // RecyclerView и Lifecycle
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    implementation ("com.github.bumptech.glide:glide:4.15.1")
-    implementation ("org.apache.commons:commons-compress:1.21") // Для распаковки если нужно
-
+    implementation("com.github.bumptech.glide:glide:4.15.1")
+    implementation("org.apache.commons:commons-compress:1.21")
 }
