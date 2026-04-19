@@ -41,6 +41,7 @@ android {
 
 configurations.configureEach {
     exclude(group = "androidx.annotation", module = "annotation-experimental")
+    exclude(group = "androidx.coordinatorlayout", module = "coordinatorlayout")
 }
 
 dependencies {
@@ -51,8 +52,10 @@ dependencies {
 
     implementation("org.videolan.android:libvlc-all:3.6.0") {
         exclude(group = "androidx.annotation", module = "annotation-experimental")
+        exclude(group = "androidx.coordinatorlayout", module = "coordinatorlayout")
     }
     implementation("androidx.annotation:annotation-experimental:1.4.1")
+    implementation("androidx.coordinatorlayout:coordinatorlayout:1.2.0")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
