@@ -738,6 +738,8 @@ class MainActivity : AppCompatActivity() {
                 refreshLogo()
             }
         }
+
+        return normalized.distinct()
     }
 
     private fun updateEpgStatus(source: String, status: String, targetView: TextView?) {
@@ -959,6 +961,7 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
         }
+
         return super.onKeyDown(keyCode, event)
     }
 
