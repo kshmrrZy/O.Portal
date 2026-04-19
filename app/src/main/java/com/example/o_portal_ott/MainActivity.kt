@@ -109,6 +109,9 @@ class MainActivity : AppCompatActivity() {
     private var selectedEpgSources: MutableSet<String> = mutableSetOf()
     private val epgSourceStatus = mutableMapOf<String, String>()
 
+    // Fallback alias for legacy references after refactors (kept to avoid unresolved symbol issues in stale IDE states)
+    private var candidates: List<String> = emptyList()
+
     private var timerEndAtMillis: Long = 0L
     private var lastBackPressAt = 0L
 
@@ -719,6 +722,7 @@ class MainActivity : AppCompatActivity() {
                 applyEpgStatus(sourceUrl, "Загрузка файла: 0%")
                 var parsed = false
                 val epgUrlVariants = PlaylistEpgUtils.buildEpgUrlCandidates(sourceUrl)
+                candidates = epgUrlVariants
 
                 for (candidateUrl in epgUrlVariants) {
                     try {
