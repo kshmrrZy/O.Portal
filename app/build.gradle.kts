@@ -39,10 +39,8 @@ android {
     }
 }
 
-configurations.all {
-    resolutionStrategy {
-        force("androidx.annotation:annotation-experimental:1.4.1")
-    }
+configurations.configureEach {
+    exclude(group = "androidx.annotation", module = "annotation-experimental")
 }
 
 dependencies {
@@ -54,7 +52,6 @@ dependencies {
     implementation("org.videolan.android:libvlc-all:3.6.0") {
         exclude(group = "androidx.annotation", module = "annotation-experimental")
     }
-
     implementation("androidx.annotation:annotation-experimental:1.4.1")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

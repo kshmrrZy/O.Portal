@@ -749,7 +749,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        return candidates.toList()
     }
 
     private fun setEpgStatus(source: String, status: String, targetView: TextView?) {
