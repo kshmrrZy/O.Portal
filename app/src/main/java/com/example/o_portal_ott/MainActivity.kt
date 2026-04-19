@@ -580,7 +580,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showEpgSelectionDialog() {
         if (availableEpgSources.isEmpty()) {
-            availableEpgSources = extractEpgSourcesFromPlaylist(currentPlaylistText)
+            availableEpgSources = PlaylistEpgUtils.extractEpgSourcesFromPlaylist(currentPlaylistText)
         }
         if (availableEpgSources.isEmpty()) {
             Toast.makeText(this, "В плейлисте не найден x-tvg-url", Toast.LENGTH_SHORT).show()
@@ -655,7 +655,7 @@ class MainActivity : AppCompatActivity() {
                 val content = URL(playlistUrl).readText()
                 currentPlaylistText = content
                 val parsedChannels = M3uParser.parse(content)
-                val parsedEpgUrls = extractEpgSourcesFromPlaylist(content)
+                val parsedEpgUrls = PlaylistEpgUtils.extractEpgSourcesFromPlaylist(content)
 
                 handler.post {
                     channels.clear()
@@ -711,7 +711,7 @@ class MainActivity : AppCompatActivity() {
         thread {
             urls.forEach { sourceUrl ->
                 setEpgStatus(sourceUrl, "Загрузка файла: 0%", statusViews[sourceUrl])
-                val candidates = buildEpgUrlCandidates(sourceUrl)
+                val candidates = PlaylistEpgUtils.buildEpgUrlCandidates(sourceUrl)
                 var parsed = false
 
                 for (candidate in candidates) {
@@ -773,6 +773,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         return candidates.toList()
+    }
+
+    private fun setEpgStatus(source: String, status: String, targetView: TextView?) {
+        epgSourceStatus[source] = status
+        saveEpgStatusCache()
+        handler.post { targetView?.text = status }
     }
 
     private fun getFinalInputStream(u: String): InputStream {
