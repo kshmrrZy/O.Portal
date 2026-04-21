@@ -472,10 +472,10 @@ class MainActivity : AppCompatActivity() {
         val view = layoutInflater.inflate(R.layout.dialog_settings, null)
         val btnPlaylistSettings = view.findViewById<TextView>(R.id.btnPlaylistSettings)
         val btnEpgSelect = view.findViewById<TextView>(R.id.btnEpgSelect)
+        val btnClose = view.findViewById<TextView>(R.id.btnCloseSettingsDialog)
 
-        val dialog = AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
             .setView(view)
-            .setNegativeButton("Закрыть", null)
             .create()
 
         btnPlaylistSettings.setOnClickListener {
@@ -488,9 +488,15 @@ class MainActivity : AppCompatActivity() {
             showEpgSelectionDialog()
         }
 
+        btnClose.setOnClickListener { dialog.dismiss() }
+
         dialog.show()
         val dm = resources.displayMetrics
-        dialog.window?.setLayout((dm.widthPixels * 0.82f).toInt(), (dm.heightPixels * 0.82f).toInt())
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setLayout((dm.widthPixels * 0.82f).toInt(), (dm.heightPixels * 0.82f).toInt())
+        }
     }
 
     private fun showPlaylistSettingsDialog() {
@@ -500,7 +506,9 @@ class MainActivity : AppCompatActivity() {
         val rgSourceType = view.findViewById<RadioGroup>(R.id.rgSourceType)
         val etSourceValue = view.findViewById<EditText>(R.id.etSourceValue)
         val btnAddOrUpdate = view.findViewById<TextView>(R.id.btnAddOrUpdatePlaylist)
+        val btnApply = view.findViewById<TextView>(R.id.btnApplyPlaylist)
         val btnDelete = view.findViewById<TextView>(R.id.btnDeletePlaylist)
+        val btnClose = view.findViewById<TextView>(R.id.btnClosePlaylistDialog)
 
         var profiles = getPlaylistProfiles().toMutableList()
         var selectedIndex = profiles.indexOfFirst { it.name == getSelectedPlaylistName() }.takeIf { it >= 0 } ?: 0
@@ -534,9 +542,8 @@ class MainActivity : AppCompatActivity() {
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
         })
 
-        val dialog = AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
             .setView(view)
-            .setNegativeButton("Закрыть", null)
             .create()
 
         btnAddOrUpdate.setOnClickListener {
@@ -560,6 +567,41 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Плейлист сохранён", Toast.LENGTH_SHORT).show()
         }
 
+        btnApply.setOnClickListener {
+            if (selectedIndex !in profiles.indices) {
+                Toast.makeText(this, "Выберите профиль плейлиста", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val selected = profiles[selectedIndex]
+            val enteredName = etPlaylistName.text.toString().trim()
+            val finalName = enteredName.ifBlank { selected.name }
+            val value = etSourceValue.text.toString().trim()
+            val type = if (rgSourceType.checkedRadioButtonId == R.id.rbToken) "token" else "url"
+
+            if (value.isBlank()) {
+                Toast.makeText(this, "Введите токен или URL", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val duplicate = profiles.indexOfFirst { indexProfile ->
+                indexProfile.name.equals(finalName, true)
+            }.takeIf { it >= 0 && it != selectedIndex } ?: -1
+            if (duplicate >= 0) {
+                Toast.makeText(this, "Профиль с таким названием уже существует", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            profiles[selectedIndex] = selected.copy(name = finalName, type = type, value = value)
+            selectedIndex = profiles.indexOfFirst { it.name == finalName }.takeIf { it >= 0 } ?: selectedIndex
+            savePlaylistProfiles(profiles)
+            setSelectedPlaylistName(finalName)
+            refreshSpinner()
+            fillFields(selectedIndex)
+            loadPlaylist(forceReload = true, showErrors = true)
+            Toast.makeText(this, "Применено", Toast.LENGTH_SHORT).show()
+        }
+
         btnDelete.setOnClickListener {
             if (profiles.size <= 1) {
                 Toast.makeText(this, "Должен остаться хотя бы один профиль", Toast.LENGTH_SHORT).show()
@@ -576,9 +618,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        btnClose.setOnClickListener { dialog.dismiss() }
+
         dialog.show()
         val dm = resources.displayMetrics
-        dialog.window?.setLayout((dm.widthPixels * 0.82f).toInt(), (dm.heightPixels * 0.82f).toInt())
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setLayout((dm.widthPixels * 0.82f).toInt(), (dm.heightPixels * 0.82f).toInt())
+        }
     }
 
     private fun showEpgSelectionDialog() {
@@ -586,7 +634,7 @@ class MainActivity : AppCompatActivity() {
             availableEpgSources = PlaylistEpgUtils.extractEpgSourcesFromPlaylist(currentPlaylistText)
         }
         if (availableEpgSources.isEmpty()) {
-            Toast.makeText(this, "В плейлисте не найден x-tvg-url", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Программа передач отсутствует", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -749,7 +797,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        return candidates.toList()
     }
 
     private fun setEpgStatus(source: String, status: String, targetView: TextView?) {
