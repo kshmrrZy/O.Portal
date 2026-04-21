@@ -472,10 +472,10 @@ class MainActivity : AppCompatActivity() {
         val view = layoutInflater.inflate(R.layout.dialog_settings, null)
         val btnPlaylistSettings = view.findViewById<TextView>(R.id.btnPlaylistSettings)
         val btnEpgSelect = view.findViewById<TextView>(R.id.btnEpgSelect)
+        val btnClose = view.findViewById<TextView>(R.id.btnCloseSettingsDialog)
 
-        val dialog = AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
             .setView(view)
-            .setNegativeButton("Закрыть", null)
             .create()
 
         btnPlaylistSettings.setOnClickListener {
@@ -488,9 +488,15 @@ class MainActivity : AppCompatActivity() {
             showEpgSelectionDialog()
         }
 
+        btnClose.setOnClickListener { dialog.dismiss() }
+
         dialog.show()
         val dm = resources.displayMetrics
-        dialog.window?.setLayout((dm.widthPixels * 0.82f).toInt(), (dm.heightPixels * 0.82f).toInt())
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setLayout((dm.widthPixels * 0.82f).toInt(), (dm.heightPixels * 0.82f).toInt())
+        }
     }
 
     private fun showPlaylistSettingsDialog() {
@@ -502,6 +508,7 @@ class MainActivity : AppCompatActivity() {
         val btnAddOrUpdate = view.findViewById<TextView>(R.id.btnAddOrUpdatePlaylist)
         val btnApply = view.findViewById<TextView>(R.id.btnApplyPlaylist)
         val btnDelete = view.findViewById<TextView>(R.id.btnDeletePlaylist)
+        val btnClose = view.findViewById<TextView>(R.id.btnClosePlaylistDialog)
 
         var profiles = getPlaylistProfiles().toMutableList()
         var selectedIndex = profiles.indexOfFirst { it.name == getSelectedPlaylistName() }.takeIf { it >= 0 } ?: 0
@@ -535,9 +542,8 @@ class MainActivity : AppCompatActivity() {
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
         })
 
-        val dialog = AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
             .setView(view)
-            .setNegativeButton("Закрыть", null)
             .create()
 
         btnAddOrUpdate.setOnClickListener {
@@ -612,9 +618,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        btnClose.setOnClickListener { dialog.dismiss() }
+
         dialog.show()
         val dm = resources.displayMetrics
-        dialog.window?.setLayout((dm.widthPixels * 0.82f).toInt(), (dm.heightPixels * 0.82f).toInt())
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setLayout((dm.widthPixels * 0.82f).toInt(), (dm.heightPixels * 0.82f).toInt())
+        }
     }
 
     private fun showEpgSelectionDialog() {
@@ -622,7 +634,7 @@ class MainActivity : AppCompatActivity() {
             availableEpgSources = PlaylistEpgUtils.extractEpgSourcesFromPlaylist(currentPlaylistText)
         }
         if (availableEpgSources.isEmpty()) {
-            Toast.makeText(this, "В плейлисте не найден x-tvg-url", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Программа передач отсутствует", Toast.LENGTH_SHORT).show()
             return
         }
 
