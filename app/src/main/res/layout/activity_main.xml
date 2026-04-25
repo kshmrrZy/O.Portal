@@ -227,7 +227,7 @@
                 android:layout_width="50dp"
                 android:layout_height="50dp"
                 android:layout_marginStart="8dp"
-                android:src="@android:drawable/ic_menu_manage"
+                android:src="@android:drawable/ic_menu_preferences"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 app:tint="#FFFFFF" />
 
