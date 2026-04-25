@@ -106,6 +106,7 @@ class MainActivity : AppCompatActivity() {
     private var currentChannelIndex = 0
     private val channels = mutableListOf<Channel>()
     private val epgData = mutableMapOf<String, MutableList<Program>>()
+    private val epgDataLock = Any()
     private val handler = Handler(Looper.getMainLooper())
     private var inputNumber = ""
     private var currentPlaylistText: String = ""
@@ -149,6 +150,18 @@ class MainActivity : AppCompatActivity() {
     }
     private val timerFinishRunnable = Runnable { closeAppCompletely() }
     private val timerWarnRunnable = Runnable { showTimerWarning() }
+
+    private fun getProgramsForChannel(ch: Channel): List<Program> {
+        val key1 = ch.tvgId?.lowercase()?.trim()
+        val key2 = ch.tvgName?.lowercase()?.trim()
+        val key3 = ch.name.lowercase().trim()
+        return synchronized(epgDataLock) {
+            val list = epgData[key1] ?: epgData[key2] ?: epgData[key3]
+            list?.toList().orEmpty()
+        }
+    }
+
+    private fun isEpgDataEmpty(): Boolean = synchronized(epgDataLock) { epgData.isEmpty() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -395,10 +408,8 @@ class MainActivity : AppCompatActivity() {
                 holder.tvName.text = "${position + 1}. ${channel.name}"
                 holder.tvName.isSelected = true
 
-                val pList = epgData[channel.tvgId?.lowercase()?.trim()]
-                    ?: epgData[channel.tvgName?.lowercase()?.trim()]
-                    ?: epgData[channel.name.lowercase().trim()]
-                val cur = pList?.find { System.currentTimeMillis() in it.start until it.stop }
+                val pList = getProgramsForChannel(channel)
+                val cur = pList.find { System.currentTimeMillis() in it.start until it.stop }
                 holder.tvEpgItem.text = cur?.title ?: "Нет программы"
                 holder.tvEpgItem.isSelected = true
 
@@ -436,9 +447,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showCurrentChannelSchedule() {
         val ch = channels.getOrNull(currentChannelIndex) ?: return
-        val programs = (epgData[ch.tvgId?.lowercase()?.trim()]
-            ?: epgData[ch.tvgName?.lowercase()?.trim()]
-            ?: epgData[ch.name.lowercase().trim()])?.sortedBy { it.start } ?: emptyList()
+        val programs = getProgramsForChannel(ch).sortedBy { it.start }
 
         if (programs.isEmpty()) {
             Toast.makeText(this, "Для канала пока нет EPG", Toast.LENGTH_SHORT).show()
@@ -813,7 +822,7 @@ class MainActivity : AppCompatActivity() {
             selectedEpgSources = localSelection
             saveSelectedEpgSources(selectedEpgSources)
             if (selectedEpgSources.isNotEmpty()) {
-                epgData.clear()
+                synchronized(epgDataLock) { epgData.clear() }
                 fetchEpgSources(selectedEpgSources.toList(), rows)
             }
             dialog.dismiss()
@@ -860,11 +869,11 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     if (shouldDailyRefreshEpg()) {
-                        epgData.clear()
+                        synchronized(epgDataLock) { epgData.clear() }
                         if (selectedEpgSources.isNotEmpty()) {
                             fetchEpgSources(selectedEpgSources.toList())
                         }
-                    } else if (selectedEpgSources.isNotEmpty() && epgData.isEmpty()) {
+                    } else if (selectedEpgSources.isNotEmpty() && isEpgDataEmpty()) {
                         fetchEpgSources(selectedEpgSources.toList())
                     }
 
@@ -1026,7 +1035,9 @@ class MainActivity : AppCompatActivity() {
                                 }
                             }
                             if (chId.isNotEmpty()) {
-                                epgData.getOrPut(chId) { mutableListOf() }.add(Program(title, start, stop))
+                                synchronized(epgDataLock) {
+                                    epgData.getOrPut(chId) { mutableListOf() }.add(Program(title, start, stop))
+                                }
                             }
                         }
                     }
@@ -1101,11 +1112,9 @@ class MainActivity : AppCompatActivity() {
     private fun updateEpgDisplay() {
         val ch = channels.getOrNull(currentChannelIndex) ?: return
         val now = System.currentTimeMillis()
-        val programs = epgData[ch.tvgId?.lowercase()?.trim()]
-            ?: epgData[ch.tvgName?.lowercase()?.trim()]
-            ?: epgData[ch.name.lowercase().trim()]
+        val programs = getProgramsForChannel(ch)
 
-        val cur = programs?.find { now in it.start until it.stop }
+        val cur = programs.find { now in it.start until it.stop }
         tvEpg.text = cur?.let {
             "${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it.start))} - ${it.title}"
         } ?: "Загрузка программы..."
@@ -1405,7 +1414,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun saveEpgCache() {
         val cache = JSONObject()
-        epgData.forEach { (channelId, programs) ->
+        val snapshot = synchronized(epgDataLock) {
+            epgData.mapValues { (_, programs) -> programs.toList() }
+        }
+        snapshot.forEach { (channelId, programs) ->
             val arr = JSONArray()
             programs.sortedBy { it.start }.take(200).forEach { p ->
                 arr.put(JSONObject().apply {
@@ -1427,7 +1439,7 @@ class MainActivity : AppCompatActivity() {
         val raw = prefs.getString(PREF_EPG_CACHE, "{}") ?: "{}"
         try {
             val obj = JSONObject(raw)
-            epgData.clear()
+            synchronized(epgDataLock) { epgData.clear() }
             obj.keys().forEach { key ->
                 val arr = obj.optJSONArray(key) ?: JSONArray()
                 val list = mutableListOf<Program>()
@@ -1439,7 +1451,7 @@ class MainActivity : AppCompatActivity() {
                         stop = p.optLong("stop")
                     )
                 }
-                epgData[key] = list
+                synchronized(epgDataLock) { epgData[key] = list }
             }
         } catch (_: Exception) {
         }
