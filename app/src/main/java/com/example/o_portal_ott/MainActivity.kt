@@ -45,6 +45,7 @@ import java.io.BufferedInputStream
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.FilterInputStream
+import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -137,6 +138,8 @@ class MainActivity : AppCompatActivity() {
 
         private const val TOKEN_PREFIX = "https://o.avff.ru/my/"
         private const val TOKEN_SUFFIX = ".m3u"
+        private const val MAX_EPG_COMPRESSED_BYTES = 25L * 1024L * 1024L
+        private const val MAX_EPG_UNPACKED_BYTES = 80L * 1024L * 1024L
     }
 
     private val hideUiRunnable = Runnable { hideUI() }
@@ -593,7 +596,7 @@ class MainActivity : AppCompatActivity() {
             if (index !in profiles.indices) return
             val p = profiles[index]
             etPlaylistName.setText(p.name)
-            etSourceValue.setText(p.value)
+            etSourceValue.text?.clear()
             rgSourceType.check(if (p.type == "token") R.id.rbToken else R.id.rbUrl)
         }
 
@@ -646,6 +649,7 @@ class MainActivity : AppCompatActivity() {
             setSelectedPlaylistName(name)
             refreshSpinner()
             loadPlaylist(forceReload = true, showErrors = true)
+            etSourceValue.text?.clear()
             Toast.makeText(this, "Плейлист сохранён", Toast.LENGTH_SHORT).show()
         }
 
@@ -658,7 +662,8 @@ class MainActivity : AppCompatActivity() {
             val selected = profiles[selectedIndex]
             val enteredName = etPlaylistName.text.toString().trim()
             val finalName = enteredName.ifBlank { selected.name }
-            val value = etSourceValue.text.toString().trim()
+            val enteredValue = etSourceValue.text.toString().trim()
+            val value = enteredValue.ifBlank { selected.value }
             val type = if (rgSourceType.checkedRadioButtonId == R.id.rbToken) "token" else "url"
 
             if (value.isBlank()) {
@@ -679,7 +684,7 @@ class MainActivity : AppCompatActivity() {
             savePlaylistProfiles(profiles)
             setSelectedPlaylistName(finalName)
             refreshSpinner()
-            fillFields(selectedIndex)
+            etSourceValue.text?.clear()
             loadPlaylist(forceReload = true, showErrors = true)
             Toast.makeText(this, "Применено", Toast.LENGTH_SHORT).show()
         }
@@ -934,7 +939,11 @@ class MainActivity : AppCompatActivity() {
                         applyEpgStatus(sourceUrl, "Чтение файла: 100%")
                         parsed = true
                         break
-                    } catch (_: Exception) {
+                    } catch (t: Throwable) {
+                        Log.w("EPG", "Ошибка обработки EPG кандидата: $candidateUrl", t)
+                        if (t is OutOfMemoryError) {
+                            applyEpgStatus(sourceUrl, "Файл EPG слишком большой")
+                        }
                     }
                 }
 
@@ -960,6 +969,9 @@ class MainActivity : AppCompatActivity() {
         conn.connectTimeout = 12_000
         conn.readTimeout = 20_000
         val total = conn.contentLengthLong.coerceAtLeast(0L)
+        if (total > MAX_EPG_COMPRESSED_BYTES) {
+            throw IOException("EPG archive is too large: $total bytes")
+        }
         val out = ByteArrayOutputStream()
         var readTotal = 0L
         var lastProgress = -1
@@ -970,6 +982,9 @@ class MainActivity : AppCompatActivity() {
                 if (n <= 0) break
                 out.write(buf, 0, n)
                 readTotal += n
+                if (readTotal > MAX_EPG_COMPRESSED_BYTES) {
+                    throw IOException("EPG archive exceeded safe limit: $readTotal bytes")
+                }
                 if (total > 0) {
                     val progress = ((readTotal * 100) / total).toInt().coerceIn(0, 100)
                     if (progress != lastProgress) {
@@ -993,12 +1008,17 @@ class MainActivity : AppCompatActivity() {
         val input = ByteArrayInputStream(bytes)
         val countingInput = ProgressInputStream(input, bytes.size.toLong(), onProgress)
         val out = ByteArrayOutputStream()
+        var unpackedSize = 0L
         GZIPInputStream(BufferedInputStream(countingInput)).use { gzip ->
             val buf = ByteArray(16 * 1024)
             while (true) {
                 val n = gzip.read(buf)
                 if (n <= 0) break
                 out.write(buf, 0, n)
+                unpackedSize += n
+                if (unpackedSize > MAX_EPG_UNPACKED_BYTES) {
+                    throw IOException("Unpacked EPG XML exceeded safe limit: $unpackedSize bytes")
+                }
             }
         }
         onProgress(100)
