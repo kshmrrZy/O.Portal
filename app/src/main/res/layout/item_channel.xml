@@ -5,11 +5,13 @@
     android:orientation="vertical"
     android:padding="10dp"
     android:gravity="center"
-    android:background="@android:color/transparent"> <ImageView
-    android:id="@+id/itemLogo"
-    android:layout_width="65dp"
-    android:layout_height="65dp"
-    android:scaleType="centerInside" />
+    android:background="@android:color/transparent">
+
+    <ImageView
+        android:id="@+id/itemLogo"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:scaleType="centerInside" />
 
     <TextView
         android:id="@+id/itemName"
@@ -19,6 +21,12 @@
         android:gravity="center"
         android:textStyle="bold"
         android:maxLines="1"
+        android:ellipsize="marquee"
+        android:marqueeRepeatLimit="marquee_forever"
+        android:singleLine="true"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:selected="true"
         android:textSize="13sp"
         android:layout_marginTop="5dp" />
 
@@ -29,6 +37,11 @@
         android:textColor="#B3FFFFFF"
         android:gravity="center"
         android:singleLine="true"
+        android:ellipsize="marquee"
+        android:marqueeRepeatLimit="marquee_forever"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:selected="true"
         android:textSize="11sp" />
 
     <TextView
