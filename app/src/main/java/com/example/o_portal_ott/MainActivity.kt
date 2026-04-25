@@ -138,8 +138,8 @@ class MainActivity : AppCompatActivity() {
 
         private const val TOKEN_PREFIX = "https://o.avff.ru/my/"
         private const val TOKEN_SUFFIX = ".m3u"
-        private const val MAX_EPG_COMPRESSED_BYTES = 25L * 1024L * 1024L
-        private const val MAX_EPG_UNPACKED_BYTES = 80L * 1024L * 1024L
+        private const val MAX_EPG_COMPRESSED_BYTES = 120L * 1024L * 1024L
+        private const val MAX_EPG_UNPACKED_BYTES = 350L * 1024L * 1024L
     }
 
     private val hideUiRunnable = Runnable { hideUI() }
@@ -941,8 +941,12 @@ class MainActivity : AppCompatActivity() {
                         break
                     } catch (t: Throwable) {
                         Log.w("EPG", "Ошибка обработки EPG кандидата: $candidateUrl", t)
-                        if (t is OutOfMemoryError) {
-                            applyEpgStatus(sourceUrl, "Файл EPG слишком большой")
+                        when (t) {
+                            is OutOfMemoryError -> applyEpgStatus(sourceUrl, "Файл EPG слишком большой")
+                            is IOException -> if (t.message?.contains("too large", ignoreCase = true) == true ||
+                                t.message?.contains("safe limit", ignoreCase = true) == true) {
+                                applyEpgStatus(sourceUrl, "Файл EPG слишком большой")
+                            }
                         }
                     }
                 }
@@ -969,9 +973,6 @@ class MainActivity : AppCompatActivity() {
         conn.connectTimeout = 12_000
         conn.readTimeout = 20_000
         val total = conn.contentLengthLong.coerceAtLeast(0L)
-        if (total > MAX_EPG_COMPRESSED_BYTES) {
-            throw IOException("EPG archive is too large: $total bytes")
-        }
         val out = ByteArrayOutputStream()
         var readTotal = 0L
         var lastProgress = -1
