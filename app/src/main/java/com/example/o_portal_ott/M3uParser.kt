@@ -27,10 +27,17 @@ object M3uParser {
                 currentTvgName = trimmedLine.substringAfter("tvg-name=\"", "").substringBefore("\"")
 
             } else if (trimmedLine.startsWith("http") && !trimmedLine.contains("x-tvg-url")) {
+                val resolvedName = currentName.ifBlank {
+                    when {
+                        currentTvgName.isNotBlank() -> currentTvgName
+                        currentTvgId.isNotBlank() -> currentTvgId
+                        else -> "Без названия"
+                    }
+                }
                 // Создаем объект Channel, передавая ВСЕ параметры в правильном порядке
                 channels.add(
                     Channel(
-                        name = currentName,
+                        name = resolvedName,
                         url = trimmedLine,
                         tvgId = if (currentTvgId.isEmpty()) null else currentTvgId,
                         tvgName = if (currentTvgName.isEmpty()) null else currentTvgName,
