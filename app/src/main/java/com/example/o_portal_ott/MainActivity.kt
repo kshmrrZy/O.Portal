@@ -955,7 +955,7 @@ class MainActivity : AppCompatActivity() {
                 handler.post {
                     channels.clear()
                     channels.addAll(parsedChannels)
-                    applyCachedLogos()
+                    applyLogoCacheToChannels()
                     availableEpgSources = parsedEpgUrls
 
                     val savedSelection = getSelectedEpgSources()
@@ -1548,13 +1548,13 @@ class MainActivity : AppCompatActivity() {
             cache.put(channelId, arr)
         }
         prefs.edit().putString(PREF_EPG_CACHE, cache.toString()).apply()
-        saveLogoCache()
+        persistLogoCache()
         saveEpgStatusCache()
     }
 
     private fun loadEpgCache() {
         loadEpgStatusCache()
-        loadLogoCache()
+        restoreLogoCache()
         val raw = prefs.getString(PREF_EPG_CACHE, "{}") ?: "{}"
         try {
             val obj = JSONObject(raw)
@@ -1576,7 +1576,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveLogoCache() {
+    private fun persistLogoCache() {
         val obj = JSONObject()
         channels.forEach { ch ->
             val logo = ch.logoFromEpg ?: return@forEach
@@ -1589,7 +1589,7 @@ class MainActivity : AppCompatActivity() {
         prefs.edit().putString(PREF_LOGO_CACHE, obj.toString()).apply()
     }
 
-    private fun loadLogoCache() {
+    private fun restoreLogoCache() {
         val raw = prefs.getString(PREF_LOGO_CACHE, "{}") ?: "{}"
         try {
             val obj = JSONObject(raw)
@@ -1603,45 +1603,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun applyCachedLogos() {
-        if (cachedLogos.isEmpty()) return
-        channels.forEach { channel ->
-            val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
-            val logo = keys
-                .mapNotNull { it?.lowercase()?.trim() }
-                .firstNotNullOfOrNull { cachedLogos[it] }
-            if (!logo.isNullOrBlank()) channel.logoFromEpg = logo
-        }
-    }
-
-    private fun saveLogoCache() {
-        val obj = JSONObject()
-        channels.forEach { ch ->
-            val logo = ch.logoFromEpg ?: return@forEach
-            val keys = listOf(ch.tvgId, ch.tvgName, ch.name)
-            keys.forEach { key ->
-                val normalized = key?.lowercase()?.trim().orEmpty()
-                if (normalized.isNotBlank()) obj.put(normalized, logo)
-            }
-        }
-        prefs.edit().putString(PREF_LOGO_CACHE, obj.toString()).apply()
-    }
-
-    private fun loadLogoCache() {
-        val raw = prefs.getString(PREF_LOGO_CACHE, "{}") ?: "{}"
-        try {
-            val obj = JSONObject(raw)
-            cachedLogos.clear()
-            obj.keys().forEach { key ->
-                val url = obj.optString(key)
-                if (url.isNotBlank()) cachedLogos[key] = url
-            }
-        } catch (_: Exception) {
-            cachedLogos.clear()
-        }
-    }
-
-    private fun applyCachedLogos() {
+    private fun applyLogoCacheToChannels() {
         if (cachedLogos.isEmpty()) return
         channels.forEach { channel ->
             val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
