@@ -66,6 +66,8 @@ data class Channel(
     val tvgId: String?,
     val tvgName: String?,
     val logoFromPlaylist: String?,
+    val catchupDays: Int = 0,
+    val catchupSource: String? = null,
     var logoFromEpg: String? = null
 )
 
@@ -128,6 +130,7 @@ class MainActivity : AppCompatActivity() {
     private var timerEndAtMillis: Long = 0L
     private var lastBackPressAt = 0L
     private var shouldOpenLastChannelOnStart = false
+    private var isArchivePlayback = false
 
     private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     private val prefs by lazy { getSharedPreferences("oportal_settings", Context.MODE_PRIVATE) }
@@ -232,8 +235,14 @@ class MainActivity : AppCompatActivity() {
 
         btnLiveReload.setOnClickListener {
             tvReloadingStatus.visibility = View.VISIBLE
+            if (isArchivePlayback) {
+                tvReloadingStatus.text = "Возвращаемся к прямой трансляции"
+            }
             playChannel(forcePlay = true)
-            handler.postDelayed({ tvReloadingStatus.visibility = View.GONE }, 1200)
+            handler.postDelayed({
+                tvReloadingStatus.visibility = View.GONE
+                tvReloadingStatus.text = "Обновление трансляции..."
+            }, 1200)
         }
 
         btnSettings.setOnClickListener { showSettingsDialog() }
@@ -569,6 +578,15 @@ class MainActivity : AppCompatActivity() {
                     val isNow = now in item.start until item.stop
                     tvBadge.visibility = if (isNow) View.VISIBLE else View.GONE
                     row.alpha = if (isNow) 1f else 0.95f
+                    val archiveAvailable = isArchiveAvailable(ch, item)
+                    row.setOnClickListener {
+                        if (!archiveAvailable) {
+                            Toast.makeText(this@MainActivity, "Архив недоступен для этой передачи", Toast.LENGTH_SHORT).show()
+                            return@setOnClickListener
+                        }
+                        playArchiveProgram(ch, item)
+                        scheduleDialog?.dismiss()
+                    }
                     return row
                 }
             }
@@ -1202,28 +1220,32 @@ class MainActivity : AppCompatActivity() {
 
     private class ProgressInputStream(
         input: InputStream,
-        private val total: Long,
+        private val totalBytes: Long,
         private val onProgress: (Int) -> Unit
     ) : FilterInputStream(input) {
-        private var readBytes = 0L
-        private var lastProgress = -1
+        private var consumedBytes: Long = 0L
+        private var lastProgress: Int = -1
 
         override fun read(): Int {
             val value = super.read()
-            if (value >= 0) notifyProgress(1)
+            if (value >= 0) {
+                updateProgress(1)
+            }
             return value
         }
 
         override fun read(b: ByteArray, off: Int, len: Int): Int {
             val count = super.read(b, off, len)
-            if (count > 0) notifyProgress(count)
+            if (count > 0) {
+                updateProgress(count)
+            }
             return count
         }
 
-        private fun notifyProgress(delta: Int) {
-            if (total <= 0) return
-            readBytes += delta
-            val progress = ((readBytes * 100) / total).toInt().coerceIn(0, 100)
+        private fun updateProgress(delta: Int) {
+            if (totalBytes <= 0L) return
+            consumedBytes += delta
+            val progress = ((consumedBytes * 100L) / totalBytes).toInt().coerceIn(0, 100)
             if (progress != lastProgress) {
                 onProgress(progress)
                 lastProgress = progress
@@ -1233,15 +1255,15 @@ class MainActivity : AppCompatActivity() {
 
     private class SizeLimitedInputStream(
         input: InputStream,
-        private val maxBytes: Long
+        private val limitBytes: Long
     ) : FilterInputStream(input) {
-        private var readBytes = 0L
+        private var consumedBytes: Long = 0L
 
         override fun read(): Int {
             val value = super.read()
             if (value >= 0) {
-                readBytes++
-                ensureLimit()
+                consumedBytes += 1L
+                validateLimit()
             }
             return value
         }
@@ -1249,17 +1271,70 @@ class MainActivity : AppCompatActivity() {
         override fun read(b: ByteArray, off: Int, len: Int): Int {
             val count = super.read(b, off, len)
             if (count > 0) {
-                readBytes += count
-                ensureLimit()
+                consumedBytes += count.toLong()
+                validateLimit()
             }
             return count
         }
+
+        private fun validateLimit() {
+            if (limitBytes > 0L && consumedBytes > limitBytes) {
+                throw IOException("Input exceeded safe limit: $consumedBytes bytes")
+            }
+        }
     }
 
-        private fun ensureLimit() {
-            if (maxBytes > 0 && readBytes > maxBytes) {
-                throw IOException("Input exceeded safe limit: $readBytes bytes")
+    private fun isArchiveAvailable(channel: Channel, program: Program): Boolean {
+        if (channel.catchupDays <= 0 || channel.catchupSource.isNullOrBlank()) return false
+        val now = System.currentTimeMillis()
+        val maxDepthMs = channel.catchupDays * 24L * 60L * 60L * 1000L
+        return program.start in 1..now && (now - program.start) <= maxDepthMs
+    }
+
+    private fun buildArchiveUrl(channel: Channel, program: Program): String? {
+        val source = channel.catchupSource?.trim().orEmpty()
+        if (source.isBlank()) return null
+        val startUnix = (program.start / 1000L).coerceAtLeast(0L)
+        val endUnix = (program.stop / 1000L).coerceAtLeast(startUnix)
+        val nowUnix = System.currentTimeMillis() / 1000L
+        val offset = (nowUnix - startUnix).coerceAtLeast(0L)
+        return source
+            .replace("\${start}", startUnix.toString())
+            .replace("{start}", startUnix.toString())
+            .replace("{utcstart}", startUnix.toString())
+            .replace("\${end}", endUnix.toString())
+            .replace("{end}", endUnix.toString())
+            .replace("{utcend}", endUnix.toString())
+            .replace("{offset}", offset.toString())
+    }
+
+    private fun playArchiveProgram(channel: Channel, program: Program) {
+        val archiveUrl = buildArchiveUrl(channel, program)
+        if (archiveUrl.isNullOrBlank()) {
+            Toast.makeText(this, "Не удалось сформировать ссылку архива", Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching {
+            homePanel.visibility = View.GONE
+            mediaPlayer?.stop()
+            val media = Media(libVlc, Uri.parse(archiveUrl)).apply {
+                setHWDecoderEnabled(true, true)
+                addOption(":network-caching=1200")
+                addOption(":clock-jitter=0")
+                addOption(":clock-synchro=0")
+                addOption(":no-video-title-show")
             }
+            mediaPlayer?.media = media
+            media.release()
+            mediaPlayer?.play()
+            isPlaybackPaused = false
+            isArchivePlayback = true
+            btnPlayPause.setImageResource(R.drawable.ic_pause)
+            tvChannelName.text = "${currentChannelIndex + 1}. ${channel.name} [Архив]"
+            tvEpg.text = "${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(program.start))} - ${program.title}"
+            showUI()
+        }.onFailure { e ->
+            showCenterError("Ошибка архива: ${e.message ?: e.javaClass.simpleName}")
         }
     }
 
@@ -1281,6 +1356,7 @@ class MainActivity : AppCompatActivity() {
             media.release()
             mediaPlayer?.play()
             isPlaybackPaused = false
+            isArchivePlayback = false
             btnPlayPause.setImageResource(R.drawable.ic_pause)
 
             tvChannelName.text = "${currentChannelIndex + 1}. ${ch.name}"

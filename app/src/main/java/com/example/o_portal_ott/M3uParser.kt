@@ -9,6 +9,8 @@ object M3uParser {
         var currentLogo = ""
         var currentTvgId = ""
         var currentTvgName = ""
+        var currentCatchupDays = 0
+        var currentCatchupSource = ""
 
         m3uText.lines().forEach { line ->
             val trimmedLine = line.trim()
@@ -25,6 +27,13 @@ object M3uParser {
 
                 // Извлекаем tvg-name (часто используется в EPG как альтернативный ID)
                 currentTvgName = trimmedLine.substringAfter("tvg-name=\"", "").substringBefore("\"")
+                currentCatchupDays = trimmedLine.substringAfter("catchup-days=\"", "").substringBefore("\"").toIntOrNull()
+                    ?: trimmedLine.substringAfter("catchup-days=", "").substringBefore(" ").trim().toIntOrNull()
+                    ?: 0
+                currentCatchupSource = trimmedLine.substringAfter("catchup-source=\"", "").substringBefore("\"")
+                    .ifBlank {
+                        trimmedLine.substringAfter("catchup-source=", "").substringBefore(" ").trim()
+                    }
 
             } else if (trimmedLine.startsWith("http") && !trimmedLine.contains("x-tvg-url")) {
                 val resolvedName = currentName.ifBlank {
@@ -41,11 +50,13 @@ object M3uParser {
                         url = trimmedLine,
                         tvgId = if (currentTvgId.isEmpty()) null else currentTvgId,
                         tvgName = if (currentTvgName.isEmpty()) null else currentTvgName,
-                        logoFromPlaylist = if (currentLogo.isEmpty()) null else currentLogo
+                        logoFromPlaylist = if (currentLogo.isEmpty()) null else currentLogo,
+                        catchupDays = currentCatchupDays,
+                        catchupSource = currentCatchupSource.ifBlank { null }
                     )
                 )
                 // Сбрасываем временные данные для следующего канала
-                currentName = ""; currentLogo = ""; currentTvgId = ""; currentTvgName = ""
+                currentName = ""; currentLogo = ""; currentTvgId = ""; currentTvgName = ""; currentCatchupDays = 0; currentCatchupSource = ""
             }
         }
         return channels
