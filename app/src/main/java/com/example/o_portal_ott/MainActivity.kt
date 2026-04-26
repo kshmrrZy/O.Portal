@@ -1254,6 +1254,7 @@ class MainActivity : AppCompatActivity() {
             }
             return count
         }
+    }
 
         private fun ensureLimit() {
             if (maxBytes > 0 && readBytes > maxBytes) {
