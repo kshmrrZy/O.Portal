@@ -1258,6 +1258,31 @@ class MainActivity : AppCompatActivity() {
             }
             return count
         }
+    }
+
+    private fun isArchiveAvailable(channel: Channel, program: Program): Boolean {
+        if (channel.catchupDays <= 0 || channel.catchupSource.isNullOrBlank()) return false
+        val now = System.currentTimeMillis()
+        val maxDepthMs = channel.catchupDays * 24L * 60L * 60L * 1000L
+        return program.start in 1..now && (now - program.start) <= maxDepthMs
+    }
+
+    private fun buildArchiveUrl(channel: Channel, program: Program): String? {
+        val source = channel.catchupSource?.trim().orEmpty()
+        if (source.isBlank()) return null
+        val startUnix = (program.start / 1000L).coerceAtLeast(0L)
+        val endUnix = (program.stop / 1000L).coerceAtLeast(startUnix)
+        val nowUnix = System.currentTimeMillis() / 1000L
+        val offset = (nowUnix - startUnix).coerceAtLeast(0L)
+        return source
+            .replace("\${start}", startUnix.toString())
+            .replace("{start}", startUnix.toString())
+            .replace("{utcstart}", startUnix.toString())
+            .replace("\${end}", endUnix.toString())
+            .replace("{end}", endUnix.toString())
+            .replace("{utcend}", endUnix.toString())
+            .replace("{offset}", offset.toString())
+    }
 
         private fun updateProgress(delta: Int) {
             if (totalBytes <= 0L) return
@@ -1739,6 +1764,18 @@ class MainActivity : AppCompatActivity() {
                 synchronized(epgDataLock) { epgData[key] = list }
             }
         } catch (_: Exception) {
+            cachedLogos.clear()
+        }
+    }
+
+    private fun applyLogoCacheToChannels() {
+        if (cachedLogos.isEmpty()) return
+        channels.forEach { channel ->
+            val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
+            val logo = keys
+                .mapNotNull { it?.lowercase()?.trim() }
+                .firstNotNullOfOrNull { cachedLogos[it] }
+            if (!logo.isNullOrBlank()) channel.logoFromEpg = logo
         }
     }
 
