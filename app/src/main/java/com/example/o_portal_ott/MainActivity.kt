@@ -45,7 +45,6 @@ import org.xmlpull.v1.XmlPullParser
 import java.io.BufferedInputStream
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.PushbackInputStream
@@ -991,7 +990,7 @@ class MainActivity : AppCompatActivity() {
                 handler.post {
                     channels.clear()
                     channels.addAll(parsedChannels)
-                    applyLogoCacheToChannels()
+                    applyRestoredLogoCacheToChannels()
                     availableEpgSources = parsedEpgUrls
 
                     val savedSelection = getSelectedEpgSources()
@@ -1231,97 +1230,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 eventType = parser.next()
-            }
-        }
-    }
-
-    private class ProgressInputStream(
-        input: InputStream,
-        private val totalBytes: Long,
-        private val onProgress: (Int) -> Unit
-    ) : FilterInputStream(input) {
-        private var consumedBytes: Long = 0L
-        private var lastProgress: Int = -1
-
-        override fun read(): Int {
-            val value = super.read()
-            if (value >= 0) {
-                updateProgress(1)
-            }
-            return value
-        }
-
-        override fun read(b: ByteArray, off: Int, len: Int): Int {
-            val count = super.read(b, off, len)
-            if (count > 0) {
-                updateProgress(count)
-            }
-            return count
-        }
-    }
-
-    private fun isArchiveAvailable(channel: Channel, program: Program): Boolean {
-        if (channel.catchupDays <= 0 || channel.catchupSource.isNullOrBlank()) return false
-        val now = System.currentTimeMillis()
-        val maxDepthMs = channel.catchupDays * 24L * 60L * 60L * 1000L
-        return program.start in 1..now && (now - program.start) <= maxDepthMs
-    }
-
-    private fun buildArchiveUrl(channel: Channel, program: Program): String? {
-        val source = channel.catchupSource?.trim().orEmpty()
-        if (source.isBlank()) return null
-        val startUnix = (program.start / 1000L).coerceAtLeast(0L)
-        val endUnix = (program.stop / 1000L).coerceAtLeast(startUnix)
-        val nowUnix = System.currentTimeMillis() / 1000L
-        val offset = (nowUnix - startUnix).coerceAtLeast(0L)
-        return source
-            .replace("\${start}", startUnix.toString())
-            .replace("{start}", startUnix.toString())
-            .replace("{utcstart}", startUnix.toString())
-            .replace("\${end}", endUnix.toString())
-            .replace("{end}", endUnix.toString())
-            .replace("{utcend}", endUnix.toString())
-            .replace("{offset}", offset.toString())
-    }
-
-        private fun updateProgress(delta: Int) {
-            if (totalBytes <= 0L) return
-            consumedBytes += delta
-            val progress = ((consumedBytes * 100L) / totalBytes).toInt().coerceIn(0, 100)
-            if (progress != lastProgress) {
-                onProgress(progress)
-                lastProgress = progress
-            }
-        }
-    }
-
-    private class SizeLimitedInputStream(
-        input: InputStream,
-        private val limitBytes: Long
-    ) : FilterInputStream(input) {
-        private var consumedBytes: Long = 0L
-
-        override fun read(): Int {
-            val value = super.read()
-            if (value >= 0) {
-                consumedBytes += 1L
-                validateLimit()
-            }
-            return value
-        }
-
-        override fun read(b: ByteArray, off: Int, len: Int): Int {
-            val count = super.read(b, off, len)
-            if (count > 0) {
-                consumedBytes += count.toLong()
-                validateLimit()
-            }
-            return count
-        }
-
-        private fun validateLimit() {
-            if (limitBytes > 0L && consumedBytes > limitBytes) {
-                throw IOException("Input exceeded safe limit: $consumedBytes bytes")
             }
         }
     }
@@ -1806,7 +1714,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun applyLogoCacheToChannels() {
+    private fun applyRestoredLogoCacheToChannels() {
         if (cachedLogos.isEmpty()) return
         channels.forEach { channel ->
             val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
