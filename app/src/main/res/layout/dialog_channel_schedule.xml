@@ -4,7 +4,7 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:padding="12dp"
-    android:background="@drawable/bg_schedule_root">
+    android:background="@drawable/bg_glass_panel">
 
     <TextView
         android:id="@+id/tvScheduleHeader"
@@ -35,6 +35,6 @@
         android:layout_marginTop="8dp"
         android:divider="#22FFFFFF"
         android:dividerHeight="1dp"
-        android:background="@drawable/bg_schedule_panel" />
+        android:background="@android:color/transparent" />
 
 </LinearLayout>
