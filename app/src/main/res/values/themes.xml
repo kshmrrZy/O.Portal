@@ -3,7 +3,7 @@
     <style name="Base.Theme.O_portal_OTT" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <!-- Customize your light theme here. -->
         <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
-        <item name="android:fontFamily">@font/golos_text</item>
+        <item name="android:fontFamily">@font/main_font</item>
     </style>
 
     <style name="Theme.O_portal_OTT" parent="Base.Theme.O_portal_OTT" />
