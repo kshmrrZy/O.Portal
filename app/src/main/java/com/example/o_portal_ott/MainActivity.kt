@@ -27,6 +27,7 @@ import android.widget.ListView
 import android.widget.RadioGroup
 import android.widget.Spinner
 import android.widget.TextView
+import android.widget.ToggleButton
 import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.appcompat.app.AlertDialog
@@ -100,6 +101,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var listBackgroundOverlay: View
     private lateinit var timerWarningPanel: View
     private lateinit var btnStopTimer: TextView
+    private lateinit var homePanel: View
+    private lateinit var btnHomePlaylists: TextView
+    private lateinit var btnHomeFavorites: TextView
+    private lateinit var btnHomeSettings: TextView
 
     // Состояние
     private var isLocked = false
@@ -121,6 +126,7 @@ class MainActivity : AppCompatActivity() {
 
     private var timerEndAtMillis: Long = 0L
     private var lastBackPressAt = 0L
+    private var shouldOpenLastChannelOnStart = false
 
     private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     private val prefs by lazy { getSharedPreferences("oportal_settings", Context.MODE_PRIVATE) }
@@ -135,11 +141,13 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_EPG_LAST_REFRESH = "epg_last_refresh"
         private const val PREF_CUSTOM_EPG_SOURCES = "custom_epg_sources"
         private const val PREF_LOGO_CACHE = "logo_cache"
+        private const val PREF_START_LAST_CHANNEL = "pref_start_last_channel"
+        private const val PREF_SHOW_LOCK_BUTTON = "pref_show_lock_button"
 
         private const val TOKEN_PREFIX = "https://o.avff.ru/my/"
         private const val TOKEN_SUFFIX = ".m3u"
-        private const val MAX_EPG_COMPRESSED_BYTES = 120L * 1024L * 1024L
-        private const val MAX_EPG_UNPACKED_BYTES = 350L * 1024L * 1024L
+        private const val MAX_EPG_COMPRESSED_BYTES = 300L * 1024L * 1024L
+        private const val MAX_EPG_UNPACKED_BYTES = 900L * 1024L * 1024L
     }
 
     private val hideUiRunnable = Runnable { hideUI() }
@@ -182,10 +190,15 @@ class MainActivity : AppCompatActivity() {
         setupInteractions()
         setupBackHandling()
         loadEpgCache()
-        restoreLastChannel()
+        shouldOpenLastChannelOnStart = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
+        if (shouldOpenLastChannelOnStart) restoreLastChannel()
         startClockUpdater()
         startEpgTicker()
-        loadPlaylist(showErrors = true)
+        applyLockButtonVisibility()
+        loadPlaylist(showErrors = true, autoPlay = shouldOpenLastChannelOnStart)
+        if (!shouldOpenLastChannelOnStart) {
+            showStartPage()
+        }
     }
 
     private fun initViews() {
@@ -204,10 +217,18 @@ class MainActivity : AppCompatActivity() {
         listBackgroundOverlay = findViewById(R.id.listBackgroundOverlay)
         timerWarningPanel = findViewById(R.id.timerWarningPanel)
         btnStopTimer = findViewById(R.id.btnStopTimer)
+        homePanel = findViewById(R.id.homePanel)
+        btnHomePlaylists = findViewById(R.id.btnHomePlaylists)
+        btnHomeFavorites = findViewById(R.id.btnHomeFavorites)
+        btnHomeSettings = findViewById(R.id.btnHomeSettings)
         tvEpg.isSelected = true
     }
 
     private fun setupInteractions() {
+        btnHomePlaylists.setOnClickListener { showHomePlaylistSelector() }
+        btnHomeFavorites.setOnClickListener { openFavoritesByToken() }
+        btnHomeSettings.setOnClickListener { showSettingsDialog() }
+
         btnLiveReload.setOnClickListener {
             tvReloadingStatus.visibility = View.VISIBLE
             playChannel(forcePlay = true)
@@ -281,6 +302,62 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
         })
+    }
+
+    private fun showStartPage() {
+        homePanel.visibility = View.VISIBLE
+        topInfoPanel.visibility = View.GONE
+        controlsPanel.visibility = View.GONE
+    }
+
+    private fun hideStartPage() {
+        homePanel.visibility = View.GONE
+        showUI()
+    }
+
+    private fun applyLockButtonVisibility() {
+        val showLock = prefs.getBoolean(PREF_SHOW_LOCK_BUTTON, true)
+        btnLock.visibility = if (showLock) View.VISIBLE else View.GONE
+    }
+
+    private fun showHomePlaylistSelector() {
+        val profiles = getPlaylistProfiles()
+        if (profiles.isEmpty()) {
+            Toast.makeText(this, "Добавьте плейлист в настройках", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val sp = Spinner(this)
+        sp.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, profiles.map { it.name })
+        val view = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 24, 24, 24)
+            addView(sp)
+        }
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
+            .setTitle("Выбор плейлиста")
+            .setView(view)
+            .setPositiveButton("Открыть каналы") { _, _ ->
+                val p = profiles.getOrNull(sp.selectedItemPosition) ?: return@setPositiveButton
+                setSelectedPlaylistName(p.name)
+                hideStartPage()
+                loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
+                handler.postDelayed({ showChannelList() }, 700)
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun openFavoritesByToken() {
+        val selected = getPlaylistProfiles().firstOrNull { it.name == getSelectedPlaylistName() }
+            ?: getPlaylistProfiles().firstOrNull()
+        if (selected == null || selected.type != "token" || selected.value.isBlank()) {
+            Toast.makeText(this, "Введите токен в настройках", Toast.LENGTH_LONG).show()
+            showSettingsDialog()
+            return
+        }
+        hideStartPage()
+        loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
+        handler.postDelayed({ showChannelList() }, 700)
     }
 
     private fun setupBackHandling() {
@@ -545,10 +622,25 @@ class MainActivity : AppCompatActivity() {
         val btnPlaylistSettings = view.findViewById<TextView>(R.id.btnPlaylistSettings)
         val btnEpgSelect = view.findViewById<TextView>(R.id.btnEpgSelect)
         val btnClose = view.findViewById<TextView>(R.id.btnCloseSettingsDialog)
+        val tbStartMode = view.findViewById<ToggleButton>(R.id.tbStartMode)
+        val tbShowLockButton = view.findViewById<ToggleButton>(R.id.tbShowLockButton)
+
+        tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
+        tbShowLockButton.isChecked = prefs.getBoolean(PREF_SHOW_LOCK_BUTTON, true)
 
         val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
             .setView(view)
             .create()
+
+        tbStartMode.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean(PREF_START_LAST_CHANNEL, isChecked).apply()
+            shouldOpenLastChannelOnStart = isChecked
+        }
+
+        tbShowLockButton.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean(PREF_SHOW_LOCK_BUTTON, isChecked).apply()
+            applyLockButtonVisibility()
+        }
 
         btnPlaylistSettings.setOnClickListener {
             dialog.dismiss()
@@ -843,7 +935,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadPlaylist(forceReload: Boolean = false, showErrors: Boolean = false) {
+    private fun loadPlaylist(forceReload: Boolean = false, showErrors: Boolean = false, autoPlay: Boolean = true) {
         thread {
             try {
                 val playlistUrl = resolveCurrentPlaylistUrl()
@@ -882,11 +974,11 @@ class MainActivity : AppCompatActivity() {
                         fetchEpgSources(selectedEpgSources.toList())
                     }
 
-                    if (channels.isNotEmpty()) {
+                    if (channels.isNotEmpty() && autoPlay) {
                         currentChannelIndex = currentChannelIndex.coerceIn(channels.indices)
                         playChannel(forcePlay = true)
                     } else {
-                        tvEpg.text = "Каналы не найдены в плейлисте"
+                        tvEpg.text = if (channels.isEmpty()) "Каналы не найдены в плейлисте" else "Выберите раздел на стартовой странице"
                     }
 
                     if (forceReload) {
@@ -1102,6 +1194,7 @@ class MainActivity : AppCompatActivity() {
     private fun playChannel(forcePlay: Boolean = false) {
         runCatching {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
+            homePanel.visibility = View.GONE
             mediaPlayer?.stop()
 
             val media = Media(libVlc, Uri.parse(ch.url)).apply {
@@ -1125,9 +1218,19 @@ class MainActivity : AppCompatActivity() {
             showUI()
         }.onFailure { e ->
             Log.e("PLAYER", "Ошибка воспроизведения канала", e)
-            tvEpg.text = "Ошибка запуска канала"
+            showCenterError("Ошибка канала: ${e.message ?: e.javaClass.simpleName}")
             showUI()
         }
+    }
+
+    private fun showCenterError(message: String, durationMs: Long = 2200L) {
+        tvReloadingStatus.text = message
+        tvReloadingStatus.setBackgroundResource(R.drawable.bg_reload_toast)
+        tvReloadingStatus.visibility = View.VISIBLE
+        handler.postDelayed({
+            tvReloadingStatus.visibility = View.GONE
+            tvReloadingStatus.text = "Обновление трансляции..."
+        }, durationMs)
     }
 
     private fun updateEpgDisplay() {
@@ -1170,16 +1273,11 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.setEventListener { event ->
             when (event.type) {
                 MediaPlayer.Event.EncounteredError -> handler.post {
-                    tvReloadingStatus.text = "Поток недоступен, переключаем..."
-                    tvReloadingStatus.visibility = View.VISIBLE
+                    showCenterError("Ошибка потока: EncounteredError. Переключаем канал…", 1800)
                     if (channels.isNotEmpty()) {
                         currentChannelIndex = (currentChannelIndex + 1) % channels.size
                         playChannel(forcePlay = true)
                     }
-                    handler.postDelayed({
-                        tvReloadingStatus.visibility = View.GONE
-                        tvReloadingStatus.text = "Обновление трансляции..."
-                    }, 1800)
                 }
             }
         }
@@ -1261,7 +1359,7 @@ class MainActivity : AppCompatActivity() {
         startEpgTicker()
         if (libVlc == null || mediaPlayer == null) {
             setupVLC()
-            if (channels.isNotEmpty()) {
+            if (channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
                 playChannel(forcePlay = true)
             }
         }
@@ -1475,6 +1573,44 @@ class MainActivity : AppCompatActivity() {
                 synchronized(epgDataLock) { epgData[key] = list }
             }
         } catch (_: Exception) {
+        }
+    }
+
+    private fun saveLogoCache() {
+        val obj = JSONObject()
+        channels.forEach { ch ->
+            val logo = ch.logoFromEpg ?: return@forEach
+            val keys = listOf(ch.tvgId, ch.tvgName, ch.name)
+            keys.forEach { key ->
+                val normalized = key?.lowercase()?.trim().orEmpty()
+                if (normalized.isNotBlank()) obj.put(normalized, logo)
+            }
+        }
+        prefs.edit().putString(PREF_LOGO_CACHE, obj.toString()).apply()
+    }
+
+    private fun loadLogoCache() {
+        val raw = prefs.getString(PREF_LOGO_CACHE, "{}") ?: "{}"
+        try {
+            val obj = JSONObject(raw)
+            cachedLogos.clear()
+            obj.keys().forEach { key ->
+                val url = obj.optString(key)
+                if (url.isNotBlank()) cachedLogos[key] = url
+            }
+        } catch (_: Exception) {
+            cachedLogos.clear()
+        }
+    }
+
+    private fun applyCachedLogos() {
+        if (cachedLogos.isEmpty()) return
+        channels.forEach { channel ->
+            val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
+            val logo = keys
+                .mapNotNull { it?.lowercase()?.trim() }
+                .firstNotNullOfOrNull { cachedLogos[it] }
+            if (!logo.isNullOrBlank()) channel.logoFromEpg = logo
         }
     }
 

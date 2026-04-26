@@ -38,6 +38,26 @@
         android:textColor="#FFFFFF"
         android:textStyle="bold" />
 
+    <ToggleButton
+        android:id="@+id/tbStartMode"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:textOff="Старт: Стартовая страница"
+        android:textOn="Старт: Последний канал"
+        android:textColor="#FFFFFF"
+        android:background="@drawable/bg_watch_button" />
+
+    <ToggleButton
+        android:id="@+id/tbShowLockButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:textOff="Кнопка блокировки: скрыта"
+        android:textOn="Кнопка блокировки: видна"
+        android:textColor="#FFFFFF"
+        android:background="@drawable/bg_watch_button" />
+
     <TextView
         android:id="@+id/btnCloseSettingsDialog"
         android:layout_width="match_parent"
