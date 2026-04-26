@@ -176,6 +176,28 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun buildPlaceholderPrograms(): List<Program> {
+        val result = mutableListOf<Program>()
+        val cal = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_YEAR, -7)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val end = System.currentTimeMillis() + 60L * 60L * 1000L
+        while (cal.timeInMillis < end) {
+            val start = cal.timeInMillis
+            cal.add(Calendar.HOUR_OF_DAY, 1)
+            result += Program("Программа", start, cal.timeInMillis)
+        }
+        return result
+    }
+
+    private fun getProgramsForDisplay(ch: Channel): List<Program> {
+        val real = getProgramsForChannel(ch)
+        return if (real.isNotEmpty()) real else buildPlaceholderPrograms()
+    }
+
     private fun isEpgDataEmpty(): Boolean = synchronized(epgDataLock) { epgData.isEmpty() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -498,7 +520,7 @@ class MainActivity : AppCompatActivity() {
                 holder.tvName.text = "${position + 1}. ${channel.name}"
                 holder.tvName.isSelected = true
 
-                val pList = getProgramsForChannel(channel)
+                val pList = getProgramsForDisplay(channel)
                 val cur = pList.find { System.currentTimeMillis() in it.start until it.stop }
                 holder.tvEpgItem.text = cur?.title ?: "Нет программы"
                 holder.tvEpgItem.isSelected = true
@@ -537,12 +559,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showCurrentChannelSchedule() {
         val ch = channels.getOrNull(currentChannelIndex) ?: return
-        val programs = getProgramsForChannel(ch).sortedBy { it.start }
-
-        if (programs.isEmpty()) {
-            Toast.makeText(this, "Для канала пока нет EPG", Toast.LENGTH_SHORT).show()
-            return
-        }
+        val programs = getProgramsForDisplay(ch).sortedBy { it.start }
 
         val byDate = programs.groupBy {
             SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(it.start))
@@ -1099,8 +1116,8 @@ class MainActivity : AppCompatActivity() {
 
             val b1 = pushback.read()
             val b2 = pushback.read()
-            if (b1 != -1) pushback.unread(b1)
             if (b2 != -1) pushback.unread(b2)
+            if (b1 != -1) pushback.unread(b1)
             val isGzip = (b1 and 0xFF == 0x1F) && (b2 and 0xFF == 0x8B)
 
             val xmlStream: InputStream = if (isGzip) {
@@ -1241,6 +1258,31 @@ class MainActivity : AppCompatActivity() {
             }
             return count
         }
+    }
+
+    private fun isArchiveAvailable(channel: Channel, program: Program): Boolean {
+        if (channel.catchupDays <= 0 || channel.catchupSource.isNullOrBlank()) return false
+        val now = System.currentTimeMillis()
+        val maxDepthMs = channel.catchupDays * 24L * 60L * 60L * 1000L
+        return program.start in 1..now && (now - program.start) <= maxDepthMs
+    }
+
+    private fun buildArchiveUrl(channel: Channel, program: Program): String? {
+        val source = channel.catchupSource?.trim().orEmpty()
+        if (source.isBlank()) return null
+        val startUnix = (program.start / 1000L).coerceAtLeast(0L)
+        val endUnix = (program.stop / 1000L).coerceAtLeast(startUnix)
+        val nowUnix = System.currentTimeMillis() / 1000L
+        val offset = (nowUnix - startUnix).coerceAtLeast(0L)
+        return source
+            .replace("\${start}", startUnix.toString())
+            .replace("{start}", startUnix.toString())
+            .replace("{utcstart}", startUnix.toString())
+            .replace("\${end}", endUnix.toString())
+            .replace("{end}", endUnix.toString())
+            .replace("{utcend}", endUnix.toString())
+            .replace("{offset}", offset.toString())
+    }
 
         private fun updateProgress(delta: Int) {
             if (totalBytes <= 0L) return
@@ -1297,6 +1339,7 @@ class MainActivity : AppCompatActivity() {
         val startUnix = (program.start / 1000L).coerceAtLeast(0L)
         val endUnix = (program.stop / 1000L).coerceAtLeast(startUnix)
         val nowUnix = System.currentTimeMillis() / 1000L
+        // offset в секундах назад: текущее unix-время минус unix-время начала программы
         val offset = (nowUnix - startUnix).coerceAtLeast(0L)
         return source
             .replace("\${start}", startUnix.toString())
@@ -1384,7 +1427,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateEpgDisplay() {
         val ch = channels.getOrNull(currentChannelIndex) ?: return
         val now = System.currentTimeMillis()
-        val programs = getProgramsForChannel(ch)
+        val programs = getProgramsForDisplay(ch)
 
         val cur = programs.find { now in it.start until it.stop }
         tvEpg.text = cur?.let {
@@ -1721,6 +1764,18 @@ class MainActivity : AppCompatActivity() {
                 synchronized(epgDataLock) { epgData[key] = list }
             }
         } catch (_: Exception) {
+            cachedLogos.clear()
+        }
+    }
+
+    private fun applyLogoCacheToChannels() {
+        if (cachedLogos.isEmpty()) return
+        channels.forEach { channel ->
+            val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
+            val logo = keys
+                .mapNotNull { it?.lowercase()?.trim() }
+                .firstNotNullOfOrNull { cachedLogos[it] }
+            if (!logo.isNullOrBlank()) channel.logoFromEpg = logo
         }
     }
 
