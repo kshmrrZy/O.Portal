@@ -146,8 +146,8 @@ class MainActivity : AppCompatActivity() {
 
         private const val TOKEN_PREFIX = "https://o.avff.ru/my/"
         private const val TOKEN_SUFFIX = ".m3u"
-        private const val MAX_EPG_COMPRESSED_BYTES = 300L * 1024L * 1024L
-        private const val MAX_EPG_UNPACKED_BYTES = 900L * 1024L * 1024L
+        private const val MAX_EPG_COMPRESSED_BYTES = 900L * 1024L * 1024L
+        private const val MAX_EPG_UNPACKED_BYTES = 1800L * 1024L * 1024L
     }
 
     private val hideUiRunnable = Runnable { hideUI() }
@@ -1014,6 +1014,7 @@ class MainActivity : AppCompatActivity() {
             urls.forEach { sourceUrl ->
                 applyEpgStatus(sourceUrl, "Загрузка файла: 0%")
                 var parsed = false
+                var lastError = "Неизвестная ошибка"
                 val epgUrlVariants = PlaylistEpgUtils.buildEpgUrlCandidates(sourceUrl)
                 candidates = epgUrlVariants
 
@@ -1033,6 +1034,7 @@ class MainActivity : AppCompatActivity() {
                         break
                     } catch (t: Throwable) {
                         Log.w("EPG", "Ошибка обработки EPG кандидата: $candidateUrl", t)
+                        lastError = t.message?.take(140) ?: t.javaClass.simpleName
                         when (t) {
                             is OutOfMemoryError -> applyEpgStatus(sourceUrl, "Файл EPG слишком большой")
                             is IOException -> if (t.message?.contains("too large", ignoreCase = true) == true ||
@@ -1044,8 +1046,8 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (!parsed) {
-                    applyEpgStatus(sourceUrl, "Ошибка загрузки")
-                    Log.w("EPG", "Не удалось обработать источник EPG: $sourceUrl")
+                    applyEpgStatus(sourceUrl, "Ошибка загрузки: $lastError")
+                    Log.w("EPG", "Не удалось обработать источник EPG: $sourceUrl ($lastError)")
                 }
             }
 
