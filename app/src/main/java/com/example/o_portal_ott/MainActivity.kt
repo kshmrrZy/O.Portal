@@ -48,6 +48,7 @@ import java.io.ByteArrayOutputStream
 import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
+import java.io.PushbackInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
@@ -1020,15 +1021,12 @@ class MainActivity : AppCompatActivity() {
 
                 for (candidateUrl in epgUrlVariants) {
                     try {
-                        val compressedBytes = downloadEpgBytes(candidateUrl) { p ->
-                            applyEpgStatus(sourceUrl, "Загрузка файла: $p%")
-                        }
-                        val xmlBytes = unpackEpgBytes(compressedBytes) { p ->
-                            applyEpgStatus(sourceUrl, "Распаковка файла: $p%")
-                        }
-                        parseEpgXml(ByteArrayInputStream(xmlBytes), xmlBytes.size) { p ->
-                            applyEpgStatus(sourceUrl, "Чтение файла: $p%")
-                        }
+                        parseEpgUrlStreaming(
+                            candidateUrl,
+                            onDownload = { p -> applyEpgStatus(sourceUrl, "Загрузка файла: $p%") },
+                            onUnpack = { p -> applyEpgStatus(sourceUrl, "Распаковка файла: $p%") },
+                            onParse = { p -> applyEpgStatus(sourceUrl, "Чтение файла: $p%") }
+                        )
                         applyEpgStatus(sourceUrl, "Чтение файла: 100%")
                         parsed = true
                         break
@@ -1059,6 +1057,46 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+    }
+
+    private fun parseEpgUrlStreaming(
+        url: String,
+        onDownload: (Int) -> Unit,
+        onUnpack: (Int) -> Unit,
+        onParse: (Int) -> Unit
+    ) {
+        val conn = URL(url).openConnection() as HttpURLConnection
+        conn.setRequestProperty("User-Agent", userAgent)
+        conn.instanceFollowRedirects = true
+        conn.connectTimeout = 12_000
+        conn.readTimeout = 25_000
+
+        val compressedTotal = conn.contentLengthLong.coerceAtLeast(0L)
+
+        conn.inputStream.use { raw ->
+            val compressedLimited = SizeLimitedInputStream(raw, MAX_EPG_COMPRESSED_BYTES)
+            val progressCompressed = ProgressInputStream(compressedLimited, compressedTotal, onDownload)
+            val buffered = BufferedInputStream(progressCompressed)
+            val pushback = PushbackInputStream(buffered, 2)
+
+            val b1 = pushback.read()
+            val b2 = pushback.read()
+            if (b1 != -1) pushback.unread(b1)
+            if (b2 != -1) pushback.unread(b2)
+            val isGzip = (b1 and 0xFF == 0x1F) && (b2 and 0xFF == 0x8B)
+
+            val xmlStream: InputStream = if (isGzip) {
+                onUnpack(0)
+                SizeLimitedInputStream(GZIPInputStream(pushback), MAX_EPG_UNPACKED_BYTES)
+            } else {
+                SizeLimitedInputStream(pushback, MAX_EPG_UNPACKED_BYTES)
+            }
+
+            xmlStream.use { stream ->
+                parseEpgXml(stream, -1, onParse)
+            }
+            if (isGzip) onUnpack(100)
+        }
     }
 
     private fun downloadEpgBytes(url: String, onProgress: (Int) -> Unit): ByteArray {
@@ -1189,6 +1227,38 @@ class MainActivity : AppCompatActivity() {
             if (progress != lastProgress) {
                 onProgress(progress)
                 lastProgress = progress
+            }
+        }
+    }
+
+    private class SizeLimitedInputStream(
+        input: InputStream,
+        private val maxBytes: Long
+    ) : FilterInputStream(input) {
+        private var readBytes = 0L
+
+        override fun read(): Int {
+            val value = super.read()
+            if (value >= 0) {
+                readBytes++
+                ensureLimit()
+            }
+            return value
+        }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            val count = super.read(b, off, len)
+            if (count > 0) {
+                readBytes += count
+                ensureLimit()
+            }
+            return count
+        }
+    }
+
+        private fun ensureLimit() {
+            if (maxBytes > 0 && readBytes > maxBytes) {
+                throw IOException("Input exceeded safe limit: $readBytes bytes")
             }
         }
     }
