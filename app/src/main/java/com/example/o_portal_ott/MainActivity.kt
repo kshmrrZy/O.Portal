@@ -130,6 +130,11 @@ class MainActivity : AppCompatActivity() {
     private var lastBackPressAt = 0L
     private var shouldOpenLastChannelOnStart = false
     private var isArchivePlayback = false
+    private var lastRequestedPlaybackUrl: String = ""
+    private val returnToLiveRunnable = Runnable {
+        tvReloadingStatus.text = "Возвращаемся к прямой трансляции"
+        playChannel(forcePlay = true)
+    }
 
     private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     private val prefs by lazy { getSharedPreferences("oportal_settings", Context.MODE_PRIVATE) }
@@ -151,6 +156,7 @@ class MainActivity : AppCompatActivity() {
         private const val TOKEN_SUFFIX = ".m3u"
         private const val MAX_EPG_COMPRESSED_BYTES = 900L * 1024L * 1024L
         private const val MAX_EPG_UNPACKED_BYTES = 1800L * 1024L * 1024L
+        private const val EPG_KEEP_DAYS = 7
     }
 
     private val hideUiRunnable = Runnable { hideUI() }
@@ -566,6 +572,7 @@ class MainActivity : AppCompatActivity() {
 
         val view = layoutInflater.inflate(R.layout.dialog_channel_schedule, null)
         val tvHeader = view.findViewById<TextView>(R.id.tvScheduleHeader)
+        val hsvDates = view.findViewById<android.widget.HorizontalScrollView>(R.id.hsvDates)
         val dateContainer = view.findViewById<LinearLayout>(R.id.dateContainer)
         val lvSchedule = view.findViewById<ListView>(R.id.lvSchedule)
 
@@ -634,6 +641,17 @@ class MainActivity : AppCompatActivity() {
             )
             lp.marginEnd = 12
             dateContainer.addView(chip, lp)
+        }
+
+        val selectedIdx = dateKeys.indexOf(selectedDate)
+        if (selectedIdx >= 0) {
+            dateContainer.post {
+                val selectedChip = dateContainer.getChildAt(selectedIdx)
+                if (selectedChip != null) {
+                    val scrollX = (selectedChip.left - (hsvDates.width - selectedChip.width) / 2).coerceAtLeast(0)
+                    hsvDates.smoothScrollTo(scrollX, 0)
+                }
+            }
         }
 
         renderSchedule(selectedDate)
@@ -1268,6 +1286,7 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             homePanel.visibility = View.GONE
             mediaPlayer?.stop()
+            lastRequestedPlaybackUrl = archiveUrl
             val media = Media(libVlc, Uri.parse(archiveUrl)).apply {
                 setHWDecoderEnabled(true, true)
                 addOption(":network-caching=1200")
@@ -1285,7 +1304,7 @@ class MainActivity : AppCompatActivity() {
             tvEpg.text = "${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(program.start))} - ${program.title}"
             showUI()
         }.onFailure { e ->
-            showCenterError("Ошибка архива: ${e.message ?: e.javaClass.simpleName}")
+            showPlaybackFailureAndReturn(archiveUrl, e.message ?: e.javaClass.simpleName)
         }
     }
 
@@ -1294,6 +1313,7 @@ class MainActivity : AppCompatActivity() {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
             homePanel.visibility = View.GONE
             mediaPlayer?.stop()
+            lastRequestedPlaybackUrl = ch.url
 
             val media = Media(libVlc, Uri.parse(ch.url)).apply {
                 setHWDecoderEnabled(true, true)
@@ -1317,7 +1337,7 @@ class MainActivity : AppCompatActivity() {
             showUI()
         }.onFailure { e ->
             Log.e("PLAYER", "Ошибка воспроизведения канала", e)
-            showCenterError("Ошибка канала: ${e.message ?: e.javaClass.simpleName}")
+            showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, e.message ?: e.javaClass.simpleName)
             showUI()
         }
     }
@@ -1330,6 +1350,13 @@ class MainActivity : AppCompatActivity() {
             tvReloadingStatus.visibility = View.GONE
             tvReloadingStatus.text = "Обновление трансляции..."
         }, durationMs)
+    }
+
+    private fun showPlaybackFailureAndReturn(url: String, error: String) {
+        val message = "Ошибка воспроизведения\n$error\n$url\nВозврат к прямому эфиру"
+        showCenterError(message, 3000L)
+        handler.removeCallbacks(returnToLiveRunnable)
+        handler.postDelayed(returnToLiveRunnable, 3000L)
     }
 
     private fun updateEpgDisplay() {
@@ -1372,11 +1399,7 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.setEventListener { event ->
             when (event.type) {
                 MediaPlayer.Event.EncounteredError -> handler.post {
-                    showCenterError("Ошибка потока: EncounteredError. Переключаем канал…", 1800)
-                    if (channels.isNotEmpty()) {
-                        currentChannelIndex = (currentChannelIndex + 1) % channels.size
-                        playChannel(forcePlay = true)
-                    }
+                    showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, "EncounteredError")
                 }
             }
         }
@@ -1467,7 +1490,7 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         handler.removeCallbacks(epgTickerRunnable)
-        stopPlayback()
+        mediaPlayer?.pause()
     }
 
     override fun onDestroy() {
@@ -1677,6 +1700,44 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyLogoCacheToChannels() {
+        if (cachedLogos.isEmpty()) return
+        channels.forEach { channel ->
+            val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
+            val logo = keys
+                .mapNotNull { it?.lowercase()?.trim() }
+                .firstNotNullOfOrNull { cachedLogos[it] }
+            if (!logo.isNullOrBlank()) channel.logoFromEpg = logo
+        }
+    }
+
+    private fun persistLogoCache() {
+        val obj = JSONObject()
+        channels.forEach { ch ->
+            val logo = ch.logoFromEpg ?: return@forEach
+            val keys = listOf(ch.tvgId, ch.tvgName, ch.name)
+            keys.forEach { key ->
+                val normalized = key?.lowercase()?.trim().orEmpty()
+                if (normalized.isNotBlank()) obj.put(normalized, logo)
+            }
+        }
+        prefs.edit().putString(PREF_LOGO_CACHE, obj.toString()).apply()
+    }
+
+    private fun restoreLogoCache() {
+        val raw = prefs.getString(PREF_LOGO_CACHE, "{}") ?: "{}"
+        try {
+            val obj = JSONObject(raw)
+            cachedLogos.clear()
+            obj.keys().forEach { key ->
+                val url = obj.optString(key)
+                if (url.isNotBlank()) cachedLogos[key] = url
+            }
+        } catch (_: Exception) {
+            cachedLogos.clear()
+        }
+    }
+
+    private fun applyRestoredLogoCacheToChannels() {
         if (cachedLogos.isEmpty()) return
         channels.forEach { channel ->
             val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
