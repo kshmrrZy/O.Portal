@@ -15,6 +15,7 @@
 
     <TextView
         android:id="@+id/itemName"
+        style="@style/WhiteTitleTextShadow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textColor="#FFFFFF"
@@ -31,6 +32,7 @@
 
     <TextView
         android:id="@+id/itemEpg"
+        style="@style/WhiteTextShadow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textColor="#B3FFFFFF"
@@ -44,6 +46,7 @@
 
     <TextView
         android:id="@+id/btnWatch"
+        style="@style/WhiteTitleTextShadow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"

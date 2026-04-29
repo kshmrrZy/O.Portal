@@ -622,6 +622,7 @@ class MainActivity : AppCompatActivity() {
             val chip = TextView(this).apply {
                 text = dateKey
                 setTextColor(Color.WHITE)
+                setShadowLayer(2f, 0f, 0f, Color.parseColor("#80000000"))
                 setPadding(24, 12, 24, 12)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 background = getDrawable(R.drawable.bg_date_chip)
@@ -885,12 +886,14 @@ class MainActivity : AppCompatActivity() {
         val btnEditLinks = TextView(this).apply {
             text = "Редактировать ссылки"
             setTextColor(Color.WHITE)
+            setShadowLayer(2f, 0f, 0f, Color.parseColor("#80000000"))
             setPadding(20, 12, 20, 12)
             background = getDrawable(R.drawable.bg_watch_button)
             setOnClickListener {
                 val et = EditText(this@MainActivity).apply {
                     setText(availableEpgSources.joinToString("\n"))
                     setTextColor(Color.WHITE)
+                    setShadowLayer(2f, 0f, 0f, Color.parseColor("#80000000"))
                     setHintTextColor(Color.parseColor("#99FFFFFF"))
                     hint = "Каждая ссылка с новой строки"
                     minLines = 6
@@ -919,6 +922,7 @@ class MainActivity : AppCompatActivity() {
         val btnRestoreLinks = TextView(this).apply {
             text = "Восстановить EPG"
             setTextColor(Color.WHITE)
+            setShadowLayer(2f, 0f, 0f, Color.parseColor("#80000000"))
             setPadding(20, 12, 20, 12)
             background = getDrawable(R.drawable.bg_watch_button)
             setOnClickListener {
@@ -947,6 +951,7 @@ class MainActivity : AppCompatActivity() {
             val cb = android.widget.CheckBox(this).apply {
                 text = source
                 setTextColor(Color.WHITE)
+                setShadowLayer(2f, 0f, 0f, Color.parseColor("#80000000"))
                 isChecked = localSelection.contains(source)
                 setOnCheckedChangeListener { _, checked ->
                     if (checked) localSelection.add(source) else localSelection.remove(source)
@@ -954,6 +959,7 @@ class MainActivity : AppCompatActivity() {
             }
             val tvStatus = TextView(this).apply {
                 setTextColor(Color.parseColor("#B3FFFFFF"))
+                setShadowLayer(2f, 0f, 0f, Color.parseColor("#70000000"))
                 textSize = 12f
                 text = epgSourceStatus[source] ?: "Загрузка файла: 0%"
             }
@@ -1264,17 +1270,23 @@ class MainActivity : AppCompatActivity() {
         if (source.isBlank()) return null
         val startUnix = (program.start / 1000L).coerceAtLeast(0L)
         val endUnix = (program.stop / 1000L).coerceAtLeast(startUnix)
+        val duration = (endUnix - startUnix).coerceAtLeast(0L)
         val nowUnix = System.currentTimeMillis() / 1000L
         // offset в секундах назад: текущее unix-время минус unix-время начала программы
         val offset = (nowUnix - startUnix).coerceAtLeast(0L)
         return source
             .replace("\${start}", startUnix.toString())
             .replace("{start}", startUnix.toString())
-            .replace("{utcstart}", startUnix.toString())
             .replace("\${end}", endUnix.toString())
+            .replace("{utcstart}", startUnix.toString())
+            .replace("\${utcstart}", startUnix.toString())
             .replace("{end}", endUnix.toString())
             .replace("{utcend}", endUnix.toString())
+            .replace("\${utcend}", endUnix.toString())
             .replace("{offset}", offset.toString())
+            .replace("\${offset}", offset.toString())
+            .replace("{dur}", duration.toString())
+            .replace("\${dur}", duration.toString())
     }
 
     private fun playArchiveProgram(channel: Channel, program: Program) {
@@ -1699,7 +1711,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun applyRestoredLogoCacheToChannels() {
+    private fun applyCachedLogosToChannels() {
         if (cachedLogos.isEmpty()) return
         channels.forEach { channel ->
             val keys = listOf(channel.tvgId, channel.tvgName, channel.name)

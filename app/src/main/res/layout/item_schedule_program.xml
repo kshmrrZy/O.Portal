@@ -16,6 +16,7 @@
 
         <TextView
             android:id="@+id/tvProgramTime"
+            style="@style/WhiteTitleTextShadow"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="#FFFFFF"
@@ -23,6 +24,7 @@
 
         <TextView
             android:id="@+id/tvNowOnAirBadge"
+            style="@style/WhiteTitleTextShadow"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="10dp"
@@ -39,6 +41,7 @@
 
     <TextView
         android:id="@+id/tvProgramTitle"
+        style="@style/WhiteTextShadow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"

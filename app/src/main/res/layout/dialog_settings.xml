@@ -7,6 +7,7 @@
     android:background="@drawable/bg_glass_panel">
 
     <TextView
+        style="@style/WhiteTitleTextShadow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Настройки"
@@ -17,6 +18,7 @@
 
     <TextView
         android:id="@+id/btnPlaylistSettings"
+        style="@style/WhiteTitleTextShadow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@drawable/bg_watch_button"
@@ -28,6 +30,7 @@
 
     <TextView
         android:id="@+id/btnEpgSelect"
+        style="@style/WhiteTitleTextShadow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
@@ -60,6 +63,7 @@
 
     <TextView
         android:id="@+id/btnCloseSettingsDialog"
+        style="@style/WhiteTitleTextShadow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
