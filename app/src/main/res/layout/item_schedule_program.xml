@@ -37,6 +37,22 @@
             android:textColor="#FFFFFF"
             android:textSize="11sp"
             android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tvArchiveBadge"
+            style="@style/WhiteTitleTextShadow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_archive_available"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:text="Доступен архив"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <TextView

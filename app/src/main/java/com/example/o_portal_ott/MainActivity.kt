@@ -10,6 +10,7 @@ import android.os.Looper
 import android.util.Log
 import android.util.TypedValue
 import android.util.Xml
+import android.view.Gravity
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.KeyEvent
@@ -27,6 +28,7 @@ import android.widget.ListView
 import android.widget.RadioGroup
 import android.widget.Spinner
 import android.widget.TextView
+import android.widget.ToggleButton
 import android.widget.Toast
 import android.widget.ToggleButton
 import androidx.activity.addCallback
@@ -596,12 +598,14 @@ class MainActivity : AppCompatActivity() {
                     val tvTime = row.findViewById<TextView>(R.id.tvProgramTime)
                     val tvTitle = row.findViewById<TextView>(R.id.tvProgramTitle)
                     val tvBadge = row.findViewById<TextView>(R.id.tvNowOnAirBadge)
+                    val tvArchiveBadge = row.findViewById<TextView>(R.id.tvArchiveBadge)
                     tvTime.text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(item.start))
                     tvTitle.text = item.title
                     val isNow = now in item.start until item.stop
-                    tvBadge.visibility = if (isNow) View.VISIBLE else View.GONE
-                    row.alpha = if (isNow) 1f else 0.95f
                     val archiveAvailable = isArchiveAvailable(ch, item)
+                    tvBadge.visibility = if (isNow) View.VISIBLE else View.GONE
+                    tvArchiveBadge.visibility = if (archiveAvailable) View.VISIBLE else View.GONE
+                    row.alpha = if (isNow) 1f else 0.95f
                     row.setOnClickListener {
                         if (!archiveAvailable) {
                             Toast.makeText(this@MainActivity, "Архив недоступен для этой передачи", Toast.LENGTH_SHORT).show()
@@ -1274,19 +1278,22 @@ class MainActivity : AppCompatActivity() {
         val nowUnix = System.currentTimeMillis() / 1000L
         // offset в секундах назад: текущее unix-время минус unix-время начала программы
         val offset = (nowUnix - startUnix).coerceAtLeast(0L)
-        return source
-            .replace("\${start}", startUnix.toString())
-            .replace("{start}", startUnix.toString())
-            .replace("\${end}", endUnix.toString())
-            .replace("{utcstart}", startUnix.toString())
-            .replace("\${utcstart}", startUnix.toString())
-            .replace("{end}", endUnix.toString())
-            .replace("{utcend}", endUnix.toString())
-            .replace("\${utcend}", endUnix.toString())
-            .replace("{offset}", offset.toString())
-            .replace("\${offset}", offset.toString())
-            .replace("{dur}", duration.toString())
-            .replace("\${dur}", duration.toString())
+        var resolved = source
+        val replacements = mapOf(
+            "start" to startUnix.toString(),
+            "end" to endUnix.toString(),
+            "utcstart" to startUnix.toString(),
+            "utcend" to endUnix.toString(),
+            "offset" to offset.toString(),
+            "dur" to duration.toString()
+        )
+        replacements.forEach { (key, value) ->
+            resolved = resolved
+                .replace("\${$key}", value)
+                .replace("{$key}", value)
+                .replace("$$key", value)
+        }
+        return resolved
     }
 
     private fun playArchiveProgram(channel: Channel, program: Program) {
@@ -1710,17 +1717,7 @@ class MainActivity : AppCompatActivity() {
             cachedLogos.clear()
         }
     }
-
-    private fun applyCachedLogosToChannels() {
-        if (cachedLogos.isEmpty()) return
-        channels.forEach { channel ->
-            val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
-            val logo = keys
-                .mapNotNull { it?.lowercase()?.trim() }
-                .firstNotNullOfOrNull { cachedLogos[it] }
-            if (!logo.isNullOrBlank()) channel.logoFromEpg = logo
-        }
-    }
+    
 
     private fun saveLogoCacheToPrefs() {
         val obj = JSONObject()
@@ -1748,7 +1745,17 @@ class MainActivity : AppCompatActivity() {
             cachedLogos.clear()
         }
     }
-    
+
+    private fun applyCachedLogosToChannels() {
+        if (cachedLogos.isEmpty()) return
+        channels.forEach { channel ->
+            val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
+            val logo = keys
+                .mapNotNull { it?.lowercase()?.trim() }
+                .firstNotNullOfOrNull { cachedLogos[it] }
+            if (!logo.isNullOrBlank()) channel.logoFromEpg = logo
+        }
+    }
 
     private data class ChannelItemViewHolder(
         val tvName: TextView,
