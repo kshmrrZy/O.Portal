@@ -136,6 +136,7 @@ class MainActivity : AppCompatActivity() {
     private var isArchivePlayback = false
     private var currentArchiveProgram: Program? = null
     private var timelineUserSeeking = false
+    private var shouldReloadStreamOnStart = false
     private var lastRequestedPlaybackUrl: String = ""
     private val returnToLiveRunnable = Runnable {
         tvReloadingStatus.text = "Возвращаемся к прямой трансляции"
@@ -157,6 +158,7 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_LOGO_CACHE = "logo_cache"
         private const val PREF_START_LAST_CHANNEL = "pref_start_last_channel"
         private const val PREF_SHOW_LOCK_BUTTON = "pref_show_lock_button"
+        private const val PREF_APP_VERSION_CODE = "pref_app_version_code"
 
         private const val TOKEN_PREFIX = "https://o.avff.ru/my/"
         private const val TOKEN_SUFFIX = ".m3u"
@@ -1409,7 +1411,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateEpgDisplay() {
         if (isArchivePlayback) {
-            val program = currentArchiveProgram
+            val channel = channels.getOrNull(currentChannelIndex)
+            val playbackTime = currentArchiveProgram?.start?.plus((mediaPlayer?.time ?: 0L)) ?: 0L
+            val program = if (channel != null && playbackTime > 0L) {
+                getProgramsForDisplay(channel).find { playbackTime in it.start until it.stop } ?: currentArchiveProgram
+            } else {
+                currentArchiveProgram
+            }
+            currentArchiveProgram = program
             if (program != null) {
                 val stamp = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(program.start))
                 tvEpg.text = "Архив от $stamp - ${program.title}"
@@ -1550,6 +1559,12 @@ class MainActivity : AppCompatActivity() {
         super.onStart()
         startEpgTicker()
         handler.post(timelineTickerRunnable)
+        val currentVersion = packageManager.getPackageInfo(packageName, 0).longVersionCode
+        val savedVersion = prefs.getLong(PREF_APP_VERSION_CODE, -1L)
+        val versionChanged = savedVersion != currentVersion
+        if (versionChanged) {
+            prefs.edit().putLong(PREF_APP_VERSION_CODE, currentVersion).apply()
+        }
         if (libVlc == null || mediaPlayer == null) {
             setupVLC()
             if (channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
@@ -1557,6 +1572,14 @@ class MainActivity : AppCompatActivity() {
             }
         } else {
             mediaPlayer?.attachViews(findViewById(R.id.videoLayout), null, false, false)
+        }
+        if ((shouldReloadStreamOnStart || versionChanged) && channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
+            playChannel(forcePlay = true)
+            shouldReloadStreamOnStart = false
+        }
+        val hasIncompleteEpgProgress = epgSourceStatus.values.any { it.contains("Загрузка файла") || it.contains("Распаковка файла") || it.contains("Чтение файла") }
+        if ((versionChanged || hasIncompleteEpgProgress) && selectedEpgSources.isNotEmpty()) {
+            fetchEpgSources(selectedEpgSources.toList())
         }
         if (mediaPlayer != null && isPlaybackPaused) {
             mediaPlayer?.play()
@@ -1571,6 +1594,7 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(timelineTickerRunnable)
         mediaPlayer?.pause()
         mediaPlayer?.detachViews()
+        shouldReloadStreamOnStart = true
     }
 
     override fun onDestroy() {
@@ -1801,6 +1825,44 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
                 synchronized(epgDataLock) { epgData[key] = list }
+            }
+        } catch (_: Exception) {
+            cachedLogos.clear()
+        }
+    }
+
+    private fun applyCachedLogosToChannels() {
+        if (cachedLogos.isEmpty()) return
+        channels.forEach { channel ->
+            val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
+            val logo = keys
+                .mapNotNull { it?.lowercase()?.trim() }
+                .firstNotNullOfOrNull { cachedLogos[it] }
+            if (!logo.isNullOrBlank()) channel.logoFromEpg = logo
+        }
+    }
+
+    private fun saveLogoCacheToPrefs() {
+        val obj = JSONObject()
+        channels.forEach { ch ->
+            val logo = ch.logoFromEpg ?: return@forEach
+            val keys = listOf(ch.tvgId, ch.tvgName, ch.name)
+            keys.forEach { key ->
+                val normalized = key?.lowercase()?.trim().orEmpty()
+                if (normalized.isNotBlank()) obj.put(normalized, logo)
+            }
+        }
+        prefs.edit().putString(PREF_LOGO_CACHE, obj.toString()).apply()
+    }
+
+    private fun loadLogoCacheFromPrefs() {
+        val raw = prefs.getString(PREF_LOGO_CACHE, "{}") ?: "{}"
+        try {
+            val obj = JSONObject(raw)
+            cachedLogos.clear()
+            obj.keys().forEach { key ->
+                val url = obj.optString(key)
+                if (url.isNotBlank()) cachedLogos[key] = url
             }
         } catch (_: Exception) {
             cachedLogos.clear()
