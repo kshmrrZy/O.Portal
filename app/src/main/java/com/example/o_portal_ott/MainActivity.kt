@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.Build
 import android.util.Log
 import android.util.TypedValue
 import android.util.Xml
@@ -137,6 +138,7 @@ class MainActivity : AppCompatActivity() {
     private var currentArchiveProgram: Program? = null
     private var timelineUserSeeking = false
     private var shouldReloadStreamOnStart = false
+    private var archiveStreamStartMs: Long = 0L
     private var lastRequestedPlaybackUrl: String = ""
     private val returnToLiveRunnable = Runnable {
         tvReloadingStatus.text = "Возвращаемся к прямой трансляции"
@@ -182,7 +184,11 @@ class MainActivity : AppCompatActivity() {
             handler.postDelayed(this, 1000L)
         }
     }
-    private val timerFinishRunnable = Runnable { closeAppCompletely() }
+    private val timerFinishRunnable = Runnable {
+        if (timerEndAtMillis > 0L && System.currentTimeMillis() >= timerEndAtMillis) {
+            closeAppCompletely()
+        }
+    }
     private val timerWarnRunnable = Runnable { showTimerWarning() }
 
     private fun getProgramsForChannel(ch: Channel): List<Program> {
@@ -1347,6 +1353,7 @@ class MainActivity : AppCompatActivity() {
             isPlaybackPaused = false
             isArchivePlayback = true
             currentArchiveProgram = program
+            archiveStreamStartMs = program.start
             btnPlayPause.setImageResource(R.drawable.ic_pause)
             tvChannelName.text = "${currentChannelIndex + 1}. ${channel.name}"
             val stamp = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(program.start))
@@ -1378,6 +1385,7 @@ class MainActivity : AppCompatActivity() {
             isPlaybackPaused = false
             isArchivePlayback = false
             currentArchiveProgram = null
+            archiveStreamStartMs = 0L
             btnPlayPause.setImageResource(R.drawable.ic_pause)
 
             tvChannelName.text = "${currentChannelIndex + 1}. ${ch.name}"
@@ -1412,7 +1420,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateEpgDisplay() {
         if (isArchivePlayback) {
             val channel = channels.getOrNull(currentChannelIndex)
-            val playbackTime = currentArchiveProgram?.start?.plus((mediaPlayer?.time ?: 0L)) ?: 0L
+            val playbackTime = archiveStreamStartMs + (mediaPlayer?.time ?: 0L)
             val program = if (channel != null && playbackTime > 0L) {
                 getProgramsForDisplay(channel).find { playbackTime in it.start until it.stop } ?: currentArchiveProgram
             } else {
@@ -1559,7 +1567,8 @@ class MainActivity : AppCompatActivity() {
         super.onStart()
         startEpgTicker()
         handler.post(timelineTickerRunnable)
-        val currentVersion = packageManager.getPackageInfo(packageName, 0).longVersionCode
+        val packageInfo = packageManager.getPackageInfo(packageName, 0)
+        val currentVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) packageInfo.longVersionCode else packageInfo.versionCode.toLong()
         val savedVersion = prefs.getLong(PREF_APP_VERSION_CODE, -1L)
         val versionChanged = savedVersion != currentVersion
         if (versionChanged) {
@@ -1828,6 +1837,44 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (_: Exception) {
             cachedLogos.clear()
+        }
+    }
+
+    private fun saveLogoCacheToPrefs() {
+        val obj = JSONObject()
+        channels.forEach { ch ->
+            val logo = ch.logoFromEpg ?: return@forEach
+            val keys = listOf(ch.tvgId, ch.tvgName, ch.name)
+            keys.forEach { key ->
+                val normalized = key?.lowercase()?.trim().orEmpty()
+                if (normalized.isNotBlank()) obj.put(normalized, logo)
+            }
+        }
+        prefs.edit().putString(PREF_LOGO_CACHE, obj.toString()).apply()
+    }
+
+    private fun loadLogoCacheFromPrefs() {
+        val raw = prefs.getString(PREF_LOGO_CACHE, "{}") ?: "{}"
+        try {
+            val obj = JSONObject(raw)
+            cachedLogos.clear()
+            obj.keys().forEach { key ->
+                val url = obj.optString(key)
+                if (url.isNotBlank()) cachedLogos[key] = url
+            }
+        } catch (_: Exception) {
+            cachedLogos.clear()
+        }
+    }
+
+    private fun applyCachedLogosToChannels() {
+        if (cachedLogos.isEmpty()) return
+        channels.forEach { channel ->
+            val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
+            val logo = keys
+                .mapNotNull { it?.lowercase()?.trim() }
+                .firstNotNullOfOrNull { cachedLogos[it] }
+            if (!logo.isNullOrBlank()) channel.logoFromEpg = logo
         }
     }
 

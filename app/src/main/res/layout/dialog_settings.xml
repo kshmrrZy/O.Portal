@@ -41,25 +41,33 @@
         android:textColor="#FFFFFF"
         android:textStyle="bold" />
 
-    <ToggleButton
-        android:id="@+id/tbStartMode"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:textOff="Старт: Стартовая страница"
-        android:textOn="Старт: Последний канал"
-        android:textColor="#FFFFFF"
-        android:background="@drawable/bg_watch_button" />
+        android:orientation="horizontal">
 
-    <ToggleButton
-        android:id="@+id/tbShowLockButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:textOff="Кнопка блокировки: скрыта"
-        android:textOn="Кнопка блокировки: видна"
-        android:textColor="#FFFFFF"
-        android:background="@drawable/bg_watch_button" />
+        <ToggleButton
+            android:id="@+id/tbStartMode"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textOff="Старт: страница"
+            android:textOn="Старт: канал"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/bg_watch_button" />
+
+        <ToggleButton
+            android:id="@+id/tbShowLockButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:textOff="Блок: скрыта"
+            android:textOn="Блок: видна"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/bg_watch_button" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/btnCloseSettingsDialog"

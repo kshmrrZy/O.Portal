@@ -234,7 +234,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:layout_marginStart="8dp"
-                android:src="@android:drawable/ic_menu_preferences"
+                android:src="@android:drawable/ic_menu_manage"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 app:tint="#FFFFFF" />
 
@@ -262,10 +262,38 @@
         android:id="@+id/homePanel"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:background="@drawable/bg_home_screen"
         android:gravity="center"
         android:orientation="vertical"
         android:padding="24dp"
         android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="18dp"
+            android:background="@drawable/bg_glass_panel"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="Добро пожаловать!"
+                android:textColor="#FFFFFF"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center"
+                android:text="Это O.Portal - сервис, созданный для просмотра телевидения на устройствах Android и Android TV."
+                android:textColor="#E6FFFFFF"
+                android:textSize="15sp" />
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
