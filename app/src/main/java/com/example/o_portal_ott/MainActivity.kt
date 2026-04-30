@@ -167,6 +167,7 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_EPG_COMPRESSED_BYTES = 900L * 1024L * 1024L
         private const val MAX_EPG_UNPACKED_BYTES = 1800L * 1024L * 1024L
         private const val EPG_KEEP_DAYS = 7
+        private const val MAX_PROGRAMS_PER_CHANNEL = 5000
     }
 
     private val hideUiRunnable = Runnable { hideUI() }
@@ -180,7 +181,7 @@ class MainActivity : AppCompatActivity() {
     }
     private val timelineTickerRunnable = object : Runnable {
         override fun run() {
-            updateTimelineUi()
+            if (isArchivePlayback) updateEpgDisplay() else updateTimelineUi()
             handler.postDelayed(this, 1000L)
         }
     }
@@ -1285,7 +1286,10 @@ class MainActivity : AppCompatActivity() {
                             }
                             if (chId.isNotEmpty()) {
                                 synchronized(epgDataLock) {
-                                    epgData.getOrPut(chId) { mutableListOf() }.add(Program(title, start, stop))
+                                    val bucket = epgData.getOrPut(chId) { mutableListOf() }
+                                    if (bucket.size < MAX_PROGRAMS_PER_CHANNEL) {
+                                        bucket.add(Program(title, start, stop))
+                                    }
                                 }
                             }
                         }
@@ -1635,8 +1639,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun seekArchiveTo(targetProgramTimeMs: Long) {
         val p = currentArchiveProgram ?: return
+        val previous = mediaPlayer?.time ?: 0L
         val offset = (targetProgramTimeMs - p.start).coerceAtLeast(0L)
         mediaPlayer?.time = offset
+        val deltaMin = kotlin.math.abs(((offset - previous) / 60_000L).toInt())
+        tvEpg.text = "Перемотка архива на $deltaMin минут"
+        handler.removeCallbacks(restoreEpgRunnable)
+        handler.postDelayed(restoreEpgRunnable, 1200L)
         updateTimelineUi()
     }
 
