@@ -1856,6 +1856,18 @@ class MainActivity : AppCompatActivity() {
                 synchronized(epgDataLock) { epgData[key] = list }
             }
         } catch (_: Exception) {
+            cachedLogos.clear()
+        }
+    }
+
+    private fun applyCachedLogosToChannels() {
+        if (cachedLogos.isEmpty()) return
+        channels.forEach { channel ->
+            val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
+            val logo = keys
+                .mapNotNull { it?.lowercase()?.trim() }
+                .firstNotNullOfOrNull { cachedLogos[it] }
+            if (!logo.isNullOrBlank()) channel.logoFromEpg = logo
         }
     }
 
