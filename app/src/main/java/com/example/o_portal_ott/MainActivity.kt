@@ -12,6 +12,7 @@ import android.util.TypedValue
 import android.util.Xml
 import android.view.Gravity
 import android.view.GestureDetector
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -30,6 +31,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.ToggleButton
 import android.widget.Toast
+import android.widget.ToggleButton
 import androidx.activity.addCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
