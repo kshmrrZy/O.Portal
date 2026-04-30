@@ -4,15 +4,15 @@ import android.content.Context
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.Build
 import android.util.Log
 import android.util.TypedValue
 import android.util.Xml
-import android.view.Gravity
 import android.view.GestureDetector
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -26,11 +26,11 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.RadioGroup
-import android.widget.Spinner
 import android.widget.SeekBar
+import android.widget.Spinner
 import android.widget.TextView
-import android.widget.ToggleButton
 import android.widget.Toast
+import android.widget.ToggleButton
 import androidx.activity.addCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -51,8 +51,8 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.PushbackInputStream
 import java.net.HttpURLConnection
-import java.net.UnknownHostException
 import java.net.URL
+import java.net.UnknownHostException
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -1667,7 +1667,7 @@ class MainActivity : AppCompatActivity() {
         val deltaMin = kotlin.math.abs(((offset - previous) / 60_000L).toInt())
         tvEpg.text = "Перемотка архива на $deltaMin минут"
         handler.removeCallbacks(restoreEpgRunnable)
-        handler.postDelayed(restoreEpgRunnable, 1200L)
+        handler.postDelayed(restoreEpgRunnable, 2200L)
         updateTimelineUi()
     }
 
@@ -1686,7 +1686,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showLockedMessage() {
-        tvEpg.text = "Управление свайпами заблокировано! Разблокируйте!"
+        tvEpg.text = "Управление свайпами заблокировано! Разблокируйте для переключения канала!"
         showUI()
         handler.removeCallbacks(restoreEpgRunnable)
         handler.postDelayed(restoreEpgRunnable, 2000)
@@ -1905,55 +1905,6 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (_: Exception) {
             cachedLogos.clear()
-        }
-    }
-
-    private fun applyCachedLogosToChannels() {
-        if (cachedLogos.isEmpty()) return
-        channels.forEach { channel ->
-            val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
-            val logo = keys
-                .mapNotNull { it?.lowercase()?.trim() }
-                .firstNotNullOfOrNull { cachedLogos[it] }
-            if (!logo.isNullOrBlank()) channel.logoFromEpg = logo
-        }
-    }
-
-    private fun saveLogoCacheToPrefs() {
-        val obj = JSONObject()
-        channels.forEach { ch ->
-            val logo = ch.logoFromEpg ?: return@forEach
-            val keys = listOf(ch.tvgId, ch.tvgName, ch.name)
-            keys.forEach { key ->
-                val normalized = key?.lowercase()?.trim().orEmpty()
-                if (normalized.isNotBlank()) obj.put(normalized, logo)
-            }
-        }
-        prefs.edit().putString(PREF_LOGO_CACHE, obj.toString()).apply()
-    }
-
-    private fun loadLogoCacheFromPrefs() {
-        val raw = prefs.getString(PREF_LOGO_CACHE, "{}") ?: "{}"
-        try {
-            val obj = JSONObject(raw)
-            cachedLogos.clear()
-            obj.keys().forEach { key ->
-                val url = obj.optString(key)
-                if (url.isNotBlank()) cachedLogos[key] = url
-            }
-        } catch (_: Exception) {
-            cachedLogos.clear()
-        }
-    }
-
-    private fun applyCachedLogosToChannels() {
-        if (cachedLogos.isEmpty()) return
-        channels.forEach { channel ->
-            val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
-            val logo = keys
-                .mapNotNull { it?.lowercase()?.trim() }
-                .firstNotNullOfOrNull { cachedLogos[it] }
-            if (!logo.isNullOrBlank()) channel.logoFromEpg = logo
         }
     }
 
