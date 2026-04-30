@@ -302,10 +302,20 @@ class MainActivity : AppCompatActivity() {
                 timelineUserSeeking = true
             }
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                val p = currentArchiveProgram ?: run { timelineUserSeeking = false; return }
                 val progress = seekBar?.progress ?: 0
-                val target = p.start + ((p.stop - p.start) * (progress / 1000f)).toLong()
-                seekArchiveTo(target)
+                if (isArchivePlayback) {
+                    val p = currentArchiveProgram ?: run { timelineUserSeeking = false; return }
+                    val target = p.start + ((p.stop - p.start) * (progress / 1000f)).toLong()
+                    seekArchiveTo(target)
+                } else {
+                    val ch = channels.getOrNull(currentChannelIndex)
+                    val cur = ch?.let { getProgramsForDisplay(it).find { pr -> System.currentTimeMillis() in pr.start until pr.stop } }
+                    if (ch != null && cur != null && isArchiveAvailable(ch, cur)) {
+                        val target = cur.start + ((cur.stop - cur.start) * (progress / 1000f)).toLong()
+                        playArchiveProgram(ch, cur)
+                        handler.postDelayed({ seekArchiveTo(target) }, 450L)
+                    }
+                }
                 timelineUserSeeking = false
             }
         })
@@ -1157,7 +1167,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            saveEpgCache()
+            runCatching { saveEpgCache() }
+                .onFailure { Log.e("EPG", "Ошибка сохранения EPG кэша", it) }
             handler.post {
                 prefs.edit().putLong(PREF_EPG_LAST_REFRESH, System.currentTimeMillis()).apply()
                 updateEpgDisplay()
@@ -1642,7 +1653,7 @@ class MainActivity : AppCompatActivity() {
         tvCurrentTime.text = fmt.format(Date(p.start))
         tvProgramEndTime.text = fmt.format(Date(p.stop))
         if (!timelineUserSeeking) {
-            val currentMs = if (isArchivePlayback) (mediaPlayer?.time ?: 0L) + p.start else System.currentTimeMillis()
+            val currentMs = if (isArchivePlayback) archiveStreamStartMs + (mediaPlayer?.time ?: 0L) else System.currentTimeMillis()
             val progress = (((currentMs - p.start).toDouble() / (p.stop - p.start).coerceAtLeast(1L).toDouble()) * 1000.0).toInt().coerceIn(0, 1000)
             sbTimeline.progress = progress
         }
@@ -1816,19 +1827,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun saveEpgCache() {
         val cache = JSONObject()
-        val snapshot = synchronized(epgDataLock) {
-            epgData.mapValues { (_, programs) -> programs.toList() }
-        }
-        snapshot.forEach { (channelId, programs) ->
-            val arr = JSONArray()
-            programs.sortedBy { it.start }.take(200).forEach { p ->
-                arr.put(JSONObject().apply {
-                    put("title", p.title)
-                    put("start", p.start)
-                    put("stop", p.stop)
-                })
+        synchronized(epgDataLock) {
+            epgData.forEach { (channelId, programs) ->
+                val arr = JSONArray()
+                programs.sortedBy { it.start }.take(200).forEach { p ->
+                    arr.put(JSONObject().apply {
+                        put("title", p.title)
+                        put("start", p.start)
+                        put("stop", p.stop)
+                    })
+                }
+                cache.put(channelId, arr)
             }
-            cache.put(channelId, arr)
         }
         prefs.edit().putString(PREF_EPG_CACHE, cache.toString()).apply()
         saveLogoCacheToPrefs()
@@ -1854,6 +1864,44 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
                 synchronized(epgDataLock) { epgData[key] = list }
+            }
+        } catch (_: Exception) {
+            cachedLogos.clear()
+        }
+    }
+
+    private fun applyCachedLogosToChannels() {
+        if (cachedLogos.isEmpty()) return
+        channels.forEach { channel ->
+            val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
+            val logo = keys
+                .mapNotNull { it?.lowercase()?.trim() }
+                .firstNotNullOfOrNull { cachedLogos[it] }
+            if (!logo.isNullOrBlank()) channel.logoFromEpg = logo
+        }
+    }
+
+    private fun saveLogoCacheToPrefs() {
+        val obj = JSONObject()
+        channels.forEach { ch ->
+            val logo = ch.logoFromEpg ?: return@forEach
+            val keys = listOf(ch.tvgId, ch.tvgName, ch.name)
+            keys.forEach { key ->
+                val normalized = key?.lowercase()?.trim().orEmpty()
+                if (normalized.isNotBlank()) obj.put(normalized, logo)
+            }
+        }
+        prefs.edit().putString(PREF_LOGO_CACHE, obj.toString()).apply()
+    }
+
+    private fun loadLogoCacheFromPrefs() {
+        val raw = prefs.getString(PREF_LOGO_CACHE, "{}") ?: "{}"
+        try {
+            val obj = JSONObject(raw)
+            cachedLogos.clear()
+            obj.keys().forEach { key ->
+                val url = obj.optString(key)
+                if (url.isNotBlank()) cachedLogos[key] = url
             }
         } catch (_: Exception) {
             cachedLogos.clear()
