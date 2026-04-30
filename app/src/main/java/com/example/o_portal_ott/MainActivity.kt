@@ -1542,7 +1542,6 @@ class MainActivity : AppCompatActivity() {
         super.onStart()
         startEpgTicker()
         handler.post(timelineTickerRunnable)
-        mediaPlayer?.attachViews(findViewById(R.id.videoLayout), null, false, false)
         if (libVlc == null || mediaPlayer == null) {
             setupVLC()
             if (channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
