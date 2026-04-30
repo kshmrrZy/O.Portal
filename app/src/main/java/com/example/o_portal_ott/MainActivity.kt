@@ -27,6 +27,7 @@ import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.RadioGroup
 import android.widget.Spinner
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.ToggleButton
 import android.widget.Toast
@@ -101,6 +102,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnSleepTimer: ImageButton
     private lateinit var btnLiveReload: LinearLayout
+    private lateinit var sbTimeline: SeekBar
+    private lateinit var tvCurrentTime: TextView
+    private lateinit var tvProgramEndTime: TextView
     private lateinit var tvReloadingStatus: TextView
     private lateinit var listBackgroundOverlay: View
     private lateinit var timerWarningPanel: View
@@ -132,6 +136,8 @@ class MainActivity : AppCompatActivity() {
     private var lastBackPressAt = 0L
     private var shouldOpenLastChannelOnStart = false
     private var isArchivePlayback = false
+    private var currentArchiveProgram: Program? = null
+    private var timelineUserSeeking = false
     private var lastRequestedPlaybackUrl: String = ""
     private val returnToLiveRunnable = Runnable {
         tvReloadingStatus.text = "Возвращаемся к прямой трансляции"
@@ -170,6 +176,12 @@ class MainActivity : AppCompatActivity() {
             handler.postDelayed(this, 10_000L)
         }
     }
+    private val timelineTickerRunnable = object : Runnable {
+        override fun run() {
+            updateTimelineUi()
+            handler.postDelayed(this, 1000L)
+        }
+    }
     private val timerFinishRunnable = Runnable { closeAppCompletely() }
     private val timerWarnRunnable = Runnable { showTimerWarning() }
 
@@ -195,7 +207,7 @@ class MainActivity : AppCompatActivity() {
         while (cal.timeInMillis < end) {
             val start = cal.timeInMillis
             cal.add(Calendar.HOUR_OF_DAY, 1)
-            result += Program("Программа", start, cal.timeInMillis)
+            result += Program("Выполняется обновление программы передач", start, cal.timeInMillis)
         }
         return result
     }
@@ -246,6 +258,9 @@ class MainActivity : AppCompatActivity() {
         btnPlayPause = findViewById(R.id.btnPlayPause)
         btnSleepTimer = findViewById(R.id.btnSleepTimer)
         btnLiveReload = findViewById(R.id.btnLiveReload)
+        sbTimeline = findViewById(R.id.sbTimeline)
+        tvCurrentTime = findViewById(R.id.tvCurrentTime)
+        tvProgramEndTime = findViewById(R.id.tvProgramEndTime)
         tvReloadingStatus = findViewById(R.id.tvReloadingStatus)
         listBackgroundOverlay = findViewById(R.id.listBackgroundOverlay)
         timerWarningPanel = findViewById(R.id.timerWarningPanel)
@@ -273,6 +288,20 @@ class MainActivity : AppCompatActivity() {
                 tvReloadingStatus.text = "Обновление трансляции..."
             }, 1200)
         }
+        sbTimeline.max = 1000
+        sbTimeline.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {}
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                timelineUserSeeking = true
+            }
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                val p = currentArchiveProgram ?: run { timelineUserSeeking = false; return }
+                val progress = seekBar?.progress ?: 0
+                val target = p.start + ((p.stop - p.start) * (progress / 1000f)).toLong()
+                seekArchiveTo(target)
+                timelineUserSeeking = false
+            }
+        })
 
         btnSettings.setOnClickListener { showSettingsDialog() }
         btnSleepTimer.setOnClickListener { showTimerDialog() }
@@ -566,7 +595,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showCurrentChannelSchedule() {
         val ch = channels.getOrNull(currentChannelIndex) ?: return
-        val programs = getProgramsForDisplay(ch).sortedBy { it.start }
+        val programs = getProgramsForDisplay(ch).distinctBy { Triple(it.title.trim(), it.start, it.stop) }.sortedBy { it.start }
 
         val byDate = programs.groupBy {
             SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(it.start))
@@ -1318,9 +1347,11 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.play()
             isPlaybackPaused = false
             isArchivePlayback = true
+            currentArchiveProgram = program
             btnPlayPause.setImageResource(R.drawable.ic_pause)
-            tvChannelName.text = "${currentChannelIndex + 1}. ${channel.name} [Архив]"
-            tvEpg.text = "${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(program.start))} - ${program.title}"
+            tvChannelName.text = "${currentChannelIndex + 1}. ${channel.name}"
+            val stamp = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(program.start))
+            tvEpg.text = "Архив от $stamp - ${program.title}"
             showUI()
         }.onFailure { e ->
             showPlaybackFailureAndReturn(archiveUrl, e.message ?: e.javaClass.simpleName)
@@ -1347,6 +1378,7 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.play()
             isPlaybackPaused = false
             isArchivePlayback = false
+            currentArchiveProgram = null
             btnPlayPause.setImageResource(R.drawable.ic_pause)
 
             tvChannelName.text = "${currentChannelIndex + 1}. ${ch.name}"
@@ -1387,6 +1419,7 @@ class MainActivity : AppCompatActivity() {
         tvEpg.text = cur?.let {
             "${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it.start))} - ${it.title}"
         } ?: "Загрузка программы..."
+        updateTimelineUi()
     }
 
     private fun loadLogoWithGlide(url: String?, target: ImageView) {
@@ -1427,6 +1460,7 @@ class MainActivity : AppCompatActivity() {
     private fun showUI() {
         topInfoPanel.visibility = View.VISIBLE
         controlsPanel.visibility = View.VISIBLE
+        sbTimeline.isEnabled = true
         handler.removeCallbacks(hideUiRunnable)
         handler.postDelayed(hideUiRunnable, 5000)
     }
@@ -1434,6 +1468,7 @@ class MainActivity : AppCompatActivity() {
     private fun hideUI() {
         topInfoPanel.visibility = View.GONE
         controlsPanel.visibility = View.GONE
+        sbTimeline.isEnabled = false
         hideSystemUI()
     }
 
@@ -1480,11 +1515,19 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                if (controlsPanel.visibility == View.VISIBLE && isArchivePlayback && sbTimeline.isEnabled) {
+                    sbTimeline.progress = (sbTimeline.progress + 20).coerceAtMost(1000)
+                    return true
+                }
                 showChannelList()
                 return true
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_LEFT -> {
+                if (controlsPanel.visibility == View.VISIBLE && isArchivePlayback && sbTimeline.isEnabled) {
+                    sbTimeline.progress = (sbTimeline.progress - 20).coerceAtLeast(0)
+                    return true
+                }
                 showCurrentChannelSchedule()
                 return true
             }
@@ -1498,24 +1541,60 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         startEpgTicker()
+        handler.post(timelineTickerRunnable)
+        mediaPlayer?.attachViews(findViewById(R.id.videoLayout), null, false, false)
         if (libVlc == null || mediaPlayer == null) {
             setupVLC()
             if (channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
                 playChannel(forcePlay = true)
             }
         }
+        if (mediaPlayer != null && isPlaybackPaused) {
+            mediaPlayer?.play()
+            isPlaybackPaused = false
+            btnPlayPause.setImageResource(R.drawable.ic_pause)
+        }
     }
 
     override fun onStop() {
         super.onStop()
         handler.removeCallbacks(epgTickerRunnable)
+        handler.removeCallbacks(timelineTickerRunnable)
         mediaPlayer?.pause()
     }
 
     override fun onDestroy() {
         handler.removeCallbacks(epgTickerRunnable)
+        handler.removeCallbacks(timelineTickerRunnable)
         stopPlayback()
         super.onDestroy()
+    }
+
+    private fun updateTimelineUi() {
+        val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val p = if (isArchivePlayback) currentArchiveProgram else channels.getOrNull(currentChannelIndex)?.let { ch ->
+            getProgramsForDisplay(ch).find { System.currentTimeMillis() in it.start until it.stop }
+        }
+        if (p == null) {
+            tvCurrentTime.text = "--:--"
+            tvProgramEndTime.text = "--:--"
+            if (!timelineUserSeeking) sbTimeline.progress = 0
+            return
+        }
+        tvCurrentTime.text = fmt.format(Date(p.start))
+        tvProgramEndTime.text = fmt.format(Date(p.stop))
+        if (!timelineUserSeeking) {
+            val currentMs = if (isArchivePlayback) (mediaPlayer?.time ?: 0L) + p.start else System.currentTimeMillis()
+            val progress = (((currentMs - p.start).toDouble() / (p.stop - p.start).coerceAtLeast(1L).toDouble()) * 1000.0).toInt().coerceIn(0, 1000)
+            sbTimeline.progress = progress
+        }
+    }
+
+    private fun seekArchiveTo(targetProgramTimeMs: Long) {
+        val p = currentArchiveProgram ?: return
+        val offset = (targetProgramTimeMs - p.start).coerceAtLeast(0L)
+        mediaPlayer?.time = offset
+        updateTimelineUi()
     }
 
     private fun startEpgTicker() {
@@ -1714,10 +1793,8 @@ class MainActivity : AppCompatActivity() {
                 synchronized(epgDataLock) { epgData[key] = list }
             }
         } catch (_: Exception) {
-            cachedLogos.clear()
         }
     }
-    
 
     private fun saveLogoCacheToPrefs() {
         val obj = JSONObject()
