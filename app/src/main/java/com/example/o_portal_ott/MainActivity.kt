@@ -1411,6 +1411,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateEpgDisplay() {
+        if (isArchivePlayback) {
+            val program = currentArchiveProgram
+            if (program != null) {
+                val stamp = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(program.start))
+                tvEpg.text = "Архив от $stamp - ${program.title}"
+            } else {
+                tvEpg.text = "Архив"
+            }
+            updateTimelineUi()
+            return
+        }
         val ch = channels.getOrNull(currentChannelIndex) ?: return
         val now = System.currentTimeMillis()
         val programs = getProgramsForDisplay(ch)
@@ -1547,6 +1558,13 @@ class MainActivity : AppCompatActivity() {
             if (channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
                 playChannel(forcePlay = true)
             }
+        } else {
+            mediaPlayer?.attachViews(findViewById(R.id.videoLayout), null, false, false)
+        }
+        if (mediaPlayer != null && isPlaybackPaused) {
+            mediaPlayer?.play()
+            isPlaybackPaused = false
+            btnPlayPause.setImageResource(R.drawable.ic_pause)
         }
         if (mediaPlayer != null && isPlaybackPaused) {
             mediaPlayer?.play()
@@ -1560,6 +1578,7 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(epgTickerRunnable)
         handler.removeCallbacks(timelineTickerRunnable)
         mediaPlayer?.pause()
+        mediaPlayer?.detachViews()
     }
 
     override fun onDestroy() {
@@ -1792,6 +1811,18 @@ class MainActivity : AppCompatActivity() {
                 synchronized(epgDataLock) { epgData[key] = list }
             }
         } catch (_: Exception) {
+            cachedLogos.clear()
+        }
+    }
+
+    private fun applyCachedLogosToChannels() {
+        if (cachedLogos.isEmpty()) return
+        channels.forEach { channel ->
+            val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
+            val logo = keys
+                .mapNotNull { it?.lowercase()?.trim() }
+                .firstNotNullOfOrNull { cachedLogos[it] }
+            if (!logo.isNullOrBlank()) channel.logoFromEpg = logo
         }
     }
 
