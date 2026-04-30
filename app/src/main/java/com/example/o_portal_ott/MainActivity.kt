@@ -12,6 +12,7 @@ import android.util.TypedValue
 import android.util.Xml
 import android.view.Gravity
 import android.view.GestureDetector
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -30,6 +31,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.ToggleButton
 import android.widget.Toast
+import android.widget.ToggleButton
 import androidx.activity.addCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -1564,6 +1566,11 @@ class MainActivity : AppCompatActivity() {
             isPlaybackPaused = false
             btnPlayPause.setImageResource(R.drawable.ic_pause)
         }
+        if (mediaPlayer != null && isPlaybackPaused) {
+            mediaPlayer?.play()
+            isPlaybackPaused = false
+            btnPlayPause.setImageResource(R.drawable.ic_pause)
+        }
     }
 
     override fun onStop() {
@@ -1804,6 +1811,18 @@ class MainActivity : AppCompatActivity() {
                 synchronized(epgDataLock) { epgData[key] = list }
             }
         } catch (_: Exception) {
+            cachedLogos.clear()
+        }
+    }
+
+    private fun applyCachedLogosToChannels() {
+        if (cachedLogos.isEmpty()) return
+        channels.forEach { channel ->
+            val keys = listOf(channel.tvgId, channel.tvgName, channel.name)
+            val logo = keys
+                .mapNotNull { it?.lowercase()?.trim() }
+                .firstNotNullOfOrNull { cachedLogos[it] }
+            if (!logo.isNullOrBlank()) channel.logoFromEpg = logo
         }
     }
 

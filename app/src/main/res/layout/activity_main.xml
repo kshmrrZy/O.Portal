@@ -205,6 +205,14 @@
                     android:textSize="12sp"
                     android:textStyle="bold" />
             </LinearLayout>
+
+            <TextView
+                android:id="@+id/tvProgramEndTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp" />
         </LinearLayout>
 
         <LinearLayout
