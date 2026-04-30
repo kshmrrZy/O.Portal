@@ -51,6 +51,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.PushbackInputStream
 import java.net.HttpURLConnection
+import java.net.UnknownHostException
 import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -1103,6 +1104,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun fetchEpgSources(urls: List<String>, statusViews: Map<String, TextView> = emptyMap()) {
         thread {
+            fun humanReadableEpgError(t: Throwable): String {
+                return when {
+                    t is UnknownHostException -> "Нет доступа к сети или DNS недоступен"
+                    t.message?.contains("Unable to resolve host", ignoreCase = true) == true -> "Не удаётся определить адрес хоста"
+                    t.message?.contains("timeout", ignoreCase = true) == true -> "Превышено время ожидания сети"
+                    t.message?.contains("too large", ignoreCase = true) == true ||
+                        t.message?.contains("safe limit", ignoreCase = true) == true -> "Файл EPG слишком большой"
+                    else -> t.message?.take(120) ?: t.javaClass.simpleName
+                }
+            }
             fun applyEpgStatus(source: String, status: String) {
                 epgSourceStatus[source] = status
                 saveEpgStatusCache()
@@ -1129,7 +1140,7 @@ class MainActivity : AppCompatActivity() {
                         break
                     } catch (t: Throwable) {
                         Log.w("EPG", "Ошибка обработки EPG кандидата: $candidateUrl", t)
-                        lastError = t.message?.take(140) ?: t.javaClass.simpleName
+                        lastError = humanReadableEpgError(t)
                         when (t) {
                             is OutOfMemoryError -> applyEpgStatus(sourceUrl, "Файл EPG слишком большой")
                             is IOException -> if (t.message?.contains("too large", ignoreCase = true) == true ||
