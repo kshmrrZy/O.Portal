@@ -52,8 +52,8 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textOff="Старт: страница"
-            android:textOn="Старт: канал"
+            android:textOff="При открытии приложения: стартовая страница"
+            android:textOn="При открытии приложения: последний канал"
             android:textColor="#FFFFFF"
             android:background="@drawable/bg_watch_button" />
 
@@ -63,8 +63,8 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:layout_marginStart="8dp"
-            android:textOff="Блок: скрыта"
-            android:textOn="Блок: видна"
+            android:textOff="Кнопка блокировки: отключена"
+            android:textOn="Кнопка блокировки: включена"
             android:textColor="#FFFFFF"
             android:background="@drawable/bg_watch_button" />
     </LinearLayout>
