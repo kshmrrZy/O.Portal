@@ -258,7 +258,7 @@ class MainActivity : AppCompatActivity() {
         btnLiveReload = findViewById(R.id.btnLiveReload)
         sbTimeline = findViewById(R.id.sbTimeline)
         tvCurrentTime = findViewById(R.id.tvCurrentTime)
-        tvProgramEndTime = findViewById(R.id.tvProgramEndTime)
+        tvProgramEndTime = findViewById(R.id.tvProgramEndInfo)
         tvReloadingStatus = findViewById(R.id.tvReloadingStatus)
         listBackgroundOverlay = findViewById(R.id.listBackgroundOverlay)
         timerWarningPanel = findViewById(R.id.timerWarningPanel)
@@ -1558,11 +1558,6 @@ class MainActivity : AppCompatActivity() {
             }
         } else {
             mediaPlayer?.attachViews(findViewById(R.id.videoLayout), null, false, false)
-        }
-        if (mediaPlayer != null && isPlaybackPaused) {
-            mediaPlayer?.play()
-            isPlaybackPaused = false
-            btnPlayPause.setImageResource(R.drawable.ic_pause)
         }
         if (mediaPlayer != null && isPlaybackPaused) {
             mediaPlayer?.play()
