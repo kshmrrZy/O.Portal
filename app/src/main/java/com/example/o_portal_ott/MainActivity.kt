@@ -139,6 +139,7 @@ class MainActivity : AppCompatActivity() {
     private var currentArchiveProgram: Program? = null
     private var timelineUserSeeking = false
     private var shouldReloadStreamOnStart = false
+    @Volatile private var epgFetchInProgress = false
     private var archiveStreamStartMs: Long = 0L
     private var lastRequestedPlaybackUrl: String = ""
     private val returnToLiveRunnable = Runnable {
@@ -162,6 +163,7 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_START_LAST_CHANNEL = "pref_start_last_channel"
         private const val PREF_SHOW_LOCK_BUTTON = "pref_show_lock_button"
         private const val PREF_APP_VERSION_CODE = "pref_app_version_code"
+        private const val PREF_EPG_SOURCES_FINGERPRINT = "pref_epg_sources_fingerprint"
 
         private const val TOKEN_PREFIX = "https://o.avff.ru/my/"
         private const val TOKEN_SUFFIX = ".m3u"
@@ -1074,13 +1076,8 @@ class MainActivity : AppCompatActivity() {
                         availableEpgSources.toMutableSet()
                     }
 
-                    if (shouldDailyRefreshEpg()) {
+                    if (shouldRefreshEpgNow()) {
                         synchronized(epgDataLock) { epgData.clear() }
-                        if (selectedEpgSources.isNotEmpty()) {
-                            fetchEpgSources(selectedEpgSources.toList())
-                        }
-                    } else if (selectedEpgSources.isNotEmpty() && isEpgDataEmpty()) {
-                        fetchEpgSources(selectedEpgSources.toList())
                     }
 
                     if (channels.isNotEmpty() && autoPlay) {
@@ -1113,6 +1110,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fetchEpgSources(urls: List<String>, statusViews: Map<String, TextView> = emptyMap()) {
+        if (epgFetchInProgress || urls.isEmpty()) return
+        epgFetchInProgress = true
         thread {
             fun humanReadableEpgError(t: Throwable): String {
                 return when {
@@ -1167,15 +1166,26 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            runCatching { saveEpgCache() }
-                .onFailure { Log.e("EPG", "Ошибка сохранения EPG кэша", it) }
+            runCatching {
+                trimEpgCacheToWeek()
+                saveEpgCache()
+                saveCurrentEpgSourceFingerprint()
+            }.onFailure { Log.e("EPG", "Ошибка сохранения EPG кэша", it) }
             handler.post {
                 prefs.edit().putLong(PREF_EPG_LAST_REFRESH, System.currentTimeMillis()).apply()
                 updateEpgDisplay()
                 refreshLogo()
+                epgFetchInProgress = false
             }
         }
 
+    }
+
+    private fun ensureEpgLoadedLazy() {
+        if (selectedEpgSources.isEmpty() || epgFetchInProgress) return
+        if (isEpgDataEmpty() || shouldRefreshEpgNow()) {
+            fetchEpgSources(selectedEpgSources.toList())
+        }
     }
 
     private fun parseEpgUrlStreaming(
@@ -1416,6 +1426,7 @@ class MainActivity : AppCompatActivity() {
 
             tvChannelName.text = "${currentChannelIndex + 1}. ${ch.name}"
             prefs.edit().putInt(PREF_LAST_CHANNEL, currentChannelIndex).apply()
+            ensureEpgLoadedLazy()
             refreshLogo()
             updateEpgDisplay()
             showUI()
@@ -1613,9 +1624,7 @@ class MainActivity : AppCompatActivity() {
             shouldReloadStreamOnStart = false
         }
         val hasIncompleteEpgProgress = epgSourceStatus.values.any { it.contains("Загрузка файла") || it.contains("Распаковка файла") || it.contains("Чтение файла") }
-        if ((versionChanged || hasIncompleteEpgProgress) && selectedEpgSources.isNotEmpty()) {
-            fetchEpgSources(selectedEpgSources.toList())
-        }
+        if (versionChanged || hasIncompleteEpgProgress) ensureEpgLoadedLazy()
         if (mediaPlayer != null && isPlaybackPaused) {
             mediaPlayer?.play()
             isPlaybackPaused = false
@@ -1699,6 +1708,32 @@ class MainActivity : AppCompatActivity() {
         return System.currentTimeMillis() >= next
     }
 
+
+    private fun shouldRefreshEpgNow(): Boolean {
+        if (shouldDailyRefreshEpg()) return true
+        return getEpgSourceFingerprint() != buildEpgSourceFingerprint(selectedEpgSources.toList())
+    }
+
+    private fun buildEpgSourceFingerprint(sources: List<String>): String =
+        sources.map { it.trim() }.filter { it.isNotBlank() }.sorted().joinToString("|")
+
+    private fun getEpgSourceFingerprint(): String = prefs.getString(PREF_EPG_SOURCES_FINGERPRINT, "") ?: ""
+
+    private fun saveCurrentEpgSourceFingerprint() {
+        prefs.edit().putString(PREF_EPG_SOURCES_FINGERPRINT, buildEpgSourceFingerprint(selectedEpgSources.toList())).apply()
+    }
+
+    private fun trimEpgCacheToWeek() {
+        val now = System.currentTimeMillis()
+        val weekEnd = now + EPG_KEEP_DAYS * 24L * 60L * 60L * 1000L
+        synchronized(epgDataLock) {
+            epgData.entries.forEach { (_, programs) ->
+                programs.removeAll { it.stop < now || it.start > weekEnd }
+                programs.sortBy { it.start }
+            }
+            epgData.entries.removeAll { it.value.isEmpty() }
+        }
+    }
     private fun nextDayAtThree(fromMillis: Long): Long {
         val cal = Calendar.getInstance().apply { timeInMillis = fromMillis }
         cal.set(Calendar.HOUR_OF_DAY, 3)
