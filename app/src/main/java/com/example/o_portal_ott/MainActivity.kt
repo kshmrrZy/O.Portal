@@ -40,9 +40,13 @@ import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.load.model.LazyHeaders
 import org.json.JSONArray
 import org.json.JSONObject
-import org.videolan.libvlc.LibVLC
-import org.videolan.libvlc.Media
-import org.videolan.libvlc.MediaPlayer
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import org.xmlpull.v1.XmlPullParser
 import java.io.BufferedInputStream
 import java.io.ByteArrayInputStream
@@ -83,8 +87,7 @@ data class PlaylistProfile(
 
 class MainActivity : AppCompatActivity() {
 
-    private var libVlc: LibVLC? = null
-    private var mediaPlayer: MediaPlayer? = null
+    private var mediaPlayer: ExoPlayer? = null
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -139,6 +142,7 @@ class MainActivity : AppCompatActivity() {
     private var currentArchiveProgram: Program? = null
     private var timelineUserSeeking = false
     private var shouldReloadStreamOnStart = false
+    @Volatile private var epgFetchInProgress = false
     private var archiveStreamStartMs: Long = 0L
     private var lastRequestedPlaybackUrl: String = ""
     private val returnToLiveRunnable = Runnable {
@@ -162,6 +166,7 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_START_LAST_CHANNEL = "pref_start_last_channel"
         private const val PREF_SHOW_LOCK_BUTTON = "pref_show_lock_button"
         private const val PREF_APP_VERSION_CODE = "pref_app_version_code"
+        private const val PREF_EPG_SOURCES_FINGERPRINT = "pref_epg_sources_fingerprint"
 
         private const val TOKEN_PREFIX = "https://o.avff.ru/my/"
         private const val TOKEN_SUFFIX = ".m3u"
@@ -1074,13 +1079,8 @@ class MainActivity : AppCompatActivity() {
                         availableEpgSources.toMutableSet()
                     }
 
-                    if (shouldDailyRefreshEpg()) {
+                    if (shouldRefreshEpgNow()) {
                         synchronized(epgDataLock) { epgData.clear() }
-                        if (selectedEpgSources.isNotEmpty()) {
-                            fetchEpgSources(selectedEpgSources.toList())
-                        }
-                    } else if (selectedEpgSources.isNotEmpty() && isEpgDataEmpty()) {
-                        fetchEpgSources(selectedEpgSources.toList())
                     }
 
                     if (channels.isNotEmpty() && autoPlay) {
@@ -1113,6 +1113,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fetchEpgSources(urls: List<String>, statusViews: Map<String, TextView> = emptyMap()) {
+        if (epgFetchInProgress || urls.isEmpty()) return
+        epgFetchInProgress = true
         thread {
             fun humanReadableEpgError(t: Throwable): String {
                 return when {
@@ -1167,15 +1169,26 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            runCatching { saveEpgCache() }
-                .onFailure { Log.e("EPG", "Ошибка сохранения EPG кэша", it) }
+            runCatching {
+                trimEpgCacheToWeek()
+                saveEpgCache()
+                saveCurrentEpgSourceFingerprint()
+            }.onFailure { Log.e("EPG", "Ошибка сохранения EPG кэша", it) }
             handler.post {
                 prefs.edit().putLong(PREF_EPG_LAST_REFRESH, System.currentTimeMillis()).apply()
                 updateEpgDisplay()
                 refreshLogo()
+                epgFetchInProgress = false
             }
         }
 
+    }
+
+    private fun ensureEpgLoadedLazy() {
+        if (selectedEpgSources.isEmpty() || epgFetchInProgress) return
+        if (isEpgDataEmpty() || shouldRefreshEpgNow()) {
+            fetchEpgSources(selectedEpgSources.toList())
+        }
     }
 
     private fun parseEpgUrlStreaming(
@@ -1366,15 +1379,8 @@ class MainActivity : AppCompatActivity() {
             homePanel.visibility = View.GONE
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = archiveUrl
-            val media = Media(libVlc, Uri.parse(archiveUrl)).apply {
-                setHWDecoderEnabled(true, true)
-                addOption(":network-caching=1200")
-                addOption(":clock-jitter=0")
-                addOption(":clock-synchro=0")
-                addOption(":no-video-title-show")
-            }
-            mediaPlayer?.media = media
-            media.release()
+            mediaPlayer?.setMediaItem(MediaItem.fromUri(Uri.parse(archiveUrl)))
+            mediaPlayer?.prepare()
             mediaPlayer?.play()
             isPlaybackPaused = false
             isArchivePlayback = true
@@ -1397,16 +1403,8 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = ch.url
 
-            val media = Media(libVlc, Uri.parse(ch.url)).apply {
-                setHWDecoderEnabled(true, true)
-                addOption(":network-caching=1200")
-                addOption(":clock-jitter=0")
-                addOption(":clock-synchro=0")
-                addOption(":no-video-title-show")
-            }
-
-            mediaPlayer?.media = media
-            media.release()
+            mediaPlayer?.setMediaItem(MediaItem.fromUri(Uri.parse(ch.url)))
+            mediaPlayer?.prepare()
             mediaPlayer?.play()
             isPlaybackPaused = false
             isArchivePlayback = false
@@ -1416,6 +1414,7 @@ class MainActivity : AppCompatActivity() {
 
             tvChannelName.text = "${currentChannelIndex + 1}. ${ch.name}"
             prefs.edit().putInt(PREF_LAST_CHANNEL, currentChannelIndex).apply()
+            ensureEpgLoadedLazy()
             refreshLogo()
             updateEpgDisplay()
             showUI()
@@ -1446,7 +1445,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateEpgDisplay() {
         if (isArchivePlayback) {
             val channel = channels.getOrNull(currentChannelIndex)
-            val playbackTime = archiveStreamStartMs + (mediaPlayer?.time ?: 0L)
+            val playbackTime = archiveStreamStartMs + (mediaPlayer?.currentPosition ?: 0L)
             val program = if (channel != null && playbackTime > 0L) {
                 getProgramsForDisplay(channel).find { playbackTime in it.start until it.stop } ?: currentArchiveProgram
             } else {
@@ -1495,16 +1494,39 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    private fun setupVLC() {
-        libVlc = LibVLC(this, arrayListOf("--network-caching=1200", "--avcodec-hw=any", "--audio-time-stretch"))
-        mediaPlayer = MediaPlayer(libVlc)
-        mediaPlayer?.attachViews(findViewById(R.id.videoLayout), null, false, false)
-        mediaPlayer?.setEventListener { event ->
-            when (event.type) {
-                MediaPlayer.Event.EncounteredError -> handler.post {
-                    showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, "EncounteredError")
+    private fun setupPlayer() {
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(userAgent)
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(12_000)
+            .setReadTimeoutMs(25_000)
+
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                2_500,
+                12_000,
+                800,
+                1_500
+            )
+            .build()
+
+        val renderersFactory = DefaultRenderersFactory(this)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+
+        mediaPlayer = ExoPlayer.Builder(this, renderersFactory)
+            .setLoadControl(loadControl)
+            .setMediaSourceFactory(
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this)
+                    .setDataSourceFactory(httpFactory)
+            )
+            .build()
+            .also { player ->
+            findViewById<PlayerView>(R.id.videoLayout).player = player
+            player.addListener(object : androidx.media3.common.Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    handler.post { showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, error.message ?: "PlaybackException") }
                 }
-            }
+            })
         }
     }
 
@@ -1600,22 +1622,20 @@ class MainActivity : AppCompatActivity() {
         if (versionChanged) {
             prefs.edit().putLong(PREF_APP_VERSION_CODE, currentVersion).apply()
         }
-        if (libVlc == null || mediaPlayer == null) {
-            setupVLC()
+        if (mediaPlayer == null) {
+            setupPlayer()
             if (channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
                 playChannel(forcePlay = true)
             }
         } else {
-            mediaPlayer?.attachViews(findViewById(R.id.videoLayout), null, false, false)
+            findViewById<PlayerView>(R.id.videoLayout).player = mediaPlayer
         }
         if ((shouldReloadStreamOnStart || versionChanged) && channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
             playChannel(forcePlay = true)
             shouldReloadStreamOnStart = false
         }
         val hasIncompleteEpgProgress = epgSourceStatus.values.any { it.contains("Загрузка файла") || it.contains("Распаковка файла") || it.contains("Чтение файла") }
-        if ((versionChanged || hasIncompleteEpgProgress) && selectedEpgSources.isNotEmpty()) {
-            fetchEpgSources(selectedEpgSources.toList())
-        }
+        if (versionChanged || hasIncompleteEpgProgress) ensureEpgLoadedLazy()
         if (mediaPlayer != null && isPlaybackPaused) {
             mediaPlayer?.play()
             isPlaybackPaused = false
@@ -1628,8 +1648,7 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(epgTickerRunnable)
         handler.removeCallbacks(timelineTickerRunnable)
         mediaPlayer?.pause()
-        mediaPlayer?.detachViews()
-        shouldReloadStreamOnStart = true
+                shouldReloadStreamOnStart = true
     }
 
     override fun onDestroy() {
@@ -1653,7 +1672,7 @@ class MainActivity : AppCompatActivity() {
         tvCurrentTime.text = fmt.format(Date(p.start))
         tvProgramEndTime.text = fmt.format(Date(p.stop))
         if (!timelineUserSeeking) {
-            val currentMs = if (isArchivePlayback) archiveStreamStartMs + (mediaPlayer?.time ?: 0L) else System.currentTimeMillis()
+            val currentMs = if (isArchivePlayback) archiveStreamStartMs + (mediaPlayer?.currentPosition ?: 0L) else System.currentTimeMillis()
             val progress = (((currentMs - p.start).toDouble() / (p.stop - p.start).coerceAtLeast(1L).toDouble()) * 1000.0).toInt().coerceIn(0, 1000)
             sbTimeline.progress = progress
         }
@@ -1661,9 +1680,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun seekArchiveTo(targetProgramTimeMs: Long) {
         val p = currentArchiveProgram ?: return
-        val previous = mediaPlayer?.time ?: 0L
+        val previous = mediaPlayer?.currentPosition ?: 0L
         val offset = (targetProgramTimeMs - p.start).coerceAtLeast(0L)
-        mediaPlayer?.time = offset
+        mediaPlayer?.seekTo(offset)
         val deltaMin = kotlin.math.abs(((offset - previous) / 60_000L).toInt())
         tvEpg.text = "Перемотка архива на $deltaMin минут"
         handler.removeCallbacks(restoreEpgRunnable)
@@ -1678,12 +1697,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun stopPlayback() {
         mediaPlayer?.stop()
-        mediaPlayer?.detachViews()
-        mediaPlayer?.release()
+                mediaPlayer?.release()
         mediaPlayer = null
-        libVlc?.release()
-        libVlc = null
-    }
+            }
 
     private fun showLockedMessage() {
         tvEpg.text = "Управление свайпами заблокировано! Разблокируйте для переключения канала!"
@@ -1699,6 +1715,32 @@ class MainActivity : AppCompatActivity() {
         return System.currentTimeMillis() >= next
     }
 
+
+    private fun shouldRefreshEpgNow(): Boolean {
+        if (shouldDailyRefreshEpg()) return true
+        return getEpgSourceFingerprint() != buildEpgSourceFingerprint(selectedEpgSources.toList())
+    }
+
+    private fun buildEpgSourceFingerprint(sources: List<String>): String =
+        sources.map { it.trim() }.filter { it.isNotBlank() }.sorted().joinToString("|")
+
+    private fun getEpgSourceFingerprint(): String = prefs.getString(PREF_EPG_SOURCES_FINGERPRINT, "") ?: ""
+
+    private fun saveCurrentEpgSourceFingerprint() {
+        prefs.edit().putString(PREF_EPG_SOURCES_FINGERPRINT, buildEpgSourceFingerprint(selectedEpgSources.toList())).apply()
+    }
+
+    private fun trimEpgCacheToWeek() {
+        val now = System.currentTimeMillis()
+        val weekEnd = now + EPG_KEEP_DAYS * 24L * 60L * 60L * 1000L
+        synchronized(epgDataLock) {
+            epgData.entries.forEach { (_, programs) ->
+                programs.removeAll { it.stop < now || it.start > weekEnd }
+                programs.sortBy { it.start }
+            }
+            epgData.entries.removeAll { it.value.isEmpty() }
+        }
+    }
     private fun nextDayAtThree(fromMillis: Long): Long {
         val cal = Calendar.getInstance().apply { timeInMillis = fromMillis }
         cal.set(Calendar.HOUR_OF_DAY, 3)
