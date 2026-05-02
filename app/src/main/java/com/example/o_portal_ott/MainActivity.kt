@@ -42,6 +42,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import org.xmlpull.v1.XmlPullParser
@@ -1492,7 +1494,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupPlayer() {
-        mediaPlayer = ExoPlayer.Builder(this).build().also { player ->
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(userAgent)
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(12_000)
+            .setReadTimeoutMs(25_000)
+
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                2_500,
+                12_000,
+                800,
+                1_500
+            )
+            .build()
+
+        mediaPlayer = ExoPlayer.Builder(this)
+            .setLoadControl(loadControl)
+            .setMediaSourceFactory(
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this)
+                    .setDataSourceFactory(httpFactory)
+            )
+            .build()
+            .also { player ->
             findViewById<PlayerView>(R.id.videoLayout).player = player
             player.addListener(object : androidx.media3.common.Player.Listener {
                 override fun onPlayerError(error: PlaybackException) {
