@@ -50,10 +50,8 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
-    implementation("org.videolan.android:libvlc-all:3.6.0") {
-        exclude(group = "androidx.annotation", module = "annotation-experimental")
-        exclude(group = "androidx.legacy", module = "legacy-support-core-ui")
-    }
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
     implementation("androidx.annotation:annotation-experimental:1.4.1")
     implementation("androidx.coordinatorlayout:coordinatorlayout:1.2.0")
 
