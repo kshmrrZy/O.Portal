@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="WhiteTextShadow">
+    <style name="AppGolosText">
+        <item name="android:fontFamily">@font/main_font</item>
+        <item name="fontFamily">@font/main_font</item>
+    </style>
+    <style name="WhiteTextShadow" parent="AppGolosText">
         <item name="android:shadowColor">#80000000</item>
         <item name="android:shadowDx">0</item>
         <item name="android:shadowDy">0</item>
