@@ -50,7 +50,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:background="#33FFFFFF"
+        android:background="@drawable/bg_watch_button"
         android:padding="6dp"
         android:text="Смотреть"
         android:textColor="#FFFFFF"
