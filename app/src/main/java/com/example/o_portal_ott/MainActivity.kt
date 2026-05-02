@@ -40,9 +40,10 @@ import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.load.model.LazyHeaders
 import org.json.JSONArray
 import org.json.JSONObject
-import org.videolan.libvlc.LibVLC
-import org.videolan.libvlc.Media
-import org.videolan.libvlc.MediaPlayer
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import org.xmlpull.v1.XmlPullParser
 import java.io.BufferedInputStream
 import java.io.ByteArrayInputStream
@@ -83,8 +84,7 @@ data class PlaylistProfile(
 
 class MainActivity : AppCompatActivity() {
 
-    private var libVlc: LibVLC? = null
-    private var mediaPlayer: MediaPlayer? = null
+    private var mediaPlayer: ExoPlayer? = null
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -1376,15 +1376,8 @@ class MainActivity : AppCompatActivity() {
             homePanel.visibility = View.GONE
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = archiveUrl
-            val media = Media(libVlc, Uri.parse(archiveUrl)).apply {
-                setHWDecoderEnabled(true, true)
-                addOption(":network-caching=1200")
-                addOption(":clock-jitter=0")
-                addOption(":clock-synchro=0")
-                addOption(":no-video-title-show")
-            }
-            mediaPlayer?.media = media
-            media.release()
+            mediaPlayer?.setMediaItem(MediaItem.fromUri(Uri.parse(archiveUrl)))
+            mediaPlayer?.prepare()
             mediaPlayer?.play()
             isPlaybackPaused = false
             isArchivePlayback = true
@@ -1407,16 +1400,8 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = ch.url
 
-            val media = Media(libVlc, Uri.parse(ch.url)).apply {
-                setHWDecoderEnabled(true, true)
-                addOption(":network-caching=1200")
-                addOption(":clock-jitter=0")
-                addOption(":clock-synchro=0")
-                addOption(":no-video-title-show")
-            }
-
-            mediaPlayer?.media = media
-            media.release()
+            mediaPlayer?.setMediaItem(MediaItem.fromUri(Uri.parse(ch.url)))
+            mediaPlayer?.prepare()
             mediaPlayer?.play()
             isPlaybackPaused = false
             isArchivePlayback = false
@@ -1457,7 +1442,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateEpgDisplay() {
         if (isArchivePlayback) {
             val channel = channels.getOrNull(currentChannelIndex)
-            val playbackTime = archiveStreamStartMs + (mediaPlayer?.time ?: 0L)
+            val playbackTime = archiveStreamStartMs + (mediaPlayer?.currentPosition ?: 0L)
             val program = if (channel != null && playbackTime > 0L) {
                 getProgramsForDisplay(channel).find { playbackTime in it.start until it.stop } ?: currentArchiveProgram
             } else {
@@ -1506,16 +1491,14 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    private fun setupVLC() {
-        libVlc = LibVLC(this, arrayListOf("--network-caching=1200", "--avcodec-hw=any", "--audio-time-stretch"))
-        mediaPlayer = MediaPlayer(libVlc)
-        mediaPlayer?.attachViews(findViewById(R.id.videoLayout), null, false, false)
-        mediaPlayer?.setEventListener { event ->
-            when (event.type) {
-                MediaPlayer.Event.EncounteredError -> handler.post {
-                    showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, "EncounteredError")
+    private fun setupPlayer() {
+        mediaPlayer = ExoPlayer.Builder(this).build().also { player ->
+            findViewById<PlayerView>(R.id.videoLayout).player = player
+            player.addListener(object : androidx.media3.common.Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    handler.post { showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, error.message ?: "PlaybackException") }
                 }
-            }
+            })
         }
     }
 
@@ -1611,13 +1594,13 @@ class MainActivity : AppCompatActivity() {
         if (versionChanged) {
             prefs.edit().putLong(PREF_APP_VERSION_CODE, currentVersion).apply()
         }
-        if (libVlc == null || mediaPlayer == null) {
-            setupVLC()
+        if (mediaPlayer == null) {
+            setupPlayer()
             if (channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
                 playChannel(forcePlay = true)
             }
         } else {
-            mediaPlayer?.attachViews(findViewById(R.id.videoLayout), null, false, false)
+            findViewById<PlayerView>(R.id.videoLayout).player = mediaPlayer
         }
         if ((shouldReloadStreamOnStart || versionChanged) && channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
             playChannel(forcePlay = true)
@@ -1637,8 +1620,7 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(epgTickerRunnable)
         handler.removeCallbacks(timelineTickerRunnable)
         mediaPlayer?.pause()
-        mediaPlayer?.detachViews()
-        shouldReloadStreamOnStart = true
+                shouldReloadStreamOnStart = true
     }
 
     override fun onDestroy() {
@@ -1662,7 +1644,7 @@ class MainActivity : AppCompatActivity() {
         tvCurrentTime.text = fmt.format(Date(p.start))
         tvProgramEndTime.text = fmt.format(Date(p.stop))
         if (!timelineUserSeeking) {
-            val currentMs = if (isArchivePlayback) archiveStreamStartMs + (mediaPlayer?.time ?: 0L) else System.currentTimeMillis()
+            val currentMs = if (isArchivePlayback) archiveStreamStartMs + (mediaPlayer?.currentPosition ?: 0L) else System.currentTimeMillis()
             val progress = (((currentMs - p.start).toDouble() / (p.stop - p.start).coerceAtLeast(1L).toDouble()) * 1000.0).toInt().coerceIn(0, 1000)
             sbTimeline.progress = progress
         }
@@ -1670,9 +1652,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun seekArchiveTo(targetProgramTimeMs: Long) {
         val p = currentArchiveProgram ?: return
-        val previous = mediaPlayer?.time ?: 0L
+        val previous = mediaPlayer?.currentPosition ?: 0L
         val offset = (targetProgramTimeMs - p.start).coerceAtLeast(0L)
-        mediaPlayer?.time = offset
+        mediaPlayer?.seekTo(offset)
         val deltaMin = kotlin.math.abs(((offset - previous) / 60_000L).toInt())
         tvEpg.text = "Перемотка архива на $deltaMin минут"
         handler.removeCallbacks(restoreEpgRunnable)
@@ -1687,12 +1669,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun stopPlayback() {
         mediaPlayer?.stop()
-        mediaPlayer?.detachViews()
-        mediaPlayer?.release()
+                mediaPlayer?.release()
         mediaPlayer = null
-        libVlc?.release()
-        libVlc = null
-    }
+            }
 
     private fun showLockedMessage() {
         tvEpg.text = "Управление свайпами заблокировано! Разблокируйте для переключения канала!"

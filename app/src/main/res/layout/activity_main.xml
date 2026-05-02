@@ -6,8 +6,10 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <org.videolan.libvlc.util.VLCVideoLayout
+    <androidx.media3.ui.PlayerView
         android:id="@+id/videoLayout"
+        app:use_controller="false"
+        app:resize_mode="fill"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
