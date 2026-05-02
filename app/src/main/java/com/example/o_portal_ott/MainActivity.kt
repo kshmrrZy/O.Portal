@@ -46,6 +46,8 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.PlayerView
 import org.xmlpull.v1.XmlPullParser
 import java.io.BufferedInputStream
@@ -137,6 +139,7 @@ class MainActivity : AppCompatActivity() {
 
     private var timerEndAtMillis: Long = 0L
     private var lastBackPressAt = 0L
+
     private var shouldOpenLastChannelOnStart = false
     private var isArchivePlayback = false
     private var currentArchiveProgram: Program? = null
@@ -1513,10 +1516,17 @@ class MainActivity : AppCompatActivity() {
         val renderersFactory = DefaultRenderersFactory(this)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
 
+        val extractorsFactory = DefaultExtractorsFactory()
+            .setTsExtractorFlags(
+                DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS or
+                    DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES
+            )
+            .setTsExtractorTimestampSearchBytes(112_800)
+
         mediaPlayer = ExoPlayer.Builder(this, renderersFactory)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(
-                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this)
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this, extractorsFactory)
                     .setDataSourceFactory(httpFactory)
             )
             .build()
