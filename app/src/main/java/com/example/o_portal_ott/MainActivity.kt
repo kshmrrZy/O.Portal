@@ -185,9 +185,10 @@ class MainActivity : AppCompatActivity() {
             retryCurrentStreamWithoutAudio()
         } else {
             if (!retriedWithLowerResolution) {
-                showCenterError("Нет видеокадра, пробуем понизить качество видео", 2500L)
+                showCenterError("Нет видеокадра, пробуем сменить режим декодера", 2500L)
                 retriedWithLowerResolution = true
-                limitVideoToSd()
+                switchDecoderModeAndRestart()
+                return@Runnable
             } else {
                 showCenterError("Нет видеокадра, перезапускаем поток", 2200L)
             }
@@ -1546,11 +1547,7 @@ class MainActivity : AppCompatActivity() {
             retriedWithLowerResolution = false
             startupWaitSinceMs = 0L
             enableAudioTrack()
-            if (ch.url.contains("/only4/", ignoreCase = true)) {
-                optimizeForHighBitrateStream()
-            } else {
-                resetVideoConstraints()
-            }
+            applyUnlimitedVideoConstraints()
 
             mediaPlayer?.setMediaItem(buildMediaItem(ch.url))
             mediaPlayer?.prepare()
@@ -1718,6 +1715,11 @@ class MainActivity : AppCompatActivity() {
         trackSelector = DefaultTrackSelector(this).apply {
             setParameters(
                 buildUponParameters()
+                    .clearVideoSizeConstraints()
+                    .setMaxVideoBitrate(Int.MAX_VALUE)
+                    .setExceedVideoConstraintsIfNecessary(true)
+                    .setForceHighestSupportedBitrate(false)
+                    .setForceLowestBitrate(false)
                     .setAllowVideoMixedMimeTypeAdaptiveness(true)
                     .setAllowAudioMixedMimeTypeAdaptiveness(true)
             )
@@ -1792,34 +1794,37 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun optimizeForHighBitrateStream() {
+    private fun applyUnlimitedVideoConstraints() {
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()
                 ?.clearVideoSizeConstraints()
                 ?.setMaxVideoBitrate(Int.MAX_VALUE)
+                ?.setExceedVideoConstraintsIfNecessary(true)
+                ?.setForceHighestSupportedBitrate(false)
                 ?.setForceLowestBitrate(false)
                 ?: return
         )
     }
 
-    private fun limitVideoToSd() {
-        trackSelector?.setParameters(
-            trackSelector?.buildUponParameters()
-                ?.clearVideoSizeConstraints()
-                ?.setMaxVideoBitrate(Int.MAX_VALUE)
-                ?.setForceLowestBitrate(false)
-                ?: return
-        )
-    }
-
-    private fun resetVideoConstraints() {
-        trackSelector?.setParameters(
-            trackSelector?.buildUponParameters()
-                ?.clearVideoSizeConstraints()
-                ?.setMaxVideoBitrate(Int.MAX_VALUE)
-                ?.setForceLowestBitrate(false)
-                ?: return
-        )
+    private fun switchDecoderModeAndRestart() {
+        val url = lastRequestedPlaybackUrl
+        if (url.isBlank()) return
+        softwareDecoderMode = !softwareDecoderMode
+        preferGpuDecoding = !softwareDecoderMode
+        prefs.edit().putBoolean(PREF_USE_GPU_DECODER, preferGpuDecoding).apply()
+        stopPlayback()
+        setupPlayer(preferSoftwareDecoder = softwareDecoderMode)
+        mediaPlayer?.setMediaItem(buildMediaItem(url))
+        mediaPlayer?.prepare()
+        mediaPlayer?.playWhenReady = true
+        firstFrameRendered = false
+        startupWaitSinceMs = 0L
+        handler.removeCallbacks(startupFrameTimeoutRunnable)
+        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+        handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
+        lastPlaybackPositionMs = -1L
+        lastProgressWallClockMs = System.currentTimeMillis()
+        handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
     }
 
     private fun showUI() {
