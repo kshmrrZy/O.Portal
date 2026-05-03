@@ -103,6 +103,7 @@ class MainActivity : AppCompatActivity() {
     private var lastProgressWallClockMs = 0L
     private var bufferingSinceMs = 0L
     private var allowNonIdrKeyframes = false
+    private var strictTsSwitchScheduled = false
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -166,6 +167,7 @@ class MainActivity : AppCompatActivity() {
         if (!allowNonIdrKeyframes && lastRequestedPlaybackUrl.isNotBlank()) {
             showCenterError("Нет IDR, включаем fallback для TS и перезапускаем", 2400L)
             allowNonIdrKeyframes = true
+            strictTsSwitchScheduled = false
             stopPlayback()
             setupPlayer(preferSoftwareDecoder = softwareDecoderMode)
             mediaPlayer?.setMediaItem(buildMediaItem(lastRequestedPlaybackUrl))
@@ -190,10 +192,12 @@ class MainActivity : AppCompatActivity() {
                 firstFrameRendered = false
                 handler.removeCallbacks(startupFrameTimeoutRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+        handler.removeCallbacks(switchBackToStrictTsRunnable)
                 handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
             lastPlaybackPositionMs = -1L
             lastProgressWallClockMs = System.currentTimeMillis()
             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+        handler.removeCallbacks(switchBackToStrictTsRunnable)
             handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
             }
         }
@@ -233,6 +237,18 @@ class MainActivity : AppCompatActivity() {
             lastProgressWallClockMs = now
         }
         handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
+    }
+
+    private val switchBackToStrictTsRunnable = Runnable {
+        if (!allowNonIdrKeyframes || lastRequestedPlaybackUrl.isBlank()) return@Runnable
+        showCenterError("Пробуем улучшить качество: возврат к строгому TS", 1800L)
+        allowNonIdrKeyframes = false
+        strictTsSwitchScheduled = false
+        stopPlayback()
+        setupPlayer(preferSoftwareDecoder = softwareDecoderMode)
+        mediaPlayer?.setMediaItem(buildMediaItem(lastRequestedPlaybackUrl))
+        mediaPlayer?.prepare()
+        mediaPlayer?.playWhenReady = true
     }
 
     private val returnToLiveRunnable = Runnable {
@@ -1484,6 +1500,7 @@ class MainActivity : AppCompatActivity() {
             lastPlaybackPositionMs = -1L
             lastProgressWallClockMs = System.currentTimeMillis()
             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+        handler.removeCallbacks(switchBackToStrictTsRunnable)
             handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
             isPlaybackPaused = false
             isArchivePlayback = true
@@ -1515,6 +1532,7 @@ class MainActivity : AppCompatActivity() {
             firstFrameRendered = false
             handler.removeCallbacks(startupFrameTimeoutRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+        handler.removeCallbacks(switchBackToStrictTsRunnable)
             retriedWithoutAudio = false
             retriedWithLowerResolution = false
             enableAudioTrack()
@@ -1708,12 +1726,19 @@ class MainActivity : AppCompatActivity() {
                     lastPlaybackPositionMs = player.currentPosition
                     lastProgressWallClockMs = System.currentTimeMillis()
                     handler.removeCallbacks(startupFrameTimeoutRunnable)
+                    if (allowNonIdrKeyframes && !strictTsSwitchScheduled) {
+                        strictTsSwitchScheduled = true
+                        handler.removeCallbacks(switchBackToStrictTsRunnable)
+                        handler.postDelayed(switchBackToStrictTsRunnable, 6000L)
+                    }
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+        handler.removeCallbacks(switchBackToStrictTsRunnable)
                 }
                 override fun onPlayerError(error: PlaybackException) {
                     handler.post {
                         handler.removeCallbacks(startupFrameTimeoutRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+        handler.removeCallbacks(switchBackToStrictTsRunnable)
                         if (shouldRetryWithoutAudio(error)) {
                             showCenterError("Аудио MPEG не поддерживается устройством, продолжаем без звука", 2500L)
                             retryCurrentStreamWithoutAudio()
@@ -1745,6 +1770,7 @@ class MainActivity : AppCompatActivity() {
         firstFrameRendered = false
         handler.removeCallbacks(startupFrameTimeoutRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+        handler.removeCallbacks(switchBackToStrictTsRunnable)
         handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
     }
 
@@ -1965,6 +1991,7 @@ class MainActivity : AppCompatActivity() {
         trackSelector = null
         handler.removeCallbacks(startupFrameTimeoutRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+        handler.removeCallbacks(switchBackToStrictTsRunnable)
 
     }
 
