@@ -99,9 +99,11 @@ class MainActivity : AppCompatActivity() {
     private var firstFrameRendered = false
     private var retriedWithLowerResolution = false
     private var softwareDecoderMode = false
+    private var preferGpuDecoding = true
     private var lastPlaybackPositionMs = -1L
     private var lastProgressWallClockMs = 0L
     private var bufferingSinceMs = 0L
+    private var startupWaitSinceMs = 0L
     private var allowNonIdrKeyframes = false
     private lateinit var mDetector: GestureDetectorCompat
 
@@ -163,6 +165,13 @@ class MainActivity : AppCompatActivity() {
     private var lastRequestedPlaybackUrl: String = ""
     private val startupFrameTimeoutRunnable: Runnable = Runnable {
         if (firstFrameRendered) return@Runnable
+        val player = mediaPlayer
+        val now = System.currentTimeMillis()
+        if (startupWaitSinceMs == 0L) startupWaitSinceMs = now
+        if (player != null && player.playbackState == androidx.media3.common.Player.STATE_BUFFERING && now - startupWaitSinceMs < 30_000L) {
+            handler.postDelayed(startupFrameTimeoutRunnable, 4000L)
+            return@Runnable
+        }
         if (!allowNonIdrKeyframes && lastRequestedPlaybackUrl.isNotBlank()) {
             showCenterError("Нет IDR, включаем fallback для TS и перезапускаем", 2400L)
             allowNonIdrKeyframes = true
@@ -188,6 +197,7 @@ class MainActivity : AppCompatActivity() {
                 p.prepare()
                 p.playWhenReady = true
                 firstFrameRendered = false
+        startupWaitSinceMs = 0L
                 handler.removeCallbacks(startupFrameTimeoutRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                         handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
@@ -257,6 +267,7 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_START_LAST_CHANNEL = "pref_start_last_channel"
         private const val PREF_SHOW_LOCK_BUTTON = "pref_show_lock_button"
         private const val PREF_APP_VERSION_CODE = "pref_app_version_code"
+        private const val PREF_USE_GPU_DECODER = "pref_use_gpu_decoder"
         private const val PREF_EPG_SOURCES_FINGERPRINT = "pref_epg_sources_fingerprint"
 
         private const val TOKEN_PREFIX = "https://o.avff.ru/my/"
@@ -825,9 +836,11 @@ class MainActivity : AppCompatActivity() {
         val btnClose = view.findViewById<TextView>(R.id.btnCloseSettingsDialog)
         val tbStartMode = view.findViewById<ToggleButton>(R.id.tbStartMode)
         val tbShowLockButton = view.findViewById<ToggleButton>(R.id.tbShowLockButton)
+        val tbGpuDecoder = view.findViewById<ToggleButton>(R.id.tbGpuDecoder)
 
         tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
         tbShowLockButton.isChecked = prefs.getBoolean(PREF_SHOW_LOCK_BUTTON, true)
+        tbGpuDecoder.isChecked = prefs.getBoolean(PREF_USE_GPU_DECODER, true)
 
         val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
             .setView(view)
@@ -841,6 +854,15 @@ class MainActivity : AppCompatActivity() {
         tbShowLockButton.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean(PREF_SHOW_LOCK_BUTTON, isChecked).apply()
             applyLockButtonVisibility()
+        }
+
+        tbGpuDecoder.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean(PREF_USE_GPU_DECODER, isChecked).apply()
+            preferGpuDecoding = isChecked
+            softwareDecoderMode = !preferGpuDecoding
+            stopPlayback()
+            setupPlayer(preferSoftwareDecoder = softwareDecoderMode)
+            playChannel(forcePlay = true)
         }
 
         btnPlaylistSettings.setOnClickListener {
@@ -1469,8 +1491,10 @@ class MainActivity : AppCompatActivity() {
         }
         runCatching {
             homePanel.visibility = View.GONE
-            val shouldUseSoftware = false
-            allowNonIdrKeyframes = channel.url.contains("/only4/", ignoreCase = true)
+            val shouldUseSoftware = !preferGpuDecoding
+            // Start in strict IDR mode to avoid visual artifacts (macroblocking) on some TS streams.
+            // Non-IDR parsing is enabled only by startup fallback when no first frame appears.
+            allowNonIdrKeyframes = false
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
@@ -1504,8 +1528,10 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
             homePanel.visibility = View.GONE
-            val shouldUseSoftware = false
-            allowNonIdrKeyframes = ch.url.contains("/only4/", ignoreCase = true)
+            val shouldUseSoftware = !preferGpuDecoding
+            // Start in strict IDR mode to avoid visual artifacts (macroblocking) on some TS streams.
+            // Non-IDR parsing is enabled only by startup fallback when no first frame appears.
+            allowNonIdrKeyframes = false
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
@@ -1518,6 +1544,7 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                     retriedWithoutAudio = false
             retriedWithLowerResolution = false
+            startupWaitSinceMs = 0L
             enableAudioTrack()
             if (ch.url.contains("/only4/", ignoreCase = true)) {
                 optimizeForHighBitrateStream()
@@ -1710,6 +1737,7 @@ class MainActivity : AppCompatActivity() {
                     lastProgressWallClockMs = System.currentTimeMillis()
                     handler.removeCallbacks(startupFrameTimeoutRunnable)
                     handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+                    startupWaitSinceMs = 0L
                 }
                 override fun onPlayerError(error: PlaybackException) {
                     handler.post {
@@ -1744,6 +1772,7 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.prepare()
         mediaPlayer?.playWhenReady = true
         firstFrameRendered = false
+        startupWaitSinceMs = 0L
         handler.removeCallbacks(startupFrameTimeoutRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                 handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
@@ -1767,7 +1796,7 @@ class MainActivity : AppCompatActivity() {
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()
                 ?.clearVideoSizeConstraints()
-                ?.setMaxVideoBitrate(12_000_000)
+                ?.setMaxVideoBitrate(Int.MAX_VALUE)
                 ?.setForceLowestBitrate(false)
                 ?: return
         )
@@ -1777,7 +1806,7 @@ class MainActivity : AppCompatActivity() {
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()
                 ?.clearVideoSizeConstraints()
-                ?.setMaxVideoBitrate(12_000_000)
+                ?.setMaxVideoBitrate(Int.MAX_VALUE)
                 ?.setForceLowestBitrate(false)
                 ?: return
         )
@@ -1880,6 +1909,9 @@ class MainActivity : AppCompatActivity() {
         handler.post(timelineTickerRunnable)
         val packageInfo = packageManager.getPackageInfo(packageName, 0)
         val currentVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) packageInfo.longVersionCode else packageInfo.versionCode.toLong()
+        preferGpuDecoding = prefs.getBoolean(PREF_USE_GPU_DECODER, true)
+        softwareDecoderMode = !preferGpuDecoding
+
         val savedVersion = prefs.getLong(PREF_APP_VERSION_CODE, -1L)
         val versionChanged = savedVersion != currentVersion
         if (versionChanged) {
