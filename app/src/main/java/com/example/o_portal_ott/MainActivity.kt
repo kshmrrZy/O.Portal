@@ -40,12 +40,14 @@ import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.load.model.LazyHeaders
 import org.json.JSONArray
 import org.json.JSONObject
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.PlayerView
@@ -90,6 +92,8 @@ data class PlaylistProfile(
 class MainActivity : AppCompatActivity() {
 
     private var mediaPlayer: ExoPlayer? = null
+    private var trackSelector: DefaultTrackSelector? = null
+    private var retriedWithoutAudio = false
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -1405,6 +1409,8 @@ class MainActivity : AppCompatActivity() {
             homePanel.visibility = View.GONE
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = ch.url
+            retriedWithoutAudio = false
+            enableAudioTrack()
 
             mediaPlayer?.setMediaItem(buildMediaItem(ch.url))
             mediaPlayer?.prepare()
@@ -1524,7 +1530,7 @@ class MainActivity : AppCompatActivity() {
             .build()
 
         val renderersFactory = DefaultRenderersFactory(this)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
 
         val extractorsFactory = DefaultExtractorsFactory()
             .setTsExtractorFlags(
@@ -1533,7 +1539,16 @@ class MainActivity : AppCompatActivity() {
             )
             .setTsExtractorTimestampSearchBytes(112_800)
 
+        trackSelector = DefaultTrackSelector(this).apply {
+            setParameters(
+                buildUponParameters()
+                    .setAllowVideoMixedMimeTypeAdaptiveness(true)
+                    .setAllowAudioMixedMimeTypeAdaptiveness(true)
+            )
+        }
+
         mediaPlayer = ExoPlayer.Builder(this, renderersFactory)
+            .setTrackSelector(trackSelector!!)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(
                 androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this, extractorsFactory)
@@ -1545,11 +1560,48 @@ class MainActivity : AppCompatActivity() {
             player.addListener(object : androidx.media3.common.Player.Listener {
                 override fun onPlayerError(error: PlaybackException) {
                     handler.post {
-                        showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, error.message ?: "PlaybackException")
+                        if (shouldRetryWithoutAudio(error)) {
+                            showCenterError("Аудио MPEG не поддерживается устройством, продолжаем без звука", 2500L)
+                            retryCurrentStreamWithoutAudio()
+                        } else {
+                            showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, error.message ?: "PlaybackException")
+                        }
                     }
                 }
             })
         }
+    }
+
+
+    private fun shouldRetryWithoutAudio(error: PlaybackException): Boolean {
+        if (retriedWithoutAudio || lastRequestedPlaybackUrl.isBlank()) return false
+        val text = ((error.message ?: "") + " " + (error.cause?.message ?: "")).lowercase(Locale.ROOT)
+        return text.contains("audio") || text.contains("mpga") || text.contains("mpeg") || text.contains("decoder")
+    }
+
+    private fun retryCurrentStreamWithoutAudio() {
+        val url = lastRequestedPlaybackUrl
+        if (url.isBlank()) return
+        retriedWithoutAudio = true
+        disableAudioTrack()
+        mediaPlayer?.stop()
+        mediaPlayer?.setMediaItem(buildMediaItem(url))
+        mediaPlayer?.prepare()
+        mediaPlayer?.playWhenReady = true
+    }
+
+    private fun disableAudioTrack() {
+        trackSelector?.setParameters(
+            trackSelector?.buildUponParameters()?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                ?: return
+        )
+    }
+
+    private fun enableAudioTrack() {
+        trackSelector?.setParameters(
+            trackSelector?.buildUponParameters()?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                ?: return
+        )
     }
 
     private fun showUI() {
@@ -1721,6 +1773,7 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.stop()
         mediaPlayer?.release()
         mediaPlayer = null
+        trackSelector = null
 
     }
 
