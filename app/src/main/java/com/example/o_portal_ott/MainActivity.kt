@@ -49,10 +49,6 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.PlayerView
-import org.videolan.libvlc.LibVLC
-import org.videolan.libvlc.Media
-import org.videolan.libvlc.MediaPlayer as VlcMediaPlayer
-import org.videolan.libvlc.util.VLCVideoLayout
 import org.xmlpull.v1.XmlPullParser
 import java.io.BufferedInputStream
 import java.io.ByteArrayInputStream
@@ -94,9 +90,6 @@ data class PlaylistProfile(
 class MainActivity : AppCompatActivity() {
 
     private var mediaPlayer: ExoPlayer? = null
-    private var libVlc: LibVLC? = null
-    private var vlcPlayer: VlcMediaPlayer? = null
-    private var usingVlcFallback = false
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -1410,12 +1403,10 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
             homePanel.visibility = View.GONE
-            switchToExoSurface()
-            vlcPlayer?.stop()
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = ch.url
 
-            mediaPlayer?.setMediaItem(MediaItem.fromUri(Uri.parse(ch.url)))
+            mediaPlayer?.setMediaItem(buildMediaItem(ch.url))
             mediaPlayer?.prepare()
             mediaPlayer?.play()
             isPlaybackPaused = false
@@ -1437,35 +1428,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun ensureVlcPlayer() {
-        if (vlcPlayer != null) return
-        libVlc = LibVLC(this, arrayListOf("--network-caching=1000", "--http-reconnect", "--avcodec-fast"))
-        vlcPlayer = VlcMediaPlayer(libVlc).also { player ->
-            val vlcView = findViewById<VLCVideoLayout>(R.id.vlcVideoLayout)
-            player.attachViews(vlcView, null, false, false)
-        }
-    }
 
-    private fun playWithVlc(url: String) {
-        ensureVlcPlayer()
-        usingVlcFallback = true
-        findViewById<PlayerView>(R.id.videoLayout).visibility = View.GONE
-        findViewById<VLCVideoLayout>(R.id.vlcVideoLayout).visibility = View.VISIBLE
-        val media = Media(libVlc, Uri.parse(url)).apply {
-            setHWDecoderEnabled(true, false)
-            addOption(":network-caching=1000")
-            addOption(":http-reconnect=true")
-            addOption(":live-caching=1000")
-        }
-        vlcPlayer?.media = media
-        media.release()
-        vlcPlayer?.play()
-    }
-
-    private fun switchToExoSurface() {
-        usingVlcFallback = false
-        findViewById<VLCVideoLayout>(R.id.vlcVideoLayout).visibility = View.GONE
-        findViewById<PlayerView>(R.id.videoLayout).visibility = View.VISIBLE
+    private fun buildMediaItem(url: String): MediaItem {
+        val uri = Uri.parse(url)
+        val mime = if (url.contains(".m3u8", ignoreCase = true)) "application/x-mpegURL" else null
+        return MediaItem.Builder()
+            .setUri(uri)
+            .setMimeType(mime)
+            .build()
     }
 
     private fun showCenterError(message: String, durationMs: Long = 2200L) {
@@ -1575,12 +1545,7 @@ class MainActivity : AppCompatActivity() {
             player.addListener(object : androidx.media3.common.Player.Listener {
                 override fun onPlayerError(error: PlaybackException) {
                     handler.post {
-                        if (!usingVlcFallback && lastRequestedPlaybackUrl.isNotBlank()) {
-                            showCenterError("ExoPlayer не декодировал поток, переключаемся на встроенный fallback", 2200L)
-                            playWithVlc(lastRequestedPlaybackUrl)
-                        } else {
-                            showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, error.message ?: "PlaybackException")
-                        }
+                        showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, error.message ?: "PlaybackException")
                     }
                 }
             })
@@ -1684,7 +1649,7 @@ class MainActivity : AppCompatActivity() {
             if (channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
                 playChannel(forcePlay = true)
             }
-        } else if (!usingVlcFallback) {
+        } else {
             findViewById<PlayerView>(R.id.videoLayout).player = mediaPlayer
         }
         if ((shouldReloadStreamOnStart || versionChanged) && channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
@@ -1757,12 +1722,6 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.release()
         mediaPlayer = null
 
-        vlcPlayer?.stop()
-        vlcPlayer?.detachViews()
-        vlcPlayer?.release()
-        vlcPlayer = null
-        libVlc?.release()
-        libVlc = null
     }
 
     private fun showLockedMessage() {
