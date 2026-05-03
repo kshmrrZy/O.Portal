@@ -19,3 +19,9 @@ So extension must be built from source and connected as local artifact/module.
 4. Rebuild app.
 
 ExoPlayer is already configured with `EXTENSION_RENDERER_MODE_PREFER`, so extension decoders are preferred when available.
+
+
+## Maven option used in this project
+
+Project now tries `org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1` (compatible with Media3 1.5.0).
+If you prefer your own build, keep using the local AAR path above.
