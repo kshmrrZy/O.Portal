@@ -192,6 +192,7 @@ class MainActivity : AppCompatActivity() {
 
     private val playbackFreezeWatchdogRunnable: Runnable = Runnable {
         val player = mediaPlayer ?: return@Runnable
+        val now = System.currentTimeMillis()
         if (!player.isPlaying) {
             if (player.playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
                 if (bufferingSinceMs == 0L) bufferingSinceMs = now
