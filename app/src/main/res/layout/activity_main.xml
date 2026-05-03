@@ -12,11 +12,6 @@
         app:resize_mode="fit"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
-    <org.videolan.libvlc.util.VLCVideoLayout
-        android:id="@+id/vlcVideoLayout"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:visibility="gone" />
 
     <TextView
         android:id="@+id/tvReloadingStatus"
