@@ -1477,10 +1477,21 @@ class MainActivity : AppCompatActivity() {
     private fun buildMediaItem(url: String): MediaItem {
         val uri = Uri.parse(url)
         val mime = if (url.contains(".m3u8", ignoreCase = true)) "application/x-mpegURL" else null
-        return MediaItem.Builder()
+        val builder = MediaItem.Builder()
             .setUri(uri)
             .setMimeType(mime)
-            .build()
+
+        if (url.contains("/only4/", ignoreCase = true)) {
+            builder.setLiveConfiguration(
+                MediaItem.LiveConfiguration.Builder()
+                    .setTargetOffsetMs(12_000)
+                    .setMinPlaybackSpeed(1.0f)
+                    .setMaxPlaybackSpeed(1.0f)
+                    .build()
+            )
+        }
+
+        return builder.build()
     }
 
     private fun showCenterError(message: String, durationMs: Long = 2200L) {
