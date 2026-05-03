@@ -1569,10 +1569,10 @@ class MainActivity : AppCompatActivity() {
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
+                10_000,
+                45_000,
                 2_500,
-                12_000,
-                800,
-                1_500
+                5_000
             )
             .build()
 
@@ -1661,7 +1661,7 @@ class MainActivity : AppCompatActivity() {
     private fun limitVideoToSd() {
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()
-                ?.setMaxVideoSize(1280, 720)
+                ?.setMaxVideoSize(960, 540)
                 ?: return
         )
     }
