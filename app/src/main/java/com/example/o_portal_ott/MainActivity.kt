@@ -1753,8 +1753,8 @@ class MainActivity : AppCompatActivity() {
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()
                 ?.clearVideoSizeConstraints()
-                ?.setMaxVideoBitrate(20_000_000)
-                ?.setForceLowestBitrate(false)
+                ?.setMaxVideoBitrate(8_000_000)
+                ?.setForceLowestBitrate(true)
                 ?: return
         )
     }
@@ -1763,8 +1763,8 @@ class MainActivity : AppCompatActivity() {
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()
                 ?.clearVideoSizeConstraints()
-                ?.setMaxVideoBitrate(20_000_000)
-                ?.setForceLowestBitrate(false)
+                ?.setMaxVideoBitrate(8_000_000)
+                ?.setForceLowestBitrate(true)
                 ?: return
         )
     }
