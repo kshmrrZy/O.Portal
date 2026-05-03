@@ -99,6 +99,8 @@ class MainActivity : AppCompatActivity() {
     private var firstFrameRendered = false
     private var retriedWithLowerResolution = false
     private var softwareDecoderMode = false
+    private var lastPlaybackPositionMs = -1L
+    private var lastProgressWallClockMs = 0L
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -177,9 +179,36 @@ class MainActivity : AppCompatActivity() {
                 p.playWhenReady = true
                 firstFrameRendered = false
                 handler.removeCallbacks(startupFrameTimeoutRunnable)
+        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                 handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
+            lastPlaybackPositionMs = -1L
+            lastProgressWallClockMs = System.currentTimeMillis()
+            handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+            handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
             }
         }
+    }
+
+    private val playbackFreezeWatchdogRunnable: Runnable = Runnable {
+        val player = mediaPlayer ?: return@Runnable
+        if (!player.isPlaying) {
+            handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
+            return@Runnable
+        }
+        val pos = player.currentPosition
+        val now = System.currentTimeMillis()
+        if (pos > lastPlaybackPositionMs + 250L) {
+            lastPlaybackPositionMs = pos
+            lastProgressWallClockMs = now
+        } else if (lastProgressWallClockMs > 0L && now - lastProgressWallClockMs > 10_000L) {
+            showCenterError("Поток завис, выполняем перезапуск", 2200L)
+            player.stop()
+            player.setMediaItem(buildMediaItem(lastRequestedPlaybackUrl))
+            player.prepare()
+            player.playWhenReady = true
+            lastProgressWallClockMs = now
+        }
+        handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
     }
 
     private val returnToLiveRunnable = Runnable {
@@ -1427,6 +1456,10 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.prepare()
             mediaPlayer?.play()
             handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
+            lastPlaybackPositionMs = -1L
+            lastProgressWallClockMs = System.currentTimeMillis()
+            handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+            handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
             isPlaybackPaused = false
             isArchivePlayback = true
             currentArchiveProgram = program
@@ -1455,6 +1488,7 @@ class MainActivity : AppCompatActivity() {
             lastRequestedPlaybackUrl = ch.url
             firstFrameRendered = false
             handler.removeCallbacks(startupFrameTimeoutRunnable)
+        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
             retriedWithoutAudio = false
             retriedWithLowerResolution = false
             enableAudioTrack()
@@ -1498,9 +1532,9 @@ class MainActivity : AppCompatActivity() {
         if (url.contains("/only4/", ignoreCase = true)) {
             builder.setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(12_000)
-                    .setMinPlaybackSpeed(1.0f)
-                    .setMaxPlaybackSpeed(1.0f)
+                    .setTargetOffsetMs(16_000)
+                    .setMinPlaybackSpeed(0.98f)
+                    .setMaxPlaybackSpeed(1.03f)
                     .build()
             )
         }
@@ -1642,11 +1676,15 @@ class MainActivity : AppCompatActivity() {
             player.addListener(object : androidx.media3.common.Player.Listener {
                 override fun onRenderedFirstFrame() {
                     firstFrameRendered = true
+                    lastPlaybackPositionMs = player.currentPosition
+                    lastProgressWallClockMs = System.currentTimeMillis()
                     handler.removeCallbacks(startupFrameTimeoutRunnable)
+        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                 }
                 override fun onPlayerError(error: PlaybackException) {
                     handler.post {
                         handler.removeCallbacks(startupFrameTimeoutRunnable)
+        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                         if (shouldRetryWithoutAudio(error)) {
                             showCenterError("Аудио MPEG не поддерживается устройством, продолжаем без звука", 2500L)
                             retryCurrentStreamWithoutAudio()
@@ -1677,6 +1715,7 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.playWhenReady = true
         firstFrameRendered = false
         handler.removeCallbacks(startupFrameTimeoutRunnable)
+        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
         handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
     }
 
@@ -1896,6 +1935,7 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer = null
         trackSelector = null
         handler.removeCallbacks(startupFrameTimeoutRunnable)
+        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
 
     }
 
