@@ -98,7 +98,7 @@ class MainActivity : AppCompatActivity() {
     private var retriedWithoutAudio = false
     private var firstFrameRendered = false
     private var retriedWithLowerResolution = false
-    private var softwareDecoderMode = false // forced off: hardware/auto decoders are more stable for this stream
+    private var softwareDecoderMode = false
     private var lastPlaybackPositionMs = -1L
     private var lastProgressWallClockMs = 0L
     private var bufferingSinceMs = 0L
@@ -1460,7 +1460,7 @@ class MainActivity : AppCompatActivity() {
         }
         runCatching {
             homePanel.visibility = View.GONE
-            val shouldUseSoftware = false
+            val shouldUseSoftware = channel.url.contains("/only4/", ignoreCase = true)
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
@@ -1494,7 +1494,7 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
             homePanel.visibility = View.GONE
-            val shouldUseSoftware = false
+            val shouldUseSoftware = ch.url.contains("/only4/", ignoreCase = true)
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
