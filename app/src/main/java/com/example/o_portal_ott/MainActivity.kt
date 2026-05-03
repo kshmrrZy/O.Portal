@@ -48,6 +48,7 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
@@ -97,6 +98,7 @@ class MainActivity : AppCompatActivity() {
     private var retriedWithoutAudio = false
     private var firstFrameRendered = false
     private var retriedWithLowerResolution = false
+    private var softwareDecoderMode = false
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -1413,6 +1415,12 @@ class MainActivity : AppCompatActivity() {
         }
         runCatching {
             homePanel.visibility = View.GONE
+            val shouldUseSoftware = ch.url.contains("/only4/", ignoreCase = true)
+            if (softwareDecoderMode != shouldUseSoftware) {
+                stopPlayback()
+                softwareDecoderMode = shouldUseSoftware
+                setupPlayer(preferSoftwareDecoder = shouldUseSoftware)
+            }
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = archiveUrl
             mediaPlayer?.setMediaItem(MediaItem.fromUri(Uri.parse(archiveUrl)))
@@ -1437,6 +1445,12 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
             homePanel.visibility = View.GONE
+            val shouldUseSoftware = ch.url.contains("/only4/", ignoreCase = true)
+            if (softwareDecoderMode != shouldUseSoftware) {
+                stopPlayback()
+                softwareDecoderMode = shouldUseSoftware
+                setupPlayer(preferSoftwareDecoder = shouldUseSoftware)
+            }
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = ch.url
             firstFrameRendered = false
@@ -1563,7 +1577,7 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    private fun setupPlayer() {
+    private fun setupPlayer(preferSoftwareDecoder: Boolean = false) {
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(userAgent)
             .setAllowCrossProtocolRedirects(true)
@@ -1587,9 +1601,20 @@ class MainActivity : AppCompatActivity() {
             )
             .build()
 
+        val codecSelector = if (preferSoftwareDecoder) {
+            MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
+                MediaCodecSelector.DEFAULT
+                    .getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+                    .sortedBy { it.hardwareAccelerated }
+            }
+        } else {
+            MediaCodecSelector.DEFAULT
+        }
+
         val renderersFactory = DefaultRenderersFactory(this)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             .setEnableDecoderFallback(true)
+            .setMediaCodecSelector(codecSelector)
 
         val tsFlags =
             DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS or
@@ -1792,7 +1817,7 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putLong(PREF_APP_VERSION_CODE, currentVersion).apply()
         }
         if (mediaPlayer == null) {
-            setupPlayer()
+            setupPlayer(preferSoftwareDecoder = softwareDecoderMode)
             if (channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
                 playChannel(forcePlay = true)
             }
