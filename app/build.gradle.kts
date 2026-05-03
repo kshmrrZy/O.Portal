@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.example.o_portal_ott"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.o_portal_ott"

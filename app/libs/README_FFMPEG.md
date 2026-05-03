@@ -25,3 +25,9 @@ ExoPlayer is already configured with `EXTENSION_RENDERER_MODE_PREFER`, so extens
 
 Project now tries `org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1` (compatible with Media3 1.5.0).
 If you prefer your own build, keep using the local AAR path above.
+
+
+## ExoPlayer v2 extension note
+
+The Google ExoPlayer `release-v2/extensions/ffmpeg` module targets the old `com.google.android.exoplayer2` namespace.
+This project uses AndroidX Media3 (`androidx.media3.*`), so that module is not drop-in compatible without migration/bridging.
