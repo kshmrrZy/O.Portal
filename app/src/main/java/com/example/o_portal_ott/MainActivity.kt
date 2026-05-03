@@ -154,7 +154,7 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var epgFetchInProgress = false
     private var archiveStreamStartMs: Long = 0L
     private var lastRequestedPlaybackUrl: String = ""
-    private val startupFrameTimeoutRunnable = Runnable {
+    private val startupFrameTimeoutRunnable: Runnable = Runnable {
         if (firstFrameRendered) return@Runnable
         if (!retriedWithoutAudio && lastRequestedPlaybackUrl.isNotBlank()) {
             showCenterError("Нет видеокадра, пробуем запуск без аудио", 2200L)
