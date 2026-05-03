@@ -1576,21 +1576,11 @@ class MainActivity : AppCompatActivity() {
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             .setEnableDecoderFallback(true)
 
-        val tsFlags =
-            DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS or
-                DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES
+        val tsFlags = DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
 
         val hlsMediaSourceFactory = HlsMediaSource.Factory(httpFactory)
             .setAllowChunklessPreparation(false)
             .setExtractorFactory(DefaultHlsExtractorFactory(tsFlags, true))
-
-        trackSelector = DefaultTrackSelector(this).apply {
-            setParameters(
-                buildUponParameters()
-                    .setAllowVideoMixedMimeTypeAdaptiveness(true)
-                    .setAllowAudioMixedMimeTypeAdaptiveness(true)
-            )
-        }
 
         trackSelector = DefaultTrackSelector(this).apply {
             setParameters(
