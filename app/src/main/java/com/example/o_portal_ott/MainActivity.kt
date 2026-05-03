@@ -212,7 +212,6 @@ class MainActivity : AppCompatActivity() {
         }
         bufferingSinceMs = 0L
         val pos = player.currentPosition
-        val now = System.currentTimeMillis()
         if (pos > lastPlaybackPositionMs + 250L) {
             lastPlaybackPositionMs = pos
             lastProgressWallClockMs = now
