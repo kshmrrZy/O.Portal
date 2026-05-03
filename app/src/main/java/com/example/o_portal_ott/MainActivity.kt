@@ -95,6 +95,7 @@ class MainActivity : AppCompatActivity() {
     private var trackSelector: DefaultTrackSelector? = null
     private var retriedWithoutAudio = false
     private var firstFrameRendered = false
+    private var retriedWithLowerResolution = false
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -159,12 +160,21 @@ class MainActivity : AppCompatActivity() {
             showCenterError("Нет видеокадра, пробуем запуск без аудио", 2200L)
             retryCurrentStreamWithoutAudio()
         } else {
-            showCenterError("Нет видеокадра, перезапускаем поток", 2200L)
+            if (!retriedWithLowerResolution) {
+                showCenterError("Нет видеокадра, пробуем понизить качество видео", 2500L)
+                retriedWithLowerResolution = true
+                limitVideoToSd()
+            } else {
+                showCenterError("Нет видеокадра, перезапускаем поток", 2200L)
+            }
             mediaPlayer?.let { p ->
                 p.stop()
                 p.setMediaItem(buildMediaItem(lastRequestedPlaybackUrl))
                 p.prepare()
                 p.playWhenReady = true
+                firstFrameRendered = false
+                handler.removeCallbacks(startupFrameTimeoutRunnable)
+                handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
             }
         }
     }
@@ -1431,7 +1441,9 @@ class MainActivity : AppCompatActivity() {
             firstFrameRendered = false
             handler.removeCallbacks(startupFrameTimeoutRunnable)
             retriedWithoutAudio = false
+            retriedWithLowerResolution = false
             enableAudioTrack()
+            resetVideoConstraints()
 
             mediaPlayer?.setMediaItem(buildMediaItem(ch.url))
             mediaPlayer?.prepare()
@@ -1631,6 +1643,22 @@ class MainActivity : AppCompatActivity() {
     private fun enableAudioTrack() {
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                ?: return
+        )
+    }
+
+    private fun limitVideoToSd() {
+        trackSelector?.setParameters(
+            trackSelector?.buildUponParameters()
+                ?.setMaxVideoSize(1280, 720)
+                ?: return
+        )
+    }
+
+    private fun resetVideoConstraints() {
+        trackSelector?.setParameters(
+            trackSelector?.buildUponParameters()
+                ?.clearVideoSizeConstraints()
                 ?: return
         )
     }
