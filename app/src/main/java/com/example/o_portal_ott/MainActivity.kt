@@ -1661,9 +1661,9 @@ class MainActivity : AppCompatActivity() {
     private fun optimizeForHighBitrateStream() {
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()
-                ?.setMaxVideoSize(960, 540)
-                ?.setMaxVideoBitrate(2_000_000)
-                ?.setForceLowestBitrate(true)
+                ?.clearVideoSizeConstraints()
+                ?.setMaxVideoBitrate(20_000_000)
+                ?.setForceLowestBitrate(false)
                 ?: return
         )
     }
@@ -1671,7 +1671,9 @@ class MainActivity : AppCompatActivity() {
     private fun limitVideoToSd() {
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()
-                ?.setMaxVideoSize(960, 540)
+                ?.clearVideoSizeConstraints()
+                ?.setMaxVideoBitrate(20_000_000)
+                ?.setForceLowestBitrate(false)
                 ?: return
         )
     }
