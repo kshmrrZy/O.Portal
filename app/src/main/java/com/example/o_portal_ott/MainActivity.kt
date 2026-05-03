@@ -1492,7 +1492,9 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             homePanel.visibility = View.GONE
             val shouldUseSoftware = !preferGpuDecoding
-            allowNonIdrKeyframes = channel.url.contains("/only4/", ignoreCase = true)
+            // Start in strict IDR mode to avoid visual artifacts (macroblocking) on some TS streams.
+            // Non-IDR parsing is enabled only by startup fallback when no first frame appears.
+            allowNonIdrKeyframes = false
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
@@ -1527,7 +1529,9 @@ class MainActivity : AppCompatActivity() {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
             homePanel.visibility = View.GONE
             val shouldUseSoftware = !preferGpuDecoding
-            allowNonIdrKeyframes = ch.url.contains("/only4/", ignoreCase = true)
+            // Start in strict IDR mode to avoid visual artifacts (macroblocking) on some TS streams.
+            // Non-IDR parsing is enabled only by startup fallback when no first frame appears.
+            allowNonIdrKeyframes = false
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
