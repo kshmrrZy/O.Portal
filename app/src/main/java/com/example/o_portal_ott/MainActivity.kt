@@ -102,6 +102,7 @@ class MainActivity : AppCompatActivity() {
     private var lastPlaybackPositionMs = -1L
     private var lastProgressWallClockMs = 0L
     private var bufferingSinceMs = 0L
+    private var allowNonIdrKeyframes = false
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -162,7 +163,15 @@ class MainActivity : AppCompatActivity() {
     private var lastRequestedPlaybackUrl: String = ""
     private val startupFrameTimeoutRunnable: Runnable = Runnable {
         if (firstFrameRendered) return@Runnable
-        if (!retriedWithoutAudio && lastRequestedPlaybackUrl.isNotBlank()) {
+        if (!allowNonIdrKeyframes && lastRequestedPlaybackUrl.isNotBlank()) {
+            showCenterError("Нет IDR, включаем fallback для TS и перезапускаем", 2400L)
+            allowNonIdrKeyframes = true
+            stopPlayback()
+            setupPlayer(preferSoftwareDecoder = softwareDecoderMode)
+            mediaPlayer?.setMediaItem(buildMediaItem(lastRequestedPlaybackUrl))
+            mediaPlayer?.prepare()
+            mediaPlayer?.playWhenReady = true
+        } else if (!retriedWithoutAudio && lastRequestedPlaybackUrl.isNotBlank()) {
             showCenterError("Нет видеокадра, пробуем запуск без аудио", 2200L)
             retryCurrentStreamWithoutAudio()
         } else {
@@ -1460,6 +1469,7 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             homePanel.visibility = View.GONE
             val shouldUseSoftware = false
+            allowNonIdrKeyframes = false
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
@@ -1494,6 +1504,7 @@ class MainActivity : AppCompatActivity() {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
             homePanel.visibility = View.GONE
             val shouldUseSoftware = false
+            allowNonIdrKeyframes = false
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
@@ -1665,9 +1676,12 @@ class MainActivity : AppCompatActivity() {
             .setEnableDecoderFallback(true)
             .setMediaCodecSelector(codecSelector)
 
-        val tsFlags =
+        val tsFlags = if (allowNonIdrKeyframes) {
             DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS or
                 DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES
+        } else {
+            DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
+        }
 
         val hlsMediaSourceFactory = HlsMediaSource.Factory(httpFactory)
             .setAllowChunklessPreparation(false)
