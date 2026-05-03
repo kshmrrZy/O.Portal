@@ -1962,9 +1962,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun extractEpgSourcesFromPlaylist(content: String): List<String> {
-        if (!content.contains("x-tvg-url="")) return emptyList()
-        return content.substringAfter("x-tvg-url="", "")
-            .substringBefore(""")
+        if (!content.contains("x-tvg-url=\"")) return emptyList()
+        return content.substringAfter("x-tvg-url=\"", "")
+            .substringBefore("\"")
             .split(",")
             .map { it.trim() }
             .filter { it.isNotBlank() }
