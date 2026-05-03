@@ -53,7 +53,13 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
     implementation("androidx.media3:media3-ui:1.4.1")
-    implementation("org.videolan.android:libvlc-all:3.6.0")
+
+    // Optional local Media3 FFmpeg extension AAR.
+    // Place built artifact at: app/libs/media3-decoder-ffmpeg.aar
+    val localMedia3FfmpegAar = file("libs/media3-decoder-ffmpeg.aar")
+    if (localMedia3FfmpegAar.exists()) {
+        implementation(files(localMedia3FfmpegAar))
+    }
     implementation("androidx.annotation:annotation-experimental:1.4.1")
     implementation("androidx.coordinatorlayout:coordinatorlayout:1.2.0")
 
