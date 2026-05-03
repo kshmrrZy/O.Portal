@@ -1485,7 +1485,7 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             homePanel.visibility = View.GONE
             val shouldUseSoftware = false
-            allowNonIdrKeyframes = false
+            allowNonIdrKeyframes = channel.url.contains("/only4/", ignoreCase = true)
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
@@ -1521,7 +1521,7 @@ class MainActivity : AppCompatActivity() {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
             homePanel.visibility = View.GONE
             val shouldUseSoftware = false
-            allowNonIdrKeyframes = false
+            allowNonIdrKeyframes = ch.url.contains("/only4/", ignoreCase = true)
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
