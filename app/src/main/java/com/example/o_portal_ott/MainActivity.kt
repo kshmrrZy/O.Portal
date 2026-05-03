@@ -1002,7 +1002,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showEpgSelectionDialog() {
-        val playlistEpgSources = PlaylistEpgUtils.extractEpgSourcesFromPlaylist(currentPlaylistText)
+        val playlistEpgSources = extractEpgSourcesFromPlaylist(currentPlaylistText)
         val editableSources = getCustomEpgSources().ifEmpty { playlistEpgSources }
         availableEpgSources = editableSources
         if (availableEpgSources.isEmpty()) {
@@ -1147,7 +1147,7 @@ class MainActivity : AppCompatActivity() {
                 val content = URL(playlistUrl).readText()
                 currentPlaylistText = content
                 val parsedChannels = M3uParser.parse(content)
-                val parsedEpgUrls = PlaylistEpgUtils.extractEpgSourcesFromPlaylist(content)
+                val parsedEpgUrls = extractEpgSourcesFromPlaylist(content)
 
                 handler.post {
                     channels.clear()
@@ -1219,7 +1219,7 @@ class MainActivity : AppCompatActivity() {
                 applyEpgStatus(sourceUrl, "Загрузка файла: 0%")
                 var parsed = false
                 var lastError = "Неизвестная ошибка"
-                val epgUrlVariants = PlaylistEpgUtils.buildEpgUrlCandidates(sourceUrl)
+                val epgUrlVariants = buildEpgUrlCandidates(sourceUrl)
                 candidates = epgUrlVariants
 
                 for (candidateUrl in epgUrlVariants) {
@@ -1460,7 +1460,7 @@ class MainActivity : AppCompatActivity() {
         }
         runCatching {
             homePanel.visibility = View.GONE
-            val shouldUseSoftware = channel.url.contains("/only4/", ignoreCase = true)
+            val shouldUseSoftware = false
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
@@ -1494,7 +1494,7 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
             homePanel.visibility = View.GONE
-            val shouldUseSoftware = ch.url.contains("/only4/", ignoreCase = true)
+            val shouldUseSoftware = false
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
@@ -1960,6 +1960,29 @@ class MainActivity : AppCompatActivity() {
         showUI()
         handler.removeCallbacks(restoreEpgRunnable)
         handler.postDelayed(restoreEpgRunnable, 2000)
+    }
+
+    private fun extractEpgSourcesFromPlaylist(content: String): List<String> {
+        if (!content.contains("x-tvg-url="")) return emptyList()
+        return content.substringAfter("x-tvg-url="", "")
+            .substringBefore(""")
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+
+    private fun buildEpgUrlCandidates(url: String): List<String> {
+        val clean = url.trim()
+        if (clean.isBlank()) return emptyList()
+        val result = linkedSetOf(clean)
+        if (!clean.endsWith(".xml.gz", true) && !clean.endsWith(".xml", true)) {
+            result += "$clean.xml.gz"
+            result += "$clean.xml"
+            result += clean.trimEnd('/') + "/xmltv.xml.gz"
+            result += clean.trimEnd('/') + "/epg.xml.gz"
+        }
+        return result.toList()
     }
 
     private fun shouldDailyRefreshEpg(): Boolean {
