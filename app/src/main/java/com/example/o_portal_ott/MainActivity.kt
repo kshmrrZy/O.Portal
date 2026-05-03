@@ -94,6 +94,7 @@ class MainActivity : AppCompatActivity() {
     private var mediaPlayer: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
     private var retriedWithoutAudio = false
+    private var firstFrameRendered = false
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -152,6 +153,22 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var epgFetchInProgress = false
     private var archiveStreamStartMs: Long = 0L
     private var lastRequestedPlaybackUrl: String = ""
+    private val startupFrameTimeoutRunnable = Runnable {
+        if (firstFrameRendered) return@Runnable
+        if (!retriedWithoutAudio && lastRequestedPlaybackUrl.isNotBlank()) {
+            showCenterError("Нет видеокадра, пробуем запуск без аудио", 2200L)
+            retryCurrentStreamWithoutAudio()
+        } else {
+            showCenterError("Нет видеокадра, перезапускаем поток", 2200L)
+            mediaPlayer?.let { p ->
+                p.stop()
+                p.setMediaItem(buildMediaItem(lastRequestedPlaybackUrl))
+                p.prepare()
+                p.playWhenReady = true
+            }
+        }
+    }
+
     private val returnToLiveRunnable = Runnable {
         tvReloadingStatus.text = "Возвращаемся к прямой трансляции"
         playChannel(forcePlay = true)
@@ -338,6 +355,7 @@ class MainActivity : AppCompatActivity() {
         btnPlayPause.setOnClickListener {
             if (isPlaybackPaused) {
                 mediaPlayer?.play()
+            handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
                 isPlaybackPaused = false
                 btnPlayPause.setImageResource(R.drawable.ic_pause)
             } else {
@@ -1389,6 +1407,7 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.setMediaItem(MediaItem.fromUri(Uri.parse(archiveUrl)))
             mediaPlayer?.prepare()
             mediaPlayer?.play()
+            handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
             isPlaybackPaused = false
             isArchivePlayback = true
             currentArchiveProgram = program
@@ -1409,12 +1428,15 @@ class MainActivity : AppCompatActivity() {
             homePanel.visibility = View.GONE
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = ch.url
+            firstFrameRendered = false
+            handler.removeCallbacks(startupFrameTimeoutRunnable)
             retriedWithoutAudio = false
             enableAudioTrack()
 
             mediaPlayer?.setMediaItem(buildMediaItem(ch.url))
             mediaPlayer?.prepare()
             mediaPlayer?.play()
+            handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
             isPlaybackPaused = false
             isArchivePlayback = false
             currentArchiveProgram = null
@@ -1531,6 +1553,7 @@ class MainActivity : AppCompatActivity() {
 
         val renderersFactory = DefaultRenderersFactory(this)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            .setEnableDecoderFallback(true)
 
         val extractorsFactory = DefaultExtractorsFactory()
             .setTsExtractorFlags(
@@ -1558,8 +1581,13 @@ class MainActivity : AppCompatActivity() {
             .also { player ->
             findViewById<PlayerView>(R.id.videoLayout).player = player
             player.addListener(object : androidx.media3.common.Player.Listener {
+                override fun onRenderedFirstFrame() {
+                    firstFrameRendered = true
+                    handler.removeCallbacks(startupFrameTimeoutRunnable)
+                }
                 override fun onPlayerError(error: PlaybackException) {
                     handler.post {
+                        handler.removeCallbacks(startupFrameTimeoutRunnable)
                         if (shouldRetryWithoutAudio(error)) {
                             showCenterError("Аудио MPEG не поддерживается устройством, продолжаем без звука", 2500L)
                             retryCurrentStreamWithoutAudio()
@@ -1588,6 +1616,9 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.setMediaItem(buildMediaItem(url))
         mediaPlayer?.prepare()
         mediaPlayer?.playWhenReady = true
+        firstFrameRendered = false
+        handler.removeCallbacks(startupFrameTimeoutRunnable)
+        handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
     }
 
     private fun disableAudioTrack() {
@@ -1712,6 +1743,7 @@ class MainActivity : AppCompatActivity() {
         if (versionChanged || hasIncompleteEpgProgress) ensureEpgLoadedLazy()
         if (mediaPlayer != null && isPlaybackPaused) {
             mediaPlayer?.play()
+            handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
             isPlaybackPaused = false
             btnPlayPause.setImageResource(R.drawable.ic_pause)
         }
@@ -1774,6 +1806,7 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.release()
         mediaPlayer = null
         trackSelector = null
+        handler.removeCallbacks(startupFrameTimeoutRunnable)
 
     }
 
