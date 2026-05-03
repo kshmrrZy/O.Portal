@@ -102,6 +102,7 @@ class MainActivity : AppCompatActivity() {
     private var lastPlaybackPositionMs = -1L
     private var lastProgressWallClockMs = 0L
     private var bufferingSinceMs = 0L
+    private var startupWaitSinceMs = 0L
     private var allowNonIdrKeyframes = false
     private lateinit var mDetector: GestureDetectorCompat
 
@@ -163,6 +164,13 @@ class MainActivity : AppCompatActivity() {
     private var lastRequestedPlaybackUrl: String = ""
     private val startupFrameTimeoutRunnable: Runnable = Runnable {
         if (firstFrameRendered) return@Runnable
+        val player = mediaPlayer
+        val now = System.currentTimeMillis()
+        if (startupWaitSinceMs == 0L) startupWaitSinceMs = now
+        if (player != null && player.playbackState == androidx.media3.common.Player.STATE_BUFFERING && now - startupWaitSinceMs < 30_000L) {
+            handler.postDelayed(startupFrameTimeoutRunnable, 4000L)
+            return@Runnable
+        }
         if (!allowNonIdrKeyframes && lastRequestedPlaybackUrl.isNotBlank()) {
             showCenterError("Нет IDR, включаем fallback для TS и перезапускаем", 2400L)
             allowNonIdrKeyframes = true
@@ -188,6 +196,7 @@ class MainActivity : AppCompatActivity() {
                 p.prepare()
                 p.playWhenReady = true
                 firstFrameRendered = false
+        startupWaitSinceMs = 0L
                 handler.removeCallbacks(startupFrameTimeoutRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                         handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
@@ -1518,6 +1527,7 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                     retriedWithoutAudio = false
             retriedWithLowerResolution = false
+            startupWaitSinceMs = 0L
             enableAudioTrack()
             if (ch.url.contains("/only4/", ignoreCase = true)) {
                 optimizeForHighBitrateStream()
@@ -1710,6 +1720,7 @@ class MainActivity : AppCompatActivity() {
                     lastProgressWallClockMs = System.currentTimeMillis()
                     handler.removeCallbacks(startupFrameTimeoutRunnable)
                     handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+                    startupWaitSinceMs = 0L
                 }
                 override fun onPlayerError(error: PlaybackException) {
                     handler.post {
@@ -1744,6 +1755,7 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.prepare()
         mediaPlayer?.playWhenReady = true
         firstFrameRendered = false
+        startupWaitSinceMs = 0L
         handler.removeCallbacks(startupFrameTimeoutRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                 handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
