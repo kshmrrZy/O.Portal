@@ -1415,7 +1415,7 @@ class MainActivity : AppCompatActivity() {
         }
         runCatching {
             homePanel.visibility = View.GONE
-            val shouldUseSoftware = ch.url.contains("/only4/", ignoreCase = true)
+            val shouldUseSoftware = channel.url.contains("/only4/", ignoreCase = true)
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
@@ -1445,7 +1445,7 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
             homePanel.visibility = View.GONE
-            val shouldUseSoftware = ch.url.contains("/only4/", ignoreCase = true)
+            val shouldUseSoftware = channel.url.contains("/only4/", ignoreCase = true)
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
