@@ -1444,7 +1444,11 @@ class MainActivity : AppCompatActivity() {
             retriedWithoutAudio = false
             retriedWithLowerResolution = false
             enableAudioTrack()
-            resetVideoConstraints()
+            if (ch.url.contains("/only4/", ignoreCase = true)) {
+                limitVideoToSd()
+            } else {
+                resetVideoConstraints()
+            }
 
             mediaPlayer?.setMediaItem(buildMediaItem(ch.url))
             mediaPlayer?.prepare()
@@ -1576,7 +1580,9 @@ class MainActivity : AppCompatActivity() {
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             .setEnableDecoderFallback(true)
 
-        val tsFlags = DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
+        val tsFlags =
+            DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS or
+                DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES
 
         val hlsMediaSourceFactory = HlsMediaSource.Factory(httpFactory)
             .setAllowChunklessPreparation(false)
