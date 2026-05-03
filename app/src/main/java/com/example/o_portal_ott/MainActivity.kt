@@ -1445,7 +1445,7 @@ class MainActivity : AppCompatActivity() {
             retriedWithLowerResolution = false
             enableAudioTrack()
             if (ch.url.contains("/only4/", ignoreCase = true)) {
-                limitVideoToSd()
+                optimizeForHighBitrateStream()
             } else {
                 resetVideoConstraints()
             }
@@ -1658,6 +1658,16 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun optimizeForHighBitrateStream() {
+        trackSelector?.setParameters(
+            trackSelector?.buildUponParameters()
+                ?.setMaxVideoSize(960, 540)
+                ?.setMaxVideoBitrate(2_000_000)
+                ?.setForceLowestBitrate(true)
+                ?: return
+        )
+    }
+
     private fun limitVideoToSd() {
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()
@@ -1670,6 +1680,8 @@ class MainActivity : AppCompatActivity() {
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()
                 ?.clearVideoSizeConstraints()
+                ?.setMaxVideoBitrate(Int.MAX_VALUE)
+                ?.setForceLowestBitrate(false)
                 ?: return
         )
     }
