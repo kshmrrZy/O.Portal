@@ -98,9 +98,10 @@ class MainActivity : AppCompatActivity() {
     private var retriedWithoutAudio = false
     private var firstFrameRendered = false
     private var retriedWithLowerResolution = false
-    private var softwareDecoderMode = false
+    private var softwareDecoderMode = false // forced off: hardware/auto decoders are more stable for this stream
     private var lastPlaybackPositionMs = -1L
     private var lastProgressWallClockMs = 0L
+    private var bufferingSinceMs = 0L
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -192,9 +193,23 @@ class MainActivity : AppCompatActivity() {
     private val playbackFreezeWatchdogRunnable: Runnable = Runnable {
         val player = mediaPlayer ?: return@Runnable
         if (!player.isPlaying) {
+            if (player.playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
+                if (bufferingSinceMs == 0L) bufferingSinceMs = now
+                if (now - bufferingSinceMs > 12_000L) {
+                    showCenterError("Буферизация зависла, перезапуск потока", 2200L)
+                    player.stop()
+                    player.setMediaItem(buildMediaItem(lastRequestedPlaybackUrl))
+                    player.prepare()
+                    player.playWhenReady = true
+                    bufferingSinceMs = now
+                }
+            } else {
+                bufferingSinceMs = 0L
+            }
             handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
             return@Runnable
         }
+        bufferingSinceMs = 0L
         val pos = player.currentPosition
         val now = System.currentTimeMillis()
         if (pos > lastPlaybackPositionMs + 250L) {
@@ -1444,7 +1459,7 @@ class MainActivity : AppCompatActivity() {
         }
         runCatching {
             homePanel.visibility = View.GONE
-            val shouldUseSoftware = channel.url.contains("/only4/", ignoreCase = true)
+            val shouldUseSoftware = false
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
@@ -1478,7 +1493,7 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
             homePanel.visibility = View.GONE
-            val shouldUseSoftware = channel.url.contains("/only4/", ignoreCase = true)
+            val shouldUseSoftware = false
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
