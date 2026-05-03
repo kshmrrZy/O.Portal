@@ -73,6 +73,20 @@
             android:textOn="Кнопка блокировки: включена"
             android:textColor="#FFFFFF"
             android:background="@drawable/bg_soft_button" />
+        <ToggleButton
+            android:id="@+id/tbGpuDecoder"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:textAllCaps="false"
+            android:maxLines="3"
+            android:textSize="12sp"
+            android:textOff="Декодер видео: CPU (без GPU)"
+            android:textOn="Декодер видео: GPU (аппаратный)"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/bg_soft_button" />
+
     </LinearLayout>
 
     <TextView
