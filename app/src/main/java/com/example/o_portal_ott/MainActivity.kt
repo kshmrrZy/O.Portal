@@ -1553,6 +1553,14 @@ class MainActivity : AppCompatActivity() {
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(12_000)
             .setReadTimeoutMs(25_000)
+            .setDefaultRequestProperties(
+                mapOf(
+                    "Accept" to "*/*",
+                    "Origin" to "https://o.avff.ru",
+                    "Referer" to "https://o.avff.ru/",
+                    "Connection" to "keep-alive"
+                )
+            )
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
