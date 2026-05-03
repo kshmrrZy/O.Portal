@@ -40,19 +40,18 @@ import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.load.model.LazyHeaders
 import org.json.JSONArray
 import org.json.JSONObject
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.PlayerView
-import org.videolan.libvlc.LibVLC
-import org.videolan.libvlc.Media
-import org.videolan.libvlc.MediaPlayer as VlcMediaPlayer
-import org.videolan.libvlc.util.VLCVideoLayout
 import org.xmlpull.v1.XmlPullParser
 import java.io.BufferedInputStream
 import java.io.ByteArrayInputStream
@@ -94,9 +93,10 @@ data class PlaylistProfile(
 class MainActivity : AppCompatActivity() {
 
     private var mediaPlayer: ExoPlayer? = null
-    private var libVlc: LibVLC? = null
-    private var vlcPlayer: VlcMediaPlayer? = null
-    private var usingVlcFallback = false
+    private var trackSelector: DefaultTrackSelector? = null
+    private var retriedWithoutAudio = false
+    private var firstFrameRendered = false
+    private var retriedWithLowerResolution = false
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -155,6 +155,31 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var epgFetchInProgress = false
     private var archiveStreamStartMs: Long = 0L
     private var lastRequestedPlaybackUrl: String = ""
+    private val startupFrameTimeoutRunnable: Runnable = Runnable {
+        if (firstFrameRendered) return@Runnable
+        if (!retriedWithoutAudio && lastRequestedPlaybackUrl.isNotBlank()) {
+            showCenterError("Нет видеокадра, пробуем запуск без аудио", 2200L)
+            retryCurrentStreamWithoutAudio()
+        } else {
+            if (!retriedWithLowerResolution) {
+                showCenterError("Нет видеокадра, пробуем понизить качество видео", 2500L)
+                retriedWithLowerResolution = true
+                limitVideoToSd()
+            } else {
+                showCenterError("Нет видеокадра, перезапускаем поток", 2200L)
+            }
+            mediaPlayer?.let { p ->
+                p.stop()
+                p.setMediaItem(buildMediaItem(lastRequestedPlaybackUrl))
+                p.prepare()
+                p.playWhenReady = true
+                firstFrameRendered = false
+                handler.removeCallbacks(startupFrameTimeoutRunnable)
+                handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
+            }
+        }
+    }
+
     private val returnToLiveRunnable = Runnable {
         tvReloadingStatus.text = "Возвращаемся к прямой трансляции"
         playChannel(forcePlay = true)
@@ -341,6 +366,7 @@ class MainActivity : AppCompatActivity() {
         btnPlayPause.setOnClickListener {
             if (isPlaybackPaused) {
                 mediaPlayer?.play()
+            handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
                 isPlaybackPaused = false
                 btnPlayPause.setImageResource(R.drawable.ic_pause)
             } else {
@@ -1392,6 +1418,7 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.setMediaItem(MediaItem.fromUri(Uri.parse(archiveUrl)))
             mediaPlayer?.prepare()
             mediaPlayer?.play()
+            handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
             isPlaybackPaused = false
             isArchivePlayback = true
             currentArchiveProgram = program
@@ -1410,14 +1437,19 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
             homePanel.visibility = View.GONE
-            switchToExoSurface()
-            vlcPlayer?.stop()
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = ch.url
+            firstFrameRendered = false
+            handler.removeCallbacks(startupFrameTimeoutRunnable)
+            retriedWithoutAudio = false
+            retriedWithLowerResolution = false
+            enableAudioTrack()
+            resetVideoConstraints()
 
-            mediaPlayer?.setMediaItem(MediaItem.fromUri(Uri.parse(ch.url)))
+            mediaPlayer?.setMediaItem(buildMediaItem(ch.url))
             mediaPlayer?.prepare()
             mediaPlayer?.play()
+            handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
             isPlaybackPaused = false
             isArchivePlayback = false
             currentArchiveProgram = null
@@ -1437,35 +1469,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun ensureVlcPlayer() {
-        if (vlcPlayer != null) return
-        libVlc = LibVLC(this, arrayListOf("--network-caching=1000", "--http-reconnect", "--avcodec-fast"))
-        vlcPlayer = VlcMediaPlayer(libVlc).also { player ->
-            val vlcView = findViewById<VLCVideoLayout>(R.id.vlcVideoLayout)
-            player.attachViews(vlcView, null, false, false)
-        }
-    }
 
-    private fun playWithVlc(url: String) {
-        ensureVlcPlayer()
-        usingVlcFallback = true
-        findViewById<PlayerView>(R.id.videoLayout).visibility = View.GONE
-        findViewById<VLCVideoLayout>(R.id.vlcVideoLayout).visibility = View.VISIBLE
-        val media = Media(libVlc, Uri.parse(url)).apply {
-            setHWDecoderEnabled(true, false)
-            addOption(":network-caching=1000")
-            addOption(":http-reconnect=true")
-            addOption(":live-caching=1000")
-        }
-        vlcPlayer?.media = media
-        media.release()
-        vlcPlayer?.play()
-    }
-
-    private fun switchToExoSurface() {
-        usingVlcFallback = false
-        findViewById<VLCVideoLayout>(R.id.vlcVideoLayout).visibility = View.GONE
-        findViewById<PlayerView>(R.id.videoLayout).visibility = View.VISIBLE
+    private fun buildMediaItem(url: String): MediaItem {
+        val uri = Uri.parse(url)
+        val mime = if (url.contains(".m3u8", ignoreCase = true)) "application/x-mpegURL" else null
+        return MediaItem.Builder()
+            .setUri(uri)
+            .setMimeType(mime)
+            .build()
     }
 
     private fun showCenterError(message: String, durationMs: Long = 2200L) {
@@ -1543,6 +1554,14 @@ class MainActivity : AppCompatActivity() {
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(12_000)
             .setReadTimeoutMs(25_000)
+            .setDefaultRequestProperties(
+                mapOf(
+                    "Accept" to "*/*",
+                    "Origin" to "https://o.avff.ru",
+                    "Referer" to "https://o.avff.ru/",
+                    "Connection" to "keep-alive"
+                )
+            )
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
@@ -1554,30 +1573,41 @@ class MainActivity : AppCompatActivity() {
             .build()
 
         val renderersFactory = DefaultRenderersFactory(this)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            .setEnableDecoderFallback(true)
 
-        val extractorsFactory = DefaultExtractorsFactory()
-            .setTsExtractorFlags(
-                DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS or
-                    DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES
+        val tsFlags = DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
+
+        val hlsMediaSourceFactory = HlsMediaSource.Factory(httpFactory)
+            .setAllowChunklessPreparation(false)
+            .setExtractorFactory(DefaultHlsExtractorFactory(tsFlags, true))
+
+        trackSelector = DefaultTrackSelector(this).apply {
+            setParameters(
+                buildUponParameters()
+                    .setAllowVideoMixedMimeTypeAdaptiveness(true)
+                    .setAllowAudioMixedMimeTypeAdaptiveness(true)
             )
-            .setTsExtractorTimestampSearchBytes(112_800)
+        }
 
         mediaPlayer = ExoPlayer.Builder(this, renderersFactory)
+            .setTrackSelector(trackSelector!!)
             .setLoadControl(loadControl)
-            .setMediaSourceFactory(
-                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this, extractorsFactory)
-                    .setDataSourceFactory(httpFactory)
-            )
+            .setMediaSourceFactory(hlsMediaSourceFactory)
             .build()
             .also { player ->
             findViewById<PlayerView>(R.id.videoLayout).player = player
             player.addListener(object : androidx.media3.common.Player.Listener {
+                override fun onRenderedFirstFrame() {
+                    firstFrameRendered = true
+                    handler.removeCallbacks(startupFrameTimeoutRunnable)
+                }
                 override fun onPlayerError(error: PlaybackException) {
                     handler.post {
-                        if (!usingVlcFallback && lastRequestedPlaybackUrl.isNotBlank()) {
-                            showCenterError("ExoPlayer не декодировал поток, переключаемся на встроенный fallback", 2200L)
-                            playWithVlc(lastRequestedPlaybackUrl)
+                        handler.removeCallbacks(startupFrameTimeoutRunnable)
+                        if (shouldRetryWithoutAudio(error)) {
+                            showCenterError("Аудио MPEG не поддерживается устройством, продолжаем без звука", 2500L)
+                            retryCurrentStreamWithoutAudio()
                         } else {
                             showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, error.message ?: "PlaybackException")
                         }
@@ -1585,6 +1615,57 @@ class MainActivity : AppCompatActivity() {
                 }
             })
         }
+    }
+
+
+    private fun shouldRetryWithoutAudio(error: PlaybackException): Boolean {
+        if (retriedWithoutAudio || lastRequestedPlaybackUrl.isBlank()) return false
+        val text = ((error.message ?: "") + " " + (error.cause?.message ?: "")).lowercase(Locale.ROOT)
+        return text.contains("audio") || text.contains("mpga") || text.contains("mpeg") || text.contains("decoder")
+    }
+
+    private fun retryCurrentStreamWithoutAudio() {
+        val url = lastRequestedPlaybackUrl
+        if (url.isBlank()) return
+        retriedWithoutAudio = true
+        disableAudioTrack()
+        mediaPlayer?.stop()
+        mediaPlayer?.setMediaItem(buildMediaItem(url))
+        mediaPlayer?.prepare()
+        mediaPlayer?.playWhenReady = true
+        firstFrameRendered = false
+        handler.removeCallbacks(startupFrameTimeoutRunnable)
+        handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
+    }
+
+    private fun disableAudioTrack() {
+        trackSelector?.setParameters(
+            trackSelector?.buildUponParameters()?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                ?: return
+        )
+    }
+
+    private fun enableAudioTrack() {
+        trackSelector?.setParameters(
+            trackSelector?.buildUponParameters()?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                ?: return
+        )
+    }
+
+    private fun limitVideoToSd() {
+        trackSelector?.setParameters(
+            trackSelector?.buildUponParameters()
+                ?.setMaxVideoSize(1280, 720)
+                ?: return
+        )
+    }
+
+    private fun resetVideoConstraints() {
+        trackSelector?.setParameters(
+            trackSelector?.buildUponParameters()
+                ?.clearVideoSizeConstraints()
+                ?: return
+        )
     }
 
     private fun showUI() {
@@ -1684,7 +1765,7 @@ class MainActivity : AppCompatActivity() {
             if (channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
                 playChannel(forcePlay = true)
             }
-        } else if (!usingVlcFallback) {
+        } else {
             findViewById<PlayerView>(R.id.videoLayout).player = mediaPlayer
         }
         if ((shouldReloadStreamOnStart || versionChanged) && channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
@@ -1695,6 +1776,7 @@ class MainActivity : AppCompatActivity() {
         if (versionChanged || hasIncompleteEpgProgress) ensureEpgLoadedLazy()
         if (mediaPlayer != null && isPlaybackPaused) {
             mediaPlayer?.play()
+            handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
             isPlaybackPaused = false
             btnPlayPause.setImageResource(R.drawable.ic_pause)
         }
@@ -1756,13 +1838,9 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.stop()
         mediaPlayer?.release()
         mediaPlayer = null
+        trackSelector = null
+        handler.removeCallbacks(startupFrameTimeoutRunnable)
 
-        vlcPlayer?.stop()
-        vlcPlayer?.detachViews()
-        vlcPlayer?.release()
-        vlcPlayer = null
-        libVlc?.release()
-        libVlc = null
     }
 
     private fun showLockedMessage() {
