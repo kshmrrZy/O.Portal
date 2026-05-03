@@ -1592,6 +1592,14 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
+        trackSelector = DefaultTrackSelector(this).apply {
+            setParameters(
+                buildUponParameters()
+                    .setAllowVideoMixedMimeTypeAdaptiveness(true)
+                    .setAllowAudioMixedMimeTypeAdaptiveness(true)
+            )
+        }
+
         mediaPlayer = ExoPlayer.Builder(this, renderersFactory)
             .setTrackSelector(trackSelector!!)
             .setLoadControl(loadControl)
