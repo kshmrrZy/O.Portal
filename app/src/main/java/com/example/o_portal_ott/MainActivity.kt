@@ -40,19 +40,17 @@ import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.load.model.LazyHeaders
 import org.json.JSONArray
 import org.json.JSONObject
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.PlayerView
-import org.videolan.libvlc.LibVLC
-import org.videolan.libvlc.Media
-import org.videolan.libvlc.MediaPlayer as VlcMediaPlayer
-import org.videolan.libvlc.util.VLCVideoLayout
 import org.xmlpull.v1.XmlPullParser
 import java.io.BufferedInputStream
 import java.io.ByteArrayInputStream
@@ -94,9 +92,8 @@ data class PlaylistProfile(
 class MainActivity : AppCompatActivity() {
 
     private var mediaPlayer: ExoPlayer? = null
-    private var libVlc: LibVLC? = null
-    private var vlcPlayer: VlcMediaPlayer? = null
-    private var usingVlcFallback = false
+    private var trackSelector: DefaultTrackSelector? = null
+    private var retriedWithoutAudio = false
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -1410,12 +1407,12 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
             homePanel.visibility = View.GONE
-            switchToExoSurface()
-            vlcPlayer?.stop()
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = ch.url
+            retriedWithoutAudio = false
+            enableAudioTrack()
 
-            mediaPlayer?.setMediaItem(MediaItem.fromUri(Uri.parse(ch.url)))
+            mediaPlayer?.setMediaItem(buildMediaItem(ch.url))
             mediaPlayer?.prepare()
             mediaPlayer?.play()
             isPlaybackPaused = false
@@ -1437,35 +1434,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun ensureVlcPlayer() {
-        if (vlcPlayer != null) return
-        libVlc = LibVLC(this, arrayListOf("--network-caching=1000", "--http-reconnect", "--avcodec-fast"))
-        vlcPlayer = VlcMediaPlayer(libVlc).also { player ->
-            val vlcView = findViewById<VLCVideoLayout>(R.id.vlcVideoLayout)
-            player.attachViews(vlcView, null, false, false)
-        }
-    }
 
-    private fun playWithVlc(url: String) {
-        ensureVlcPlayer()
-        usingVlcFallback = true
-        findViewById<PlayerView>(R.id.videoLayout).visibility = View.GONE
-        findViewById<VLCVideoLayout>(R.id.vlcVideoLayout).visibility = View.VISIBLE
-        val media = Media(libVlc, Uri.parse(url)).apply {
-            setHWDecoderEnabled(true, false)
-            addOption(":network-caching=1000")
-            addOption(":http-reconnect=true")
-            addOption(":live-caching=1000")
-        }
-        vlcPlayer?.media = media
-        media.release()
-        vlcPlayer?.play()
-    }
-
-    private fun switchToExoSurface() {
-        usingVlcFallback = false
-        findViewById<VLCVideoLayout>(R.id.vlcVideoLayout).visibility = View.GONE
-        findViewById<PlayerView>(R.id.videoLayout).visibility = View.VISIBLE
+    private fun buildMediaItem(url: String): MediaItem {
+        val uri = Uri.parse(url)
+        val mime = if (url.contains(".m3u8", ignoreCase = true)) "application/x-mpegURL" else null
+        return MediaItem.Builder()
+            .setUri(uri)
+            .setMimeType(mime)
+            .build()
     }
 
     private fun showCenterError(message: String, durationMs: Long = 2200L) {
@@ -1554,7 +1530,7 @@ class MainActivity : AppCompatActivity() {
             .build()
 
         val renderersFactory = DefaultRenderersFactory(this)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
 
         val extractorsFactory = DefaultExtractorsFactory()
             .setTsExtractorFlags(
@@ -1563,7 +1539,16 @@ class MainActivity : AppCompatActivity() {
             )
             .setTsExtractorTimestampSearchBytes(112_800)
 
+        trackSelector = DefaultTrackSelector(this).apply {
+            setParameters(
+                buildUponParameters()
+                    .setAllowVideoMixedMimeTypeAdaptiveness(true)
+                    .setAllowAudioMixedMimeTypeAdaptiveness(true)
+            )
+        }
+
         mediaPlayer = ExoPlayer.Builder(this, renderersFactory)
+            .setTrackSelector(trackSelector!!)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(
                 androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this, extractorsFactory)
@@ -1575,9 +1560,9 @@ class MainActivity : AppCompatActivity() {
             player.addListener(object : androidx.media3.common.Player.Listener {
                 override fun onPlayerError(error: PlaybackException) {
                     handler.post {
-                        if (!usingVlcFallback && lastRequestedPlaybackUrl.isNotBlank()) {
-                            showCenterError("ExoPlayer не декодировал поток, переключаемся на встроенный fallback", 2200L)
-                            playWithVlc(lastRequestedPlaybackUrl)
+                        if (shouldRetryWithoutAudio(error)) {
+                            showCenterError("Аудио MPEG не поддерживается устройством, продолжаем без звука", 2500L)
+                            retryCurrentStreamWithoutAudio()
                         } else {
                             showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, error.message ?: "PlaybackException")
                         }
@@ -1585,6 +1570,38 @@ class MainActivity : AppCompatActivity() {
                 }
             })
         }
+    }
+
+
+    private fun shouldRetryWithoutAudio(error: PlaybackException): Boolean {
+        if (retriedWithoutAudio || lastRequestedPlaybackUrl.isBlank()) return false
+        val text = ((error.message ?: "") + " " + (error.cause?.message ?: "")).lowercase(Locale.ROOT)
+        return text.contains("audio") || text.contains("mpga") || text.contains("mpeg") || text.contains("decoder")
+    }
+
+    private fun retryCurrentStreamWithoutAudio() {
+        val url = lastRequestedPlaybackUrl
+        if (url.isBlank()) return
+        retriedWithoutAudio = true
+        disableAudioTrack()
+        mediaPlayer?.stop()
+        mediaPlayer?.setMediaItem(buildMediaItem(url))
+        mediaPlayer?.prepare()
+        mediaPlayer?.playWhenReady = true
+    }
+
+    private fun disableAudioTrack() {
+        trackSelector?.setParameters(
+            trackSelector?.buildUponParameters()?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                ?: return
+        )
+    }
+
+    private fun enableAudioTrack() {
+        trackSelector?.setParameters(
+            trackSelector?.buildUponParameters()?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                ?: return
+        )
     }
 
     private fun showUI() {
@@ -1684,7 +1701,7 @@ class MainActivity : AppCompatActivity() {
             if (channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
                 playChannel(forcePlay = true)
             }
-        } else if (!usingVlcFallback) {
+        } else {
             findViewById<PlayerView>(R.id.videoLayout).player = mediaPlayer
         }
         if ((shouldReloadStreamOnStart || versionChanged) && channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
@@ -1756,13 +1773,8 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.stop()
         mediaPlayer?.release()
         mediaPlayer = null
+        trackSelector = null
 
-        vlcPlayer?.stop()
-        vlcPlayer?.detachViews()
-        vlcPlayer?.release()
-        vlcPlayer = null
-        libVlc?.release()
-        libVlc = null
     }
 
     private fun showLockedMessage() {
