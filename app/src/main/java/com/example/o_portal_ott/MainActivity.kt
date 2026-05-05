@@ -43,6 +43,7 @@ import org.json.JSONObject
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -97,7 +98,7 @@ class MainActivity : AppCompatActivity() {
     private var trackSelector: DefaultTrackSelector? = null
     private var retriedWithoutAudio = false
     private var firstFrameRendered = false
-    private var retriedWithLowerResolution = false
+    private var retriedWithAlternateDecoder = false
     private var softwareDecoderMode = false
     private var preferGpuDecoding = true
     private var lastPlaybackPositionMs = -1L
@@ -172,40 +173,24 @@ class MainActivity : AppCompatActivity() {
             handler.postDelayed(startupFrameTimeoutRunnable, 4000L)
             return@Runnable
         }
-        if (!allowNonIdrKeyframes && lastRequestedPlaybackUrl.isNotBlank()) {
-            showCenterError("Нет IDR, включаем fallback для TS и перезапускаем", 2400L)
-            allowNonIdrKeyframes = true
-            stopPlayback()
-            setupPlayer(preferSoftwareDecoder = softwareDecoderMode)
-            mediaPlayer?.setMediaItem(buildMediaItem(lastRequestedPlaybackUrl))
-            mediaPlayer?.prepare()
-            mediaPlayer?.playWhenReady = true
+        if (!retriedWithAlternateDecoder && lastRequestedPlaybackUrl.isNotBlank()) {
+            showCenterError("Нет видеокадра, пробуем другой декодер", 2500L)
+            retriedWithAlternateDecoder = true
+            switchDecoderModeAndRestart()
+            return@Runnable
         } else if (!retriedWithoutAudio && lastRequestedPlaybackUrl.isNotBlank()) {
             showCenterError("Нет видеокадра, пробуем запуск без аудио", 2200L)
             retryCurrentStreamWithoutAudio()
+        } else if (!allowNonIdrKeyframes && lastRequestedPlaybackUrl.isNotBlank()) {
+            // Last-resort fallback for H.264 inside MPEG-TS: decoding from non-IDR frames may
+            // temporarily look blocky because reference frames are missing, so keep it after
+            // decoder/audio retries rather than enabling it first.
+            showCenterError("Нет IDR, последний fallback для TS", 2400L)
+            allowNonIdrKeyframes = true
+            restartCurrentStream(recreatePlayer = true)
         } else {
-            if (!retriedWithLowerResolution) {
-                showCenterError("Нет видеокадра, пробуем понизить качество видео", 2500L)
-                retriedWithLowerResolution = true
-                limitVideoToSd()
-            } else {
-                showCenterError("Нет видеокадра, перезапускаем поток", 2200L)
-            }
-            mediaPlayer?.let { p ->
-                p.stop()
-                p.setMediaItem(buildMediaItem(lastRequestedPlaybackUrl))
-                p.prepare()
-                p.playWhenReady = true
-                firstFrameRendered = false
-        startupWaitSinceMs = 0L
-                handler.removeCallbacks(startupFrameTimeoutRunnable)
-        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-                        handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
-            lastPlaybackPositionMs = -1L
-            lastProgressWallClockMs = System.currentTimeMillis()
-            handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-                    handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
-            }
+            showCenterError("Нет видеокадра, перезапускаем поток", 2200L)
+            restartCurrentStream(recreatePlayer = false)
         }
     }
 
@@ -1502,7 +1487,7 @@ class MainActivity : AppCompatActivity() {
             }
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = archiveUrl
-            mediaPlayer?.setMediaItem(MediaItem.fromUri(Uri.parse(archiveUrl)))
+            mediaPlayer?.setMediaItem(buildMediaItem(archiveUrl))
             mediaPlayer?.prepare()
             mediaPlayer?.play()
             handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
@@ -1543,14 +1528,10 @@ class MainActivity : AppCompatActivity() {
             handler.removeCallbacks(startupFrameTimeoutRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                     retriedWithoutAudio = false
-            retriedWithLowerResolution = false
+            retriedWithAlternateDecoder = false
             startupWaitSinceMs = 0L
             enableAudioTrack()
-            if (ch.url.contains("/only4/", ignoreCase = true)) {
-                optimizeForHighBitrateStream()
-            } else {
-                resetVideoConstraints()
-            }
+            applyUnlimitedVideoConstraints()
 
             mediaPlayer?.setMediaItem(buildMediaItem(ch.url))
             mediaPlayer?.prepare()
@@ -1578,7 +1559,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildMediaItem(url: String): MediaItem {
         val uri = Uri.parse(url)
-        val mime = if (url.contains(".m3u8", ignoreCase = true)) "application/x-mpegURL" else null
+        val mime = if (url.contains(".m3u8", ignoreCase = true) || url.contains(".m3u", ignoreCase = true)) "application/x-mpegURL" else null
         val builder = MediaItem.Builder()
             .setUri(uri)
             .setMimeType(mime)
@@ -1718,6 +1699,11 @@ class MainActivity : AppCompatActivity() {
         trackSelector = DefaultTrackSelector(this).apply {
             setParameters(
                 buildUponParameters()
+                    .clearVideoSizeConstraints()
+                    .setMaxVideoBitrate(Int.MAX_VALUE)
+                    .setExceedVideoConstraintsIfNecessary(true)
+                    .setForceHighestSupportedBitrate(false)
+                    .setForceLowestBitrate(false)
                     .setAllowVideoMixedMimeTypeAdaptiveness(true)
                     .setAllowAudioMixedMimeTypeAdaptiveness(true)
             )
@@ -1739,6 +1725,11 @@ class MainActivity : AppCompatActivity() {
                     handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                     startupWaitSinceMs = 0L
                 }
+
+                override fun onTracksChanged(tracks: Tracks) {
+                    logSelectedPlaybackFormats(tracks)
+                }
+
                 override fun onPlayerError(error: PlaybackException) {
                     handler.post {
                         handler.removeCallbacks(startupFrameTimeoutRunnable)
@@ -1760,6 +1751,27 @@ class MainActivity : AppCompatActivity() {
         if (retriedWithoutAudio || lastRequestedPlaybackUrl.isBlank()) return false
         val text = ((error.message ?: "") + " " + (error.cause?.message ?: "")).lowercase(Locale.ROOT)
         return text.contains("audio") || text.contains("mpga") || text.contains("mpeg") || text.contains("decoder")
+    }
+
+    private fun logSelectedPlaybackFormats(tracks: Tracks) {
+        for (group in tracks.groups) {
+            if (!group.isSelected) continue
+            for (i in 0 until group.length) {
+                if (!group.isTrackSelected(i)) continue
+                val format = group.getTrackFormat(i)
+                val type = when (format.sampleMimeType?.substringBefore('/')) {
+                    "video" -> "video"
+                    "audio" -> "audio"
+                    else -> "track"
+                }
+                Log.i(
+                    "PLAYER_FORMAT",
+                    "$type codec=${format.codecs ?: format.sampleMimeType.orEmpty()} " +
+                        "mime=${format.sampleMimeType.orEmpty()} bitrate=${format.bitrate} " +
+                        "size=${format.width}x${format.height} url=$lastRequestedPlaybackUrl"
+                )
+            }
+        }
     }
 
     private fun retryCurrentStreamWithoutAudio() {
@@ -1792,34 +1804,44 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun optimizeForHighBitrateStream() {
+    private fun applyUnlimitedVideoConstraints() {
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()
                 ?.clearVideoSizeConstraints()
                 ?.setMaxVideoBitrate(Int.MAX_VALUE)
+                ?.setExceedVideoConstraintsIfNecessary(true)
+                ?.setForceHighestSupportedBitrate(false)
                 ?.setForceLowestBitrate(false)
                 ?: return
         )
     }
 
-    private fun limitVideoToSd() {
-        trackSelector?.setParameters(
-            trackSelector?.buildUponParameters()
-                ?.clearVideoSizeConstraints()
-                ?.setMaxVideoBitrate(Int.MAX_VALUE)
-                ?.setForceLowestBitrate(false)
-                ?: return
-        )
+    private fun switchDecoderModeAndRestart() {
+        if (lastRequestedPlaybackUrl.isBlank()) return
+        softwareDecoderMode = !softwareDecoderMode
+        restartCurrentStream(recreatePlayer = true)
     }
 
-    private fun resetVideoConstraints() {
-        trackSelector?.setParameters(
-            trackSelector?.buildUponParameters()
-                ?.clearVideoSizeConstraints()
-                ?.setMaxVideoBitrate(Int.MAX_VALUE)
-                ?.setForceLowestBitrate(false)
-                ?: return
-        )
+    private fun restartCurrentStream(recreatePlayer: Boolean) {
+        val url = lastRequestedPlaybackUrl
+        if (url.isBlank()) return
+        if (recreatePlayer) {
+            stopPlayback()
+            setupPlayer(preferSoftwareDecoder = softwareDecoderMode)
+        } else {
+            mediaPlayer?.stop()
+        }
+        mediaPlayer?.setMediaItem(buildMediaItem(url))
+        mediaPlayer?.prepare()
+        mediaPlayer?.playWhenReady = true
+        firstFrameRendered = false
+        startupWaitSinceMs = 0L
+        handler.removeCallbacks(startupFrameTimeoutRunnable)
+        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+        handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
+        lastPlaybackPositionMs = -1L
+        lastProgressWallClockMs = System.currentTimeMillis()
+        handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
     }
 
     private fun showUI() {
