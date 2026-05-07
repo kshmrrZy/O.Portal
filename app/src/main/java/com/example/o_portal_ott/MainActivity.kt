@@ -134,9 +134,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var timerWarningPanel: View
     private lateinit var btnStopTimer: TextView
     private lateinit var homePanel: View
-    private lateinit var btnHomePlaylists: TextView
-    private lateinit var btnHomeFavorites: TextView
-    private lateinit var btnHomeSettings: TextView
+    private lateinit var ivHomeSettings: ImageView
+    private lateinit var ivHomePower: ImageView
 
     // Состояние
     private var isLocked = false
@@ -370,9 +369,8 @@ class MainActivity : AppCompatActivity() {
         timerWarningPanel = findViewById(R.id.timerWarningPanel)
         btnStopTimer = findViewById(R.id.btnStopTimer)
         homePanel = findViewById(R.id.homePanel)
-        btnHomePlaylists = findViewById(R.id.btnHomePlaylists)
-        btnHomeFavorites = findViewById(R.id.btnHomeFavorites)
-        btnHomeSettings = findViewById(R.id.btnHomeSettings)
+        ivHomeSettings = findViewById(R.id.ivHomeSettings)
+        ivHomePower = findViewById(R.id.ivHomePower)
         tvEpg.isSelected = true
         applyGolosTypeface(window.decorView)
     }
@@ -390,9 +388,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupInteractions() {
-        btnHomePlaylists.setOnClickListener { showHomePlaylistSelector() }
-        btnHomeFavorites.setOnClickListener { openFavoritesByToken() }
-        btnHomeSettings.setOnClickListener { showSettingsDialog() }
+        ivHomeSettings.setOnClickListener { showSettingsDialog() }
+        ivHomePower.setOnClickListener { closeAppCompletely() }
 
         btnLiveReload.setOnClickListener {
             tvReloadingStatus.visibility = View.VISIBLE
@@ -610,6 +607,7 @@ class MainActivity : AppCompatActivity() {
         btnClose.setOnClickListener { dialog.dismiss() }
 
         dialog.show()
+        dialog.window?.decorView?.let { applyGolosTypeface(it) }
         val dm = resources.displayMetrics
         dialog.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
@@ -841,6 +839,8 @@ class MainActivity : AppCompatActivity() {
         val tbShowLockButton = view.findViewById<ToggleButton>(R.id.tbShowLockButton)
         val tbGpuDecoder = view.findViewById<ToggleButton>(R.id.tbGpuDecoder)
 
+        applyGolosTypeface(view)
+
         tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
         tbShowLockButton.isChecked = prefs.getBoolean(PREF_SHOW_LOCK_BUTTON, true)
         tbGpuDecoder.isChecked = prefs.getBoolean(PREF_USE_GPU_DECODER, true)
@@ -881,6 +881,7 @@ class MainActivity : AppCompatActivity() {
         btnClose.setOnClickListener { dialog.dismiss() }
 
         dialog.show()
+        dialog.window?.decorView?.let { applyGolosTypeface(it) }
         val dm = resources.displayMetrics
         dialog.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
@@ -1026,6 +1027,7 @@ class MainActivity : AppCompatActivity() {
         btnClose.setOnClickListener { dialog.dismiss() }
 
         dialog.show()
+        dialog.window?.decorView?.let { applyGolosTypeface(it) }
         val dm = resources.displayMetrics
         dialog.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
@@ -1158,6 +1160,7 @@ class MainActivity : AppCompatActivity() {
         btnClose.setOnClickListener { dialog.dismiss() }
 
         dialog.show()
+        dialog.window?.decorView?.let { applyGolosTypeface(it) }
         val dm = resources.displayMetrics
         dialog.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
