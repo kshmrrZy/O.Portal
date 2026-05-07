@@ -3,6 +3,7 @@ package com.example.o_portal_ott
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -34,6 +35,7 @@ import android.widget.ToggleButton
 import androidx.activity.addCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.GestureDetectorCompat
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.model.GlideUrl
@@ -117,6 +119,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvEpg: TextView
     private lateinit var tvChannelName: TextView
     private lateinit var tvSystemTime: TextView
+    private lateinit var tvHomeSystemTime: TextView
     private lateinit var ivLogo: ImageView
     private lateinit var btnLock: ImageButton
     private lateinit var btnSettings: ImageButton
@@ -238,6 +241,7 @@ class MainActivity : AppCompatActivity() {
 
     private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     private val prefs by lazy { getSharedPreferences("oportal_settings", Context.MODE_PRIVATE) }
+    private val golosTypeface: Typeface? by lazy { ResourcesCompat.getFont(this, R.font.golos_text) }
 
     companion object {
         private const val PREF_PLAYLISTS = "playlist_profiles"
@@ -351,6 +355,7 @@ class MainActivity : AppCompatActivity() {
         tvEpg = findViewById(R.id.tvEpgInfo)
         tvChannelName = findViewById(R.id.tvChannelNameInfo)
         tvSystemTime = findViewById(R.id.tvSystemTime)
+        tvHomeSystemTime = findViewById(R.id.tvHomeSystemTime)
         ivLogo = findViewById(R.id.ivChannelLogo)
         btnLock = findViewById(R.id.btnLock)
         btnSettings = findViewById(R.id.btnSettings)
@@ -369,6 +374,19 @@ class MainActivity : AppCompatActivity() {
         btnHomeFavorites = findViewById(R.id.btnHomeFavorites)
         btnHomeSettings = findViewById(R.id.btnHomeSettings)
         tvEpg.isSelected = true
+        applyGolosTypeface(window.decorView)
+    }
+
+    private fun applyGolosTypeface(view: View) {
+        val font = golosTypeface ?: return
+        if (view is TextView) {
+            view.typeface = Typeface.create(font, view.typeface?.style ?: Typeface.NORMAL)
+        }
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                applyGolosTypeface(view.getChildAt(i))
+            }
+        }
     }
 
     private fun setupInteractions() {
@@ -1640,7 +1658,9 @@ class MainActivity : AppCompatActivity() {
     private fun startClockUpdater() {
         handler.post(object : Runnable {
             override fun run() {
-                tvSystemTime.text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                tvSystemTime.text = time
+                tvHomeSystemTime.text = time
                 handler.postDelayed(this, 1000)
             }
         })

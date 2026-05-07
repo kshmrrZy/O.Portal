@@ -3,6 +3,7 @@
     <style name="AppGolosText">
         <item name="android:fontFamily">@font/main_font</item>
         <item name="fontFamily">@font/main_font</item>
+        <item name="android:textFontWeight">500</item>
     </style>
     <style name="WhiteTextShadow" parent="AppGolosText">
         <item name="android:shadowColor">#80000000</item>
