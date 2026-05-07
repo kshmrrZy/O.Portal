@@ -9,6 +9,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.StyleSpan
 import android.util.Log
 import android.util.TypedValue
 import android.util.Xml
@@ -35,6 +38,8 @@ import android.widget.ToggleButton
 import androidx.activity.addCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.GestureDetectorCompat
 import com.bumptech.glide.Glide
@@ -139,6 +144,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homePanel: View
     private lateinit var ivHomeSettings: ImageView
     private lateinit var ivHomePower: ImageView
+
+    private var lastHomePanelWidth = 0
+    private var lastHomePanelHeight = 0
 
     // Состояние
     private var isLocked = false
@@ -267,6 +275,9 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_EPG_UNPACKED_BYTES = 1800L * 1024L * 1024L
         private const val EPG_KEEP_DAYS = 7
         private const val MAX_PROGRAMS_PER_CHANNEL = 5000
+
+        private const val HOME_BASE_WIDTH = 1280f
+        private const val HOME_BASE_HEIGHT = 720f
     }
 
     private val hideUiRunnable = Runnable { hideUI() }
@@ -379,28 +390,72 @@ class MainActivity : AppCompatActivity() {
         ivHomePower = findViewById(R.id.ivHomePower)
         tvEpg.isSelected = true
         applyGolosTypeface(window.decorView)
-        homePanel.post { applyHomeScreenScale() }
+        applyHomeAppTitleStyle()
+        homePanel.addOnLayoutChangeListener { _, _, _, right, bottom, _, _, oldRight, oldBottom ->
+            if (right != oldRight || bottom != oldBottom) {
+                applyHomeScreenScale(force = true)
+            }
+        }
+        homePanel.post { applyHomeScreenScale(force = true) }
     }
 
-    private fun applyHomeScreenScale() {
-        val widthScale = homePanel.width.takeIf { it > 0 }?.toFloat()?.div(1280f) ?: return
-        val heightScale = homePanel.height.takeIf { it > 0 }?.toFloat()?.div(720f) ?: return
+    private fun applyHomeAppTitleStyle() {
+        val title = SpannableString("O.Portal")
+        title.setSpan(StyleSpan(Typeface.BOLD), 2, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        tvHomeAppTitle.text = title
+        golosTypeface?.let { font ->
+            tvHomeAppTitle.typeface = Typeface.create(font, Typeface.NORMAL)
+            tvHomeSystemTime.typeface = Typeface.create(font, Typeface.BOLD)
+        }
+    }
+
+    private fun applyHomeScreenScale(force: Boolean = false) {
+        val panelWidth = homePanel.width.takeIf { it > 0 } ?: return
+        val panelHeight = homePanel.height.takeIf { it > 0 } ?: return
+        if (!force && panelWidth == lastHomePanelWidth && panelHeight == lastHomePanelHeight) return
+
+        lastHomePanelWidth = panelWidth
+        lastHomePanelHeight = panelHeight
+
+        val widthScale = panelWidth.toFloat() / HOME_BASE_WIDTH
+        val heightScale = panelHeight.toFloat() / HOME_BASE_HEIGHT
         val scale = minOf(widthScale, heightScale)
 
         tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 36f * scale)
         tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_PX, 28f * scale)
         tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 48f * scale)
         tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 16f * scale)
-        setSquareSize(ivHomeSettings, 24f * scale)
-        setSquareSize(ivHomePower, 24f * scale)
+
+        setHomeFrame(tvHomeAppTitle, 61f, 37f, null, null, widthScale, heightScale)
+        setHomeFrame(tvHomeSystemTime, 1067f, 42f, 75f, null, widthScale, heightScale)
+        setHomeFrame(ivHomeSettings, 1157f, 47f, 24f, 24f, widthScale, heightScale)
+        setHomeFrame(ivHomePower, 1196f, 47f, 24f, 24f, widthScale, heightScale)
+        setHomeFrame(tvHomeStartTitle, 257f, 321f, 765f, null, widthScale, heightScale)
+        setHomeFrame(tvHomeStartSubtitle, 398f, 379f, 483f, null, widthScale, heightScale)
     }
 
-    private fun setSquareSize(view: View, sizePx: Float) {
-        val size = sizePx.toInt().coerceAtLeast(1)
-        val params = view.layoutParams
-        if (params.width == size && params.height == size) return
-        params.width = size
-        params.height = size
+    private fun setHomeFrame(
+        view: View,
+        baseLeft: Float,
+        baseTop: Float,
+        baseWidth: Float?,
+        baseHeight: Float?,
+        widthScale: Float,
+        heightScale: Float
+    ) {
+        val params = view.layoutParams as ConstraintLayout.LayoutParams
+        params.startToStart = ConstraintSet.PARENT_ID
+        params.topToTop = ConstraintSet.PARENT_ID
+        params.endToEnd = ConstraintSet.UNSET
+        params.bottomToBottom = ConstraintSet.UNSET
+        params.horizontalBias = 0f
+        params.verticalBias = 0f
+        val leftMargin = (baseLeft * widthScale).toInt()
+        params.leftMargin = leftMargin
+        params.marginStart = leftMargin
+        params.topMargin = (baseTop * heightScale).toInt()
+        params.width = baseWidth?.let { (it * widthScale).toInt().coerceAtLeast(1) } ?: ViewGroup.LayoutParams.WRAP_CONTENT
+        params.height = baseHeight?.let { (it * heightScale).toInt().coerceAtLeast(1) } ?: ViewGroup.LayoutParams.WRAP_CONTENT
         view.layoutParams = params
     }
 
@@ -528,7 +583,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showStartPage() {
         homePanel.visibility = View.VISIBLE
-        homePanel.post { applyHomeScreenScale() }
+        homePanel.post { applyHomeScreenScale(force = true) }
         topInfoPanel.visibility = View.GONE
         controlsPanel.visibility = View.GONE
     }
