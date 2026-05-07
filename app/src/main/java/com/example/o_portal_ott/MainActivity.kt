@@ -120,6 +120,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvChannelName: TextView
     private lateinit var tvSystemTime: TextView
     private lateinit var tvHomeSystemTime: TextView
+    private lateinit var tvHomeAppTitle: TextView
+    private lateinit var tvHomeStartTitle: TextView
+    private lateinit var tvHomeStartSubtitle: TextView
     private lateinit var ivLogo: ImageView
     private lateinit var btnLock: ImageButton
     private lateinit var btnSettings: ImageButton
@@ -355,6 +358,9 @@ class MainActivity : AppCompatActivity() {
         tvChannelName = findViewById(R.id.tvChannelNameInfo)
         tvSystemTime = findViewById(R.id.tvSystemTime)
         tvHomeSystemTime = findViewById(R.id.tvHomeSystemTime)
+        tvHomeAppTitle = findViewById(R.id.tvHomeAppTitle)
+        tvHomeStartTitle = findViewById(R.id.tvHomeStartTitle)
+        tvHomeStartSubtitle = findViewById(R.id.tvHomeStartSubtitle)
         ivLogo = findViewById(R.id.ivChannelLogo)
         btnLock = findViewById(R.id.btnLock)
         btnSettings = findViewById(R.id.btnSettings)
@@ -373,6 +379,29 @@ class MainActivity : AppCompatActivity() {
         ivHomePower = findViewById(R.id.ivHomePower)
         tvEpg.isSelected = true
         applyGolosTypeface(window.decorView)
+        homePanel.post { applyHomeScreenScale() }
+    }
+
+    private fun applyHomeScreenScale() {
+        val widthScale = homePanel.width.takeIf { it > 0 }?.toFloat()?.div(1280f) ?: return
+        val heightScale = homePanel.height.takeIf { it > 0 }?.toFloat()?.div(720f) ?: return
+        val scale = minOf(widthScale, heightScale)
+
+        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 36f * scale)
+        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_PX, 28f * scale)
+        tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 48f * scale)
+        tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 16f * scale)
+        setSquareSize(ivHomeSettings, 24f * scale)
+        setSquareSize(ivHomePower, 24f * scale)
+    }
+
+    private fun setSquareSize(view: View, sizePx: Float) {
+        val size = sizePx.toInt().coerceAtLeast(1)
+        val params = view.layoutParams
+        if (params.width == size && params.height == size) return
+        params.width = size
+        params.height = size
+        view.layoutParams = params
     }
 
     private fun applyGolosTypeface(view: View) {
@@ -499,6 +528,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showStartPage() {
         homePanel.visibility = View.VISIBLE
+        homePanel.post { applyHomeScreenScale() }
         topInfoPanel.visibility = View.GONE
         controlsPanel.visibility = View.GONE
     }
