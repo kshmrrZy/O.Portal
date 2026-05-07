@@ -9,6 +9,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.StyleSpan
 import android.util.Log
 import android.util.TypedValue
 import android.util.Xml
@@ -35,6 +38,8 @@ import android.widget.ToggleButton
 import androidx.activity.addCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.GestureDetectorCompat
 import com.bumptech.glide.Glide
@@ -120,6 +125,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvChannelName: TextView
     private lateinit var tvSystemTime: TextView
     private lateinit var tvHomeSystemTime: TextView
+    private lateinit var tvHomeAppTitle: TextView
+    private lateinit var tvHomeStartTitle: TextView
+    private lateinit var tvHomeStartSubtitle: TextView
     private lateinit var ivLogo: ImageView
     private lateinit var btnLock: ImageButton
     private lateinit var btnSettings: ImageButton
@@ -134,9 +142,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var timerWarningPanel: View
     private lateinit var btnStopTimer: TextView
     private lateinit var homePanel: View
-    private lateinit var btnHomePlaylists: TextView
-    private lateinit var btnHomeFavorites: TextView
-    private lateinit var btnHomeSettings: TextView
+    private lateinit var ivHomeSettings: ImageView
+    private lateinit var ivHomePower: ImageView
+
+    private var lastHomePanelWidth = 0
+    private var lastHomePanelHeight = 0
 
     // Состояние
     private var isLocked = false
@@ -265,6 +275,9 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_EPG_UNPACKED_BYTES = 1800L * 1024L * 1024L
         private const val EPG_KEEP_DAYS = 7
         private const val MAX_PROGRAMS_PER_CHANNEL = 5000
+
+        private const val HOME_BASE_WIDTH = 1280f
+        private const val HOME_BASE_HEIGHT = 720f
     }
 
     private val hideUiRunnable = Runnable { hideUI() }
@@ -356,6 +369,9 @@ class MainActivity : AppCompatActivity() {
         tvChannelName = findViewById(R.id.tvChannelNameInfo)
         tvSystemTime = findViewById(R.id.tvSystemTime)
         tvHomeSystemTime = findViewById(R.id.tvHomeSystemTime)
+        tvHomeAppTitle = findViewById(R.id.tvHomeAppTitle)
+        tvHomeStartTitle = findViewById(R.id.tvHomeStartTitle)
+        tvHomeStartSubtitle = findViewById(R.id.tvHomeStartSubtitle)
         ivLogo = findViewById(R.id.ivChannelLogo)
         btnLock = findViewById(R.id.btnLock)
         btnSettings = findViewById(R.id.btnSettings)
@@ -370,11 +386,77 @@ class MainActivity : AppCompatActivity() {
         timerWarningPanel = findViewById(R.id.timerWarningPanel)
         btnStopTimer = findViewById(R.id.btnStopTimer)
         homePanel = findViewById(R.id.homePanel)
-        btnHomePlaylists = findViewById(R.id.btnHomePlaylists)
-        btnHomeFavorites = findViewById(R.id.btnHomeFavorites)
-        btnHomeSettings = findViewById(R.id.btnHomeSettings)
+        ivHomeSettings = findViewById(R.id.ivHomeSettings)
+        ivHomePower = findViewById(R.id.ivHomePower)
         tvEpg.isSelected = true
         applyGolosTypeface(window.decorView)
+        applyHomeAppTitleStyle()
+        homePanel.addOnLayoutChangeListener { _, _, _, right, bottom, _, _, oldRight, oldBottom ->
+            if (right != oldRight || bottom != oldBottom) {
+                applyHomeScreenScale(force = true)
+            }
+        }
+        homePanel.post { applyHomeScreenScale(force = true) }
+    }
+
+    private fun applyHomeAppTitleStyle() {
+        val title = SpannableString("O.Portal")
+        title.setSpan(StyleSpan(Typeface.BOLD), 2, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        tvHomeAppTitle.text = title
+        golosTypeface?.let { font ->
+            tvHomeAppTitle.typeface = Typeface.create(font, Typeface.NORMAL)
+            tvHomeSystemTime.typeface = Typeface.create(font, Typeface.BOLD)
+        }
+    }
+
+    private fun applyHomeScreenScale(force: Boolean = false) {
+        val panelWidth = homePanel.width.takeIf { it > 0 } ?: return
+        val panelHeight = homePanel.height.takeIf { it > 0 } ?: return
+        if (!force && panelWidth == lastHomePanelWidth && panelHeight == lastHomePanelHeight) return
+
+        lastHomePanelWidth = panelWidth
+        lastHomePanelHeight = panelHeight
+
+        val widthScale = panelWidth.toFloat() / HOME_BASE_WIDTH
+        val heightScale = panelHeight.toFloat() / HOME_BASE_HEIGHT
+        val scale = minOf(widthScale, heightScale)
+
+        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 36f * scale)
+        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_PX, 28f * scale)
+        tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 48f * scale)
+        tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 16f * scale)
+
+        setHomeFrame(tvHomeAppTitle, 61f, 37f, null, null, widthScale, heightScale)
+        setHomeFrame(tvHomeSystemTime, 1067f, 42f, 75f, null, widthScale, heightScale)
+        setHomeFrame(ivHomeSettings, 1157f, 47f, 24f, 24f, widthScale, heightScale)
+        setHomeFrame(ivHomePower, 1196f, 47f, 24f, 24f, widthScale, heightScale)
+        setHomeFrame(tvHomeStartTitle, 257f, 321f, 765f, null, widthScale, heightScale)
+        setHomeFrame(tvHomeStartSubtitle, 398f, 379f, 483f, null, widthScale, heightScale)
+    }
+
+    private fun setHomeFrame(
+        view: View,
+        baseLeft: Float,
+        baseTop: Float,
+        baseWidth: Float?,
+        baseHeight: Float?,
+        widthScale: Float,
+        heightScale: Float
+    ) {
+        val params = view.layoutParams as ConstraintLayout.LayoutParams
+        params.startToStart = ConstraintSet.PARENT_ID
+        params.topToTop = ConstraintSet.PARENT_ID
+        params.endToEnd = ConstraintSet.UNSET
+        params.bottomToBottom = ConstraintSet.UNSET
+        params.horizontalBias = 0f
+        params.verticalBias = 0f
+        val leftMargin = (baseLeft * widthScale).toInt()
+        params.leftMargin = leftMargin
+        params.marginStart = leftMargin
+        params.topMargin = (baseTop * heightScale).toInt()
+        params.width = baseWidth?.let { (it * widthScale).toInt().coerceAtLeast(1) } ?: ViewGroup.LayoutParams.WRAP_CONTENT
+        params.height = baseHeight?.let { (it * heightScale).toInt().coerceAtLeast(1) } ?: ViewGroup.LayoutParams.WRAP_CONTENT
+        view.layoutParams = params
     }
 
     private fun applyGolosTypeface(view: View) {
@@ -390,9 +472,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupInteractions() {
-        btnHomePlaylists.setOnClickListener { showHomePlaylistSelector() }
-        btnHomeFavorites.setOnClickListener { openFavoritesByToken() }
-        btnHomeSettings.setOnClickListener { showSettingsDialog() }
+        ivHomeSettings.setOnClickListener { showSettingsDialog() }
+        ivHomePower.setOnClickListener { closeAppCompletely() }
 
         btnLiveReload.setOnClickListener {
             tvReloadingStatus.visibility = View.VISIBLE
@@ -502,6 +583,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showStartPage() {
         homePanel.visibility = View.VISIBLE
+        homePanel.post { applyHomeScreenScale(force = true) }
         topInfoPanel.visibility = View.GONE
         controlsPanel.visibility = View.GONE
     }
@@ -610,6 +692,7 @@ class MainActivity : AppCompatActivity() {
         btnClose.setOnClickListener { dialog.dismiss() }
 
         dialog.show()
+        dialog.window?.decorView?.let { applyGolosTypeface(it) }
         val dm = resources.displayMetrics
         dialog.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
@@ -841,6 +924,8 @@ class MainActivity : AppCompatActivity() {
         val tbShowLockButton = view.findViewById<ToggleButton>(R.id.tbShowLockButton)
         val tbGpuDecoder = view.findViewById<ToggleButton>(R.id.tbGpuDecoder)
 
+        applyGolosTypeface(view)
+
         tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
         tbShowLockButton.isChecked = prefs.getBoolean(PREF_SHOW_LOCK_BUTTON, true)
         tbGpuDecoder.isChecked = prefs.getBoolean(PREF_USE_GPU_DECODER, true)
@@ -881,6 +966,7 @@ class MainActivity : AppCompatActivity() {
         btnClose.setOnClickListener { dialog.dismiss() }
 
         dialog.show()
+        dialog.window?.decorView?.let { applyGolosTypeface(it) }
         val dm = resources.displayMetrics
         dialog.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
@@ -1026,6 +1112,7 @@ class MainActivity : AppCompatActivity() {
         btnClose.setOnClickListener { dialog.dismiss() }
 
         dialog.show()
+        dialog.window?.decorView?.let { applyGolosTypeface(it) }
         val dm = resources.displayMetrics
         dialog.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
@@ -1158,6 +1245,7 @@ class MainActivity : AppCompatActivity() {
         btnClose.setOnClickListener { dialog.dismiss() }
 
         dialog.show()
+        dialog.window?.decorView?.let { applyGolosTypeface(it) }
         val dm = resources.displayMetrics
         dialog.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
