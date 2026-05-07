@@ -15,4 +15,14 @@
     <style name="WhiteTitleTextShadow" parent="WhiteTextShadow">
         <item name="android:textStyle">bold</item>
     </style>
+
+    <style name="AppTextView" parent="android:style/Widget.TextView">
+        <item name="android:fontFamily">@font/main_font</item>
+        <item name="fontFamily">@font/main_font</item>
+    </style>
+
+    <style name="AppButton" parent="android:style/Widget.Button">
+        <item name="android:fontFamily">@font/main_font</item>
+        <item name="fontFamily">@font/main_font</item>
+    </style>
 </resources>
