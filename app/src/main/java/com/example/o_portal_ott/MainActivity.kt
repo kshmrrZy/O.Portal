@@ -9,6 +9,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.StyleSpan
 import android.util.Log
 import android.util.TypedValue
 import android.util.Xml
@@ -35,13 +38,10 @@ import android.widget.ToggleButton
 import androidx.activity.addCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.GestureDetectorCompat
-import com.bumptech.glide.Glide
-import com.bumptech.glide.load.model.GlideUrl
-import com.bumptech.glide.load.model.LazyHeaders
-import org.json.JSONArray
-import org.json.JSONObject
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -50,12 +50,17 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
-import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.PlayerView
+import com.bumptech.glide.Glide
+import com.bumptech.glide.load.model.GlideUrl
+import com.bumptech.glide.load.model.LazyHeaders
+import org.json.JSONArray
+import org.json.JSONObject
 import org.xmlpull.v1.XmlPullParser
 import java.io.BufferedInputStream
 import java.io.ByteArrayInputStream
@@ -139,6 +144,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homePanel: View
     private lateinit var ivHomeSettings: ImageView
     private lateinit var ivHomePower: ImageView
+
+    private var lastHomePanelWidth = 0
+    private var lastHomePanelHeight = 0
 
     // Состояние
     private var isLocked = false
@@ -267,6 +275,9 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_EPG_UNPACKED_BYTES = 1800L * 1024L * 1024L
         private const val EPG_KEEP_DAYS = 7
         private const val MAX_PROGRAMS_PER_CHANNEL = 5000
+
+        private const val HOME_BASE_WIDTH = 1280f
+        private const val HOME_BASE_HEIGHT = 720f
     }
 
     private val hideUiRunnable = Runnable { hideUI() }
@@ -379,45 +390,75 @@ class MainActivity : AppCompatActivity() {
         ivHomePower = findViewById(R.id.ivHomePower)
         tvEpg.isSelected = true
         applyGolosTypeface(window.decorView)
-        homePanel.post { applyHomeScreenScale() }
+        applyHomeAppTitleStyle()
+        homePanel.addOnLayoutChangeListener { _, _, _, right, bottom, _, _, oldRight, oldBottom ->
+            if (right != oldRight || bottom != oldBottom) {
+                applyHomeScreenScale(force = true)
+            }
+        }
+        homePanel.post { applyHomeScreenScale(force = true) }
     }
 
-    private fun applyHomeScreenScale() {
-        val widthScale = homePanel.width.takeIf { it > 0 }?.toFloat()?.div(1280f) ?: return
-        val heightScale = homePanel.height.takeIf { it > 0 }?.toFloat()?.div(720f) ?: return
+    private fun applyHomeAppTitleStyle() {
+        val title = SpannableString("O.Portal")
+        title.setSpan(StyleSpan(Typeface.BOLD), 2, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        tvHomeAppTitle.text = title
+        golosTypeface?.let { font ->
+            tvHomeAppTitle.typeface = Typeface.create(font, Typeface.NORMAL)
+            tvHomeSystemTime.typeface = Typeface.create(font, Typeface.BOLD)
+        }
+    }
+
+    private fun applyHomeScreenScale(force: Boolean = false) {
+        val panelWidth = homePanel.width.takeIf { it > 0 } ?: return
+        val panelHeight = homePanel.height.takeIf { it > 0 } ?: return
+        if (!force && panelWidth == lastHomePanelWidth && panelHeight == lastHomePanelHeight) return
+
+        lastHomePanelWidth = panelWidth
+        lastHomePanelHeight = panelHeight
+
+        val widthScale = panelWidth.toFloat() / HOME_BASE_WIDTH
+        val heightScale = panelHeight.toFloat() / HOME_BASE_HEIGHT
         val scale = minOf(widthScale, heightScale)
 
-<<<<<<< HEAD
-        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 38f * scale)
-        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_PX, 30f * scale)
-        tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 50f * scale)
-        tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 18f * scale)
+        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 42f * scale)
+        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_PX, 34f * scale)
+        tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 52f * scale)
+        tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 22f * scale)
+
+
+
 
         setHomeFrame(tvHomeAppTitle, 61f, 37f, null, null, widthScale, heightScale)
-        setHomeFrame(tvHomeSystemTime, 1067f, 42f, 75f, null, widthScale, heightScale)
-        setHomeFrame(ivHomeSettings, 1157f, 47f, 26f, 26f, widthScale, heightScale)
-        setHomeFrame(ivHomePower, 1196f, 47f, 26f, 26f, widthScale, heightScale)
+        setHomeFrame(tvHomeSystemTime, 1055f, 47f, 85f, null, widthScale, heightScale)
+        setHomeFrame(ivHomeSettings, 1150f, 47f, 44f, 44f, widthScale, heightScale)
+        setHomeFrame(ivHomePower, 1196f, 47f, 44f, 44f, widthScale, heightScale)
         setHomeFrame(tvHomeStartTitle, 257f, 321f, 765f, null, widthScale, heightScale)
-        setHomeFrame(tvHomeStartSubtitle, 398f, 379f, 483f, null, widthScale, heightScale)
-=======
-        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 36f * scale)
-        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_PX, 28f * scale)
-        tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 48f * scale)
-        tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 16f * scale)
-        setSquareSize(ivHomeSettings, 24f * scale)
-        setSquareSize(ivHomePower, 24f * scale)
-<<<<<<< HEAD
->>>>>>> parent of 1cfd989 (Merge pull request #100 from kshmrrZy/codex/update-home-page-layout-and-font-0fniub)
-=======
->>>>>>> parent of 1cfd989 (Merge pull request #100 from kshmrrZy/codex/update-home-page-layout-and-font-0fniub)
+        setHomeFrame(tvHomeStartSubtitle, 390f, 379f, 500f, null, widthScale, heightScale)
     }
 
-    private fun setSquareSize(view: View, sizePx: Float) {
-        val size = sizePx.toInt().coerceAtLeast(1)
-        val params = view.layoutParams
-        if (params.width == size && params.height == size) return
-        params.width = size
-        params.height = size
+    private fun setHomeFrame(
+        view: View,
+        baseLeft: Float,
+        baseTop: Float,
+        baseWidth: Float?,
+        baseHeight: Float?,
+        widthScale: Float,
+        heightScale: Float
+    ) {
+        val params = view.layoutParams as ConstraintLayout.LayoutParams
+        params.startToStart = ConstraintSet.PARENT_ID
+        params.topToTop = ConstraintSet.PARENT_ID
+        params.endToEnd = ConstraintSet.UNSET
+        params.bottomToBottom = ConstraintSet.UNSET
+        params.horizontalBias = 0f
+        params.verticalBias = 0f
+        val leftMargin = (baseLeft * widthScale).toInt()
+        params.leftMargin = leftMargin
+        params.marginStart = leftMargin
+        params.topMargin = (baseTop * heightScale).toInt()
+        params.width = baseWidth?.let { (it * widthScale).toInt().coerceAtLeast(1) } ?: ViewGroup.LayoutParams.WRAP_CONTENT
+        params.height = baseHeight?.let { (it * heightScale).toInt().coerceAtLeast(1) } ?: ViewGroup.LayoutParams.WRAP_CONTENT
         view.layoutParams = params
     }
 
@@ -479,7 +520,7 @@ class MainActivity : AppCompatActivity() {
         btnPlayPause.setOnClickListener {
             if (isPlaybackPaused) {
                 mediaPlayer?.play()
-            handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
+                handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
                 isPlaybackPaused = false
                 btnPlayPause.setImageResource(R.drawable.ic_pause)
             } else {
@@ -545,7 +586,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showStartPage() {
         homePanel.visibility = View.VISIBLE
-        homePanel.post { applyHomeScreenScale() }
+        homePanel.post { applyHomeScreenScale(force = true) }
         topInfoPanel.visibility = View.GONE
         controlsPanel.visibility = View.GONE
     }
@@ -567,7 +608,10 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val sp = Spinner(this)
-        sp.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, profiles.map { it.name })
+        sp.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            profiles.map { it.name })
         val view = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 24, 24, 24)
@@ -1289,7 +1333,7 @@ class MainActivity : AppCompatActivity() {
                     t.message?.contains("Unable to resolve host", ignoreCase = true) == true -> "Не удаётся определить адрес хоста"
                     t.message?.contains("timeout", ignoreCase = true) == true -> "Превышено время ожидания сети"
                     t.message?.contains("too large", ignoreCase = true) == true ||
-                        t.message?.contains("safe limit", ignoreCase = true) == true -> "Файл EPG слишком большой"
+                            t.message?.contains("safe limit", ignoreCase = true) == true -> "Файл EPG слишком большой"
                     else -> t.message?.take(120) ?: t.javaClass.simpleName
                 }
             }
@@ -1562,7 +1606,7 @@ class MainActivity : AppCompatActivity() {
             lastPlaybackPositionMs = -1L
             lastProgressWallClockMs = System.currentTimeMillis()
             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-                    handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
+            handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
             isPlaybackPaused = false
             isArchivePlayback = true
             currentArchiveProgram = program
@@ -1594,8 +1638,8 @@ class MainActivity : AppCompatActivity() {
             lastRequestedPlaybackUrl = ch.url
             firstFrameRendered = false
             handler.removeCallbacks(startupFrameTimeoutRunnable)
-        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-                    retriedWithoutAudio = false
+            handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+            retriedWithoutAudio = false
             retriedWithAlternateDecoder = false
             startupWaitSinceMs = 0L
             enableAudioTrack()
@@ -1757,7 +1801,7 @@ class MainActivity : AppCompatActivity() {
 
         val tsFlags = if (allowNonIdrKeyframes) {
             DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS or
-                DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES
+                    DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES
         } else {
             DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
         }
@@ -1785,35 +1829,35 @@ class MainActivity : AppCompatActivity() {
             .setMediaSourceFactory(hlsMediaSourceFactory)
             .build()
             .also { player ->
-            findViewById<PlayerView>(R.id.videoLayout).player = player
-            player.addListener(object : androidx.media3.common.Player.Listener {
-                override fun onRenderedFirstFrame() {
-                    firstFrameRendered = true
-                    lastPlaybackPositionMs = player.currentPosition
-                    lastProgressWallClockMs = System.currentTimeMillis()
-                    handler.removeCallbacks(startupFrameTimeoutRunnable)
-                    handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-                    startupWaitSinceMs = 0L
-                }
-
-                override fun onTracksChanged(tracks: Tracks) {
-                    logSelectedPlaybackFormats(tracks)
-                }
-
-                override fun onPlayerError(error: PlaybackException) {
-                    handler.post {
+                findViewById<PlayerView>(R.id.videoLayout).player = player
+                player.addListener(object : androidx.media3.common.Player.Listener {
+                    override fun onRenderedFirstFrame() {
+                        firstFrameRendered = true
+                        lastPlaybackPositionMs = player.currentPosition
+                        lastProgressWallClockMs = System.currentTimeMillis()
                         handler.removeCallbacks(startupFrameTimeoutRunnable)
                         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-                        if (shouldRetryWithoutAudio(error)) {
-                            showCenterError("Аудио MPEG не поддерживается устройством, продолжаем без звука", 2500L)
-                            retryCurrentStreamWithoutAudio()
-                        } else {
-                            showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, error.message ?: "PlaybackException")
+                        startupWaitSinceMs = 0L
+                    }
+
+                    override fun onTracksChanged(tracks: Tracks) {
+                        logSelectedPlaybackFormats(tracks)
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        handler.post {
+                            handler.removeCallbacks(startupFrameTimeoutRunnable)
+                            handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+                            if (shouldRetryWithoutAudio(error)) {
+                                showCenterError("Аудио MPEG не поддерживается устройством, продолжаем без звука", 2500L)
+                                retryCurrentStreamWithoutAudio()
+                            } else {
+                                showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, error.message ?: "PlaybackException")
+                            }
                         }
                     }
-                }
-            })
-        }
+                })
+            }
     }
 
 
@@ -1837,8 +1881,8 @@ class MainActivity : AppCompatActivity() {
                 Log.i(
                     "PLAYER_FORMAT",
                     "$type codec=${format.codecs ?: format.sampleMimeType.orEmpty()} " +
-                        "mime=${format.sampleMimeType.orEmpty()} bitrate=${format.bitrate} " +
-                        "size=${format.width}x${format.height} url=$lastRequestedPlaybackUrl"
+                            "mime=${format.sampleMimeType.orEmpty()} bitrate=${format.bitrate} " +
+                            "size=${format.width}x${format.height} url=$lastRequestedPlaybackUrl"
                 )
             }
         }
@@ -1857,7 +1901,7 @@ class MainActivity : AppCompatActivity() {
         startupWaitSinceMs = 0L
         handler.removeCallbacks(startupFrameTimeoutRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-                handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
+        handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
     }
 
     private fun disableAudioTrack() {
@@ -1932,8 +1976,8 @@ class MainActivity : AppCompatActivity() {
     private fun hideSystemUI() {
         window.decorView.systemUiVisibility =
             View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
     }
 
     private fun processChannelNumberInput() {
@@ -2036,7 +2080,7 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(epgTickerRunnable)
         handler.removeCallbacks(timelineTickerRunnable)
         mediaPlayer?.pause()
-                shouldReloadStreamOnStart = true
+        shouldReloadStreamOnStart = true
     }
 
     override fun onDestroy() {
@@ -2090,7 +2134,7 @@ class MainActivity : AppCompatActivity() {
         trackSelector = null
         handler.removeCallbacks(startupFrameTimeoutRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-        
+
     }
 
     private fun showLockedMessage() {
@@ -2372,3 +2416,4 @@ class MainActivity : AppCompatActivity() {
         val btnWatch: TextView
     )
 }
+
