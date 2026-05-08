@@ -696,6 +696,18 @@ class MainActivity : AppCompatActivity() {
             .setView(view)
             .create()
 
+        val onHome = homePanel.visibility == View.VISIBLE
+        if (onHome) {
+            tvHomeStartTitle.visibility = View.GONE
+            tvHomeStartSubtitle.visibility = View.GONE
+        }
+        dialog.setOnDismissListener {
+            if (onHome) {
+                tvHomeStartTitle.visibility = View.VISIBLE
+                tvHomeStartSubtitle.visibility = View.VISIBLE
+            }
+        }
+
         btnApply.setOnClickListener {
             val idx = spinner.selectedItemPosition.coerceIn(options.indices)
             startSleepTimer(options[idx])
@@ -748,6 +760,18 @@ class MainActivity : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
             .setView(view)
             .create()
+
+        val onHome = homePanel.visibility == View.VISIBLE
+        if (onHome) {
+            tvHomeStartTitle.visibility = View.GONE
+            tvHomeStartSubtitle.visibility = View.GONE
+        }
+        dialog.setOnDismissListener {
+            if (onHome) {
+                tvHomeStartTitle.visibility = View.VISIBLE
+                tvHomeStartSubtitle.visibility = View.VISIBLE
+            }
+        }
 
         channelListDialog = dialog
 
@@ -944,6 +968,18 @@ class MainActivity : AppCompatActivity() {
             .setView(view)
             .create()
 
+        val onHome = homePanel.visibility == View.VISIBLE
+        if (onHome) {
+            tvHomeStartTitle.visibility = View.GONE
+            tvHomeStartSubtitle.visibility = View.GONE
+        }
+        dialog.setOnDismissListener {
+            if (onHome) {
+                tvHomeStartTitle.visibility = View.VISIBLE
+                tvHomeStartSubtitle.visibility = View.VISIBLE
+            }
+        }
+
         tbStartMode.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean(PREF_START_LAST_CHANNEL, isChecked).apply()
             shouldOpenLastChannelOnStart = isChecked
@@ -1039,6 +1075,18 @@ class MainActivity : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
             .setView(view)
             .create()
+
+        val onHome = homePanel.visibility == View.VISIBLE
+        if (onHome) {
+            tvHomeStartTitle.visibility = View.GONE
+            tvHomeStartSubtitle.visibility = View.GONE
+        }
+        dialog.setOnDismissListener {
+            if (onHome) {
+                tvHomeStartTitle.visibility = View.VISIBLE
+                tvHomeStartSubtitle.visibility = View.VISIBLE
+            }
+        }
 
         btnAddOrUpdate.setOnClickListener {
             val name = etPlaylistName.text.toString().trim()
@@ -1236,6 +1284,18 @@ class MainActivity : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
             .setView(view)
             .create()
+
+        val onHome = homePanel.visibility == View.VISIBLE
+        if (onHome) {
+            tvHomeStartTitle.visibility = View.GONE
+            tvHomeStartSubtitle.visibility = View.GONE
+        }
+        dialog.setOnDismissListener {
+            if (onHome) {
+                tvHomeStartTitle.visibility = View.VISIBLE
+                tvHomeStartSubtitle.visibility = View.VISIBLE
+            }
+        }
         dialogRef = dialog
 
         btnApply.setOnClickListener {
