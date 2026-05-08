@@ -12,6 +12,7 @@ import android.os.Looper
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.StyleSpan
+import android.text.style.TypefaceSpan
 import android.util.Log
 import android.util.TypedValue
 import android.util.Xml
@@ -401,12 +402,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyHomeAppTitleStyle() {
         val title = SpannableString("O.Portal")
-        title.setSpan(StyleSpan(Typeface.BOLD), 2, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        tvHomeAppTitle.text = title
         golosTypeface?.let { font ->
             tvHomeAppTitle.typeface = Typeface.create(font, Typeface.NORMAL)
+            title.setSpan(
+                TypefaceSpan(Typeface.create(font, Typeface.BOLD)),
+                2,
+                title.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
             tvHomeSystemTime.typeface = Typeface.create(font, Typeface.BOLD)
-        }
+        } ?: title.setSpan(StyleSpan(Typeface.BOLD), 2, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        tvHomeAppTitle.text = title
     }
 
     private fun applyHomeScreenScale(force: Boolean = false) {
@@ -434,7 +440,7 @@ class MainActivity : AppCompatActivity() {
         setHomeFrame(ivHomeSettings, 1140f, 47f, 40f, 40f, widthScale, heightScale)
         setHomeFrame(ivHomePower, 1196f, 47f, 40f, 40f, widthScale, heightScale)
         setHomeFrame(tvHomeStartTitle, 257f, 321f, 765f, null, widthScale, heightScale)
-        setHomeFrame(tvHomeStartSubtitle, 300f, 379f, 650f, null, widthScale, heightScale)
+        setHomeFrame(tvHomeStartSubtitle, 315f, 379f, 650f, null, widthScale, heightScale)
     }
 
     private fun setHomeFrame(
@@ -690,6 +696,18 @@ class MainActivity : AppCompatActivity() {
             .setView(view)
             .create()
 
+        val onHome = homePanel.visibility == View.VISIBLE
+        if (onHome) {
+            tvHomeStartTitle.visibility = View.GONE
+            tvHomeStartSubtitle.visibility = View.GONE
+        }
+        dialog.setOnDismissListener {
+            if (onHome) {
+                tvHomeStartTitle.visibility = View.VISIBLE
+                tvHomeStartSubtitle.visibility = View.VISIBLE
+            }
+        }
+
         btnApply.setOnClickListener {
             val idx = spinner.selectedItemPosition.coerceIn(options.indices)
             startSleepTimer(options[idx])
@@ -742,6 +760,18 @@ class MainActivity : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
             .setView(view)
             .create()
+
+        val onHome = homePanel.visibility == View.VISIBLE
+        if (onHome) {
+            tvHomeStartTitle.visibility = View.GONE
+            tvHomeStartSubtitle.visibility = View.GONE
+        }
+        dialog.setOnDismissListener {
+            if (onHome) {
+                tvHomeStartTitle.visibility = View.VISIBLE
+                tvHomeStartSubtitle.visibility = View.VISIBLE
+            }
+        }
 
         channelListDialog = dialog
 
@@ -925,38 +955,34 @@ class MainActivity : AppCompatActivity() {
         val view = layoutInflater.inflate(R.layout.dialog_settings, null)
         val btnPlaylistSettings = view.findViewById<TextView>(R.id.btnPlaylistSettings)
         val btnEpgSelect = view.findViewById<TextView>(R.id.btnEpgSelect)
+        val btnSleepTimerSettings = view.findViewById<TextView>(R.id.btnSleepTimerSettings)
+        val btnExtraSettings = view.findViewById<TextView>(R.id.btnExtraSettings)
+        val btnUserSettings = view.findViewById<TextView>(R.id.btnUserSettings)
         val btnClose = view.findViewById<TextView>(R.id.btnCloseSettingsDialog)
         val tbStartMode = view.findViewById<ToggleButton>(R.id.tbStartMode)
-        val tbShowLockButton = view.findViewById<ToggleButton>(R.id.tbShowLockButton)
-        val tbGpuDecoder = view.findViewById<ToggleButton>(R.id.tbGpuDecoder)
 
         applyGolosTypeface(view)
-
         tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
-        tbShowLockButton.isChecked = prefs.getBoolean(PREF_SHOW_LOCK_BUTTON, true)
-        tbGpuDecoder.isChecked = prefs.getBoolean(PREF_USE_GPU_DECODER, true)
 
         val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
             .setView(view)
             .create()
 
+        val onHome = homePanel.visibility == View.VISIBLE
+        if (onHome) {
+            tvHomeStartTitle.visibility = View.GONE
+            tvHomeStartSubtitle.visibility = View.GONE
+        }
+        dialog.setOnDismissListener {
+            if (onHome) {
+                tvHomeStartTitle.visibility = View.VISIBLE
+                tvHomeStartSubtitle.visibility = View.VISIBLE
+            }
+        }
+
         tbStartMode.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean(PREF_START_LAST_CHANNEL, isChecked).apply()
             shouldOpenLastChannelOnStart = isChecked
-        }
-
-        tbShowLockButton.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean(PREF_SHOW_LOCK_BUTTON, isChecked).apply()
-            applyLockButtonVisibility()
-        }
-
-        tbGpuDecoder.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean(PREF_USE_GPU_DECODER, isChecked).apply()
-            preferGpuDecoding = isChecked
-            softwareDecoderMode = !preferGpuDecoding
-            stopPlayback()
-            setupPlayer(preferSoftwareDecoder = softwareDecoderMode)
-            playChannel(forcePlay = true)
         }
 
         btnPlaylistSettings.setOnClickListener {
@@ -969,6 +995,15 @@ class MainActivity : AppCompatActivity() {
             showEpgSelectionDialog()
         }
 
+        btnSleepTimerSettings.setOnClickListener {
+            dialog.dismiss()
+            showTimerDialog()
+        }
+
+        val emptyMessage = "В данный момент ничего нет! Попробуйте посмотреть позже"
+        btnExtraSettings.setOnClickListener { Toast.makeText(this, emptyMessage, Toast.LENGTH_LONG).show() }
+        btnUserSettings.setOnClickListener { Toast.makeText(this, emptyMessage, Toast.LENGTH_LONG).show() }
+
         btnClose.setOnClickListener { dialog.dismiss() }
 
         dialog.show()
@@ -978,7 +1013,7 @@ class MainActivity : AppCompatActivity() {
             setBackgroundDrawableResource(android.R.color.transparent)
             clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             setGravity(Gravity.CENTER)
-            setLayout((dm.widthPixels * 0.82f).toInt(), (dm.heightPixels * 0.82f).toInt())
+            setLayout((dm.widthPixels * 0.98f).toInt(), (dm.heightPixels * 0.96f).toInt())
         }
     }
 
@@ -1040,6 +1075,18 @@ class MainActivity : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
             .setView(view)
             .create()
+
+        val onHome = homePanel.visibility == View.VISIBLE
+        if (onHome) {
+            tvHomeStartTitle.visibility = View.GONE
+            tvHomeStartSubtitle.visibility = View.GONE
+        }
+        dialog.setOnDismissListener {
+            if (onHome) {
+                tvHomeStartTitle.visibility = View.VISIBLE
+                tvHomeStartSubtitle.visibility = View.VISIBLE
+            }
+        }
 
         btnAddOrUpdate.setOnClickListener {
             val name = etPlaylistName.text.toString().trim()
@@ -1237,6 +1284,18 @@ class MainActivity : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
             .setView(view)
             .create()
+
+        val onHome = homePanel.visibility == View.VISIBLE
+        if (onHome) {
+            tvHomeStartTitle.visibility = View.GONE
+            tvHomeStartSubtitle.visibility = View.GONE
+        }
+        dialog.setOnDismissListener {
+            if (onHome) {
+                tvHomeStartTitle.visibility = View.VISIBLE
+                tvHomeStartSubtitle.visibility = View.VISIBLE
+            }
+        }
         dialogRef = dialog
 
         btnApply.setOnClickListener {
