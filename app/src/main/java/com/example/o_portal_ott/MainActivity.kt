@@ -12,6 +12,7 @@ import android.os.Looper
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.StyleSpan
+import android.text.style.TypefaceSpan
 import android.util.Log
 import android.util.TypedValue
 import android.util.Xml
@@ -401,12 +402,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyHomeAppTitleStyle() {
         val title = SpannableString("O.Portal")
-        title.setSpan(StyleSpan(Typeface.BOLD), 2, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        tvHomeAppTitle.text = title
         golosTypeface?.let { font ->
             tvHomeAppTitle.typeface = Typeface.create(font, Typeface.NORMAL)
+            title.setSpan(
+                TypefaceSpan(Typeface.create(font, Typeface.BOLD)),
+                2,
+                title.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
             tvHomeSystemTime.typeface = Typeface.create(font, Typeface.BOLD)
-        }
+        } ?: title.setSpan(StyleSpan(Typeface.BOLD), 2, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        tvHomeAppTitle.text = title
     }
 
     private fun applyHomeScreenScale(force: Boolean = false) {
@@ -434,7 +440,7 @@ class MainActivity : AppCompatActivity() {
         setHomeFrame(ivHomeSettings, 1140f, 47f, 40f, 40f, widthScale, heightScale)
         setHomeFrame(ivHomePower, 1196f, 47f, 40f, 40f, widthScale, heightScale)
         setHomeFrame(tvHomeStartTitle, 257f, 321f, 765f, null, widthScale, heightScale)
-        setHomeFrame(tvHomeStartSubtitle, 300f, 379f, 650f, null, widthScale, heightScale)
+        setHomeFrame(tvHomeStartSubtitle, 315f, 379f, 650f, null, widthScale, heightScale)
     }
 
     private fun setHomeFrame(
