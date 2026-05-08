@@ -421,15 +421,15 @@ class MainActivity : AppCompatActivity() {
         val heightScale = panelHeight.toFloat() / HOME_BASE_HEIGHT
         val scale = minOf(widthScale, heightScale)
 
-        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 36f * scale)
-        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_PX, 28f * scale)
-        tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 48f * scale)
-        tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 16f * scale)
+        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 38f * scale)
+        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_PX, 30f * scale)
+        tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 50f * scale)
+        tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 18f * scale)
 
         setHomeFrame(tvHomeAppTitle, 61f, 37f, null, null, widthScale, heightScale)
         setHomeFrame(tvHomeSystemTime, 1067f, 42f, 75f, null, widthScale, heightScale)
-        setHomeFrame(ivHomeSettings, 1157f, 47f, 24f, 24f, widthScale, heightScale)
-        setHomeFrame(ivHomePower, 1196f, 47f, 24f, 24f, widthScale, heightScale)
+        setHomeFrame(ivHomeSettings, 1157f, 47f, 26f, 26f, widthScale, heightScale)
+        setHomeFrame(ivHomePower, 1196f, 47f, 26f, 26f, widthScale, heightScale)
         setHomeFrame(tvHomeStartTitle, 257f, 321f, 765f, null, widthScale, heightScale)
         setHomeFrame(tvHomeStartSubtitle, 398f, 379f, 483f, null, widthScale, heightScale)
     }
