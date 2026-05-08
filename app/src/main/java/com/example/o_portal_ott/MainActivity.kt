@@ -406,6 +406,9 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 16f * scale)
         setSquareSize(ivHomeSettings, 24f * scale)
         setSquareSize(ivHomePower, 24f * scale)
+<<<<<<< HEAD
+>>>>>>> parent of 1cfd989 (Merge pull request #100 from kshmrrZy/codex/update-home-page-layout-and-font-0fniub)
+=======
 >>>>>>> parent of 1cfd989 (Merge pull request #100 from kshmrrZy/codex/update-home-page-layout-and-font-0fniub)
     }
 
