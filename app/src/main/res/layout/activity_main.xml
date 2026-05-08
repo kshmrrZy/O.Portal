@@ -267,9 +267,8 @@
         android:background="@drawable/bg_home_screen"
         android:visibility="gone">
 
-        <TextView
+        <LinearLayout
             android:id="@+id/tvHomeAppTitle"
-            style="@style/AppGolosText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:includeFontPadding="false"
@@ -282,7 +281,28 @@
             app:layout_constraintHorizontal_bias="0.054"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintVertical_bias="0.055" />
+            app:layout_constraintVertical_bias="0.055">
+
+            <TextView
+                style="@style/AppGolosText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:text="O."
+                android:textColor="#FFFFFF"
+                android:textFontWeight="700"
+                android:textSize="38sp" />
+
+            <TextView
+                style="@style/AppGolosText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:text="Portal"
+                android:textColor="#FFFFFF"
+                android:textFontWeight="800"
+                android:textSize="38sp" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/tvHomeSystemTime"
