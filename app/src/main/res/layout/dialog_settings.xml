@@ -14,19 +14,19 @@
         android:layout_height="wrap_content"
         android:text="Настройки"
         android:textColor="#FFFFFF"
-        android:textSize="16sp"
+        android:textSize="14sp"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
     <LinearLayout
         android:id="@+id/btnPlaylistSettings"
         android:layout_width="0dp"
-        android:layout_height="56dp"
+        android:layout_height="46dp"
         android:layout_marginTop="0dp"
         android:background="@drawable/bg_settings_row"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="16dp"
+        android:paddingHorizontal="12dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tvSettingsTitle">
@@ -46,30 +46,30 @@
             android:text="Настроить плейлисты"
             android:textColor="#FFFFFF"
             android:textFontWeight="500"
-            android:textSize="16sp" />
+            android:textSize="14sp" />
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/btnEpgSelect"
         android:layout_width="0dp"
-        android:layout_height="56dp"
-        android:layout_marginTop="10dp"
+        android:layout_height="46dp"
+        android:layout_marginTop="8dp"
         android:background="@drawable/bg_settings_row"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="16dp"
+        android:paddingHorizontal="12dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btnPlaylistSettings">
 
         <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/epg" android:tint="#FFFFFF"/>
-        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Настройка программы передач (EPG)" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="16sp"/>
+        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Настройка программы передач (EPG)" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/btnSleepTimerSettings"
-        android:layout_width="0dp" android:layout_height="56dp" android:layout_marginTop="10dp"
-        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="16dp"
+        android:layout_width="0dp" android:layout_height="46dp" android:layout_marginTop="8dp"
+        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp"
         app:layout_constraintTop_toBottomOf="@id/btnEpgSelect" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
         <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/timer" android:tint="#FFFFFF"/>
         <LinearLayout
@@ -78,7 +78,7 @@
             android:layout_marginStart="14dp"
             android:layout_weight="1"
             android:orientation="vertical">
-            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Таймер сна" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="16sp"/>
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Таймер сна" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
             <TextView
                 android:id="@+id/tvSleepTimerHint"
                 style="@style/AppGolosText"
@@ -126,15 +126,15 @@
 
     <LinearLayout
         android:id="@+id/itemStartMode"
-        android:layout_width="0dp" android:layout_height="56dp" android:layout_marginTop="10dp"
-        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="16dp"
+        android:layout_width="0dp" android:layout_height="46dp" android:layout_marginTop="8dp"
+        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp"
         app:layout_constraintTop_toBottomOf="@id/btnSleepTimerSettings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
         <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/folder" android:tint="#FFFFFF"/>
-        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Выбор страницы при открытии приложения" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="16sp"/>
+        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Выбор страницы при открытии приложения" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
         <ToggleButton
             android:id="@+id/tbStartMode"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
+            android:layout_height="30dp"
             android:minWidth="190dp"
             android:background="@drawable/bg_settings_row"
             android:textAllCaps="false"
@@ -146,20 +146,20 @@
 
     <LinearLayout
         android:id="@+id/btnAdvancedSettings"
-        android:layout_width="0dp" android:layout_height="56dp" android:layout_marginTop="10dp"
-        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="16dp"
+        android:layout_width="0dp" android:layout_height="46dp" android:layout_marginTop="8dp"
+        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp"
         app:layout_constraintTop_toBottomOf="@id/itemStartMode" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
         <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/settings" android:tint="#FFFFFF"/>
-        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Дополнительные настройки" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="16sp"/>
+        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Дополнительные настройки" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/btnUserSettings"
-        android:layout_width="0dp" android:layout_height="56dp" android:layout_marginTop="10dp"
-        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="16dp"
+        android:layout_width="0dp" android:layout_height="46dp" android:layout_marginTop="8dp"
+        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp"
         app:layout_constraintTop_toBottomOf="@id/btnAdvancedSettings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
         <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/profile" android:tint="#FFFFFF"/>
-        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Настроить пользователя" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="16sp"/>
+        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Настроить пользователя" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
