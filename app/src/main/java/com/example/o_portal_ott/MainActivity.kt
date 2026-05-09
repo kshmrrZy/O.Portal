@@ -1121,7 +1121,7 @@ class MainActivity : AppCompatActivity() {
         val containerHeight = (homeSettingsScreen.layoutParams?.height ?: 0).takeIf { it > 0 }
             ?: (resources.displayMetrics.heightPixels - dpToPx(40))
         val contentHeight = rowIds.size * rowHeight + (rowIds.size - 1) * rowMargin
-        val centeredTopMargin = (((containerHeight - contentHeight) / 2) - dpToPx(12)).coerceAtLeast(dpToPx(6))
+        val centeredTopMargin = (((containerHeight - contentHeight) / 2) - dpToPx(22)).coerceAtLeast(0)
 
         rowIds.forEachIndexed { index, id ->
             val row = findViewById<View>(id)
