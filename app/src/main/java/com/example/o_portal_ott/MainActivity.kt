@@ -149,6 +149,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homeSettingsScreen: View
     private lateinit var playerSettingsOverlay: View
     private var settingsOpenedFromPlayer = false
+    private var isSettingsModalVisible = false
 
     private var lastHomePanelWidth = 0
     private var lastHomePanelHeight = 0
@@ -269,6 +270,7 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_CUSTOM_EPG_SOURCES = "custom_epg_sources"
         private const val PREF_LOGO_CACHE = "logo_cache"
         private const val PREF_START_LAST_CHANNEL = "pref_start_last_channel"
+        private const val PREF_SLEEP_TIMER_MINUTES = "pref_sleep_timer_minutes"
         private const val PREF_SHOW_LOCK_BUTTON = "pref_show_lock_button"
         private const val PREF_APP_VERSION_CODE = "pref_app_version_code"
         private const val PREF_USE_GPU_DECODER = "pref_use_gpu_decoder"
@@ -949,6 +951,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSettingsDialog() {
         settingsOpenedFromPlayer = homePanel.visibility != View.VISIBLE
+        isSettingsModalVisible = true
         if (settingsOpenedFromPlayer) {
             playerSettingsOverlay.visibility = View.GONE
         homePanel.setBackgroundResource(R.drawable.bg_home_screen)
@@ -971,7 +974,7 @@ class MainActivity : AppCompatActivity() {
             }
             homePanel.setBackgroundColor(Color.TRANSPARENT)
             homeSettingsScreen.setBackgroundResource(R.drawable.bg_player_settings_modal)
-            homeSettingsScreen.setPadding(0, dpToPx(12), 0, dpToPx(12))
+            homeSettingsScreen.setPadding(dpToPx(5), dpToPx(12), dpToPx(5), dpToPx(12))
             tunePlayerSettingsRows()
         } else {
             (homeSettingsScreen.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
@@ -1017,12 +1020,13 @@ class MainActivity : AppCompatActivity() {
         btnPlaylistSettings.setOnClickListener { showPlaylistSettingsDialog() }
         btnEpgSelect.setOnClickListener { showEpgSelectionDialog() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
-        var sleepIndex = 0
+        var sleepIndex = sleepOptions.indexOf(prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)).takeIf { it >= 0 } ?: 0
         var sleepSelectionActive = false
         var pendingSleepApply: Runnable? = null
         fun applySleepState() {
             val selected = sleepOptions[sleepIndex]
             pendingSleepApply?.let { handler.removeCallbacks(it) }
+            prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, selected).apply()
             if (selected == 0) {
                 tvSleepTimerValue.text = "выключено"
                 cancelSleepTimer()
@@ -1058,6 +1062,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hideSettingsScreen() {
+        isSettingsModalVisible = false
         homeSettingsScreen.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = false)
         tvHomeStartTitle.visibility = View.VISIBLE
@@ -2083,6 +2088,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showUI() {
+        if (isSettingsModalVisible) {
+            topInfoPanel.visibility = View.GONE
+            controlsPanel.visibility = View.GONE
+            return
+        }
         topInfoPanel.visibility = View.VISIBLE
         controlsPanel.visibility = View.VISIBLE
         sbTimeline.isEnabled = true
