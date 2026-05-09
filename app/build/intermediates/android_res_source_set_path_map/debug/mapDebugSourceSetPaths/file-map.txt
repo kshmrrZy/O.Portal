@@ -1,8 +1,0 @@
-com.example.o_portal_ott.app-pngs-0 C:\Users\user\AndroidStudioProjects\o_portal_OTT\app\build\generated\res\pngs\debug
-com.example.o_portal_ott.app-resValues-1 C:\Users\user\AndroidStudioProjects\o_portal_OTT\app\build\generated\res\resValues\debug
-com.example.o_portal_ott.app-updated_navigation_xml-2 C:\Users\user\AndroidStudioProjects\o_portal_OTT\app\build\generated\updated_navigation_xml\debug
-com.example.o_portal_ott.app-packageDebugResources-3 C:\Users\user\AndroidStudioProjects\o_portal_OTT\app\build\intermediates\incremental\debug\packageDebugResources\merged.dir
-com.example.o_portal_ott.app-packageDebugResources-4 C:\Users\user\AndroidStudioProjects\o_portal_OTT\app\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
-com.example.o_portal_ott.app-debug-5 C:\Users\user\AndroidStudioProjects\o_portal_OTT\app\build\intermediates\merged_res\debug\mergeDebugResources
-com.example.o_portal_ott.app-debug-6 C:\Users\user\AndroidStudioProjects\o_portal_OTT\app\src\debug\res
-com.example.o_portal_ott.app-main-7 C:\Users\user\AndroidStudioProjects\o_portal_OTT\app\src\main\res
