@@ -13,21 +13,49 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <TextView
+    <LinearLayout
         android:id="@+id/tvReloadingStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="110dp"
-        android:background="@drawable/bg_reload_toast"
-        android:paddingStart="30dp"
-        android:paddingEnd="30dp"
-        android:paddingTop="15dp"
-        android:paddingBottom="15dp"
-        android:text="Обновление трансляции..."
-        android:textColor="#FFFFFF"
-        android:textSize="18sp"
-        android:visibility="gone" />
+        android:layout_gravity="center"
+        android:background="@drawable/bg_timer_warning_modal"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="12dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/ivReloadingIcon"
+            android:layout_width="46dp"
+            android:layout_height="46dp"
+            android:src="@drawable/loader" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvReloadingTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Выполняется обновление трансляции! Ожидайте..."
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvReloadingSubtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text=""
+                android:textColor="#99FFFFFF"
+                android:textSize="10sp" />
+        </LinearLayout>
+    </LinearLayout>
 
     <LinearLayout
         android:id="@+id/timerWarningPanel"
