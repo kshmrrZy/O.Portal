@@ -139,7 +139,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sbTimeline: SeekBar
     private lateinit var tvCurrentTime: TextView
     private lateinit var tvProgramEndTime: TextView
-    private lateinit var tvReloadingStatus: TextView
+    private lateinit var tvReloadingStatus: View
+    private lateinit var ivReloadingIcon: ImageView
+    private lateinit var tvReloadingTitle: TextView
+    private lateinit var tvReloadingSubtitle: TextView
     private lateinit var listBackgroundOverlay: View
     private lateinit var timerWarningPanel: View
     private lateinit var btnStopTimer: TextView
@@ -173,6 +176,7 @@ class MainActivity : AppCompatActivity() {
     private var candidates: List<String> = emptyList()
 
     private var timerEndAtMillis: Long = 0L
+    private var suppressReloadOverlayUntilMs: Long = 0L
     private var lastBackPressAt = 0L
 
     private var shouldOpenLastChannelOnStart = false
@@ -251,7 +255,6 @@ class MainActivity : AppCompatActivity() {
 
 
     private val returnToLiveRunnable = Runnable {
-        tvReloadingStatus.text = "Возвращаемся к прямой трансляции"
         playChannel(forcePlay = true)
     }
 
@@ -389,6 +392,9 @@ class MainActivity : AppCompatActivity() {
         tvCurrentTime = findViewById(R.id.tvCurrentTime)
         tvProgramEndTime = findViewById(R.id.tvProgramEndInfo)
         tvReloadingStatus = findViewById(R.id.tvReloadingStatus)
+        ivReloadingIcon = findViewById(R.id.ivReloadingIcon)
+        tvReloadingTitle = findViewById(R.id.tvReloadingTitle)
+        tvReloadingSubtitle = findViewById(R.id.tvReloadingSubtitle)
         listBackgroundOverlay = findViewById(R.id.listBackgroundOverlay)
         timerWarningPanel = findViewById(R.id.timerWarningPanel)
         btnStopTimer = findViewById(R.id.btnStopTimer)
@@ -398,6 +404,7 @@ class MainActivity : AppCompatActivity() {
         homeSettingsScreen = findViewById(R.id.homeSettingsScreen)
         playerSettingsOverlay = findViewById(R.id.playerSettingsOverlay)
         tvEpg.isSelected = true
+        prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, 0).apply()
         applyGolosTypeface(window.decorView)
         applyHomeAppTitleStyle()
         homePanel.addOnLayoutChangeListener { _, _, _, right, bottom, _, _, oldRight, oldBottom ->
@@ -498,14 +505,12 @@ class MainActivity : AppCompatActivity() {
         ivHomePower.setOnClickListener { closeAppCompletely() }
 
         btnLiveReload.setOnClickListener {
-            tvReloadingStatus.visibility = View.VISIBLE
-            if (isArchivePlayback) {
-                tvReloadingStatus.text = "Возвращаемся к прямой трансляции"
+            if (System.currentTimeMillis() >= suppressReloadOverlayUntilMs) {
+                showReloadingStatus(title = "Выполняется обновление трансляции! Ожидайте...", subtitle = "")
             }
             playChannel(forcePlay = true)
             handler.postDelayed({
                 tvReloadingStatus.visibility = View.GONE
-                tvReloadingStatus.text = "Обновление трансляции..."
             }, 1200)
         }
         sbTimeline.max = 1000
@@ -567,6 +572,7 @@ class MainActivity : AppCompatActivity() {
         mDetector = GestureDetectorCompat(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
                 if (e1 == null) return false
+                if (homeSettingsScreen.visibility == View.VISIBLE) return true
                 if (isLocked) {
                     showLockedMessage()
                     return false
@@ -685,14 +691,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showExitWarning() {
-        tvReloadingStatus.text = "Нажмите ещё раз для выхода!"
-        tvReloadingStatus.setBackgroundResource(R.drawable.live_btn_bg)
-        tvReloadingStatus.visibility = View.VISIBLE
-        handler.postDelayed({
-            tvReloadingStatus.visibility = View.GONE
-            tvReloadingStatus.text = "Обновление трансляции..."
-            tvReloadingStatus.setBackgroundResource(R.drawable.bg_reload_toast)
-        }, 1800)
+        showReloadingStatus("Нажмите ещё раз для выхода!", "")
+        handler.postDelayed({ tvReloadingStatus.visibility = View.GONE }, 1800)
     }
 
     private fun closeAppCompletely() {
@@ -740,7 +740,6 @@ class MainActivity : AppCompatActivity() {
         timerEndAtMillis = System.currentTimeMillis() + minutes * 60_000L
         handler.postDelayed(timerFinishRunnable, minutes * 60_000L)
         handler.postDelayed(timerWarnRunnable, (minutes * 60_000L - 30_000L).coerceAtLeast(0L))
-        Toast.makeText(this, "Таймер установлен на $minutes минут", Toast.LENGTH_SHORT).show()
     }
 
     private fun showTimerWarning() {
@@ -753,6 +752,7 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(timerFinishRunnable)
         handler.removeCallbacks(timerWarnRunnable)
         timerWarningPanel.visibility = View.GONE
+        prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, 0).apply()
     }
 
     private fun showChannelList() {
@@ -954,7 +954,10 @@ class MainActivity : AppCompatActivity() {
         isSettingsModalVisible = true
         if (settingsOpenedFromPlayer) {
             playerSettingsOverlay.visibility = View.GONE
-        homePanel.setBackgroundResource(R.drawable.bg_home_screen)
+            hideUI()
+            timerWarningPanel.visibility = View.GONE
+        prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, 0).apply()
+            homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             tvHomeAppTitle.visibility = View.GONE
             tvHomeSystemTime.visibility = View.GONE
             ivHomeSettings.visibility = View.GONE
@@ -974,7 +977,7 @@ class MainActivity : AppCompatActivity() {
             }
             homePanel.setBackgroundColor(Color.TRANSPARENT)
             homeSettingsScreen.setBackgroundResource(R.drawable.bg_player_settings_modal)
-            homeSettingsScreen.setPadding(dpToPx(5), dpToPx(12), dpToPx(5), dpToPx(12))
+            homeSettingsScreen.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
             tunePlayerSettingsRows()
         } else {
             (homeSettingsScreen.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
@@ -1006,6 +1009,7 @@ class MainActivity : AppCompatActivity() {
         val tbStartMode = findViewById<ToggleButton>(R.id.tbStartMode)
         val sleepRow = findViewById<View>(R.id.btnSleepTimerSettings)
         val tvSleepTimerValue = findViewById<TextView>(R.id.tvSleepTimerValue)
+        val tvSleepTimerTitle = findViewById<TextView>(R.id.tvSleepTimerTitle)
         val btnSleepUp = findViewById<View>(R.id.btnSleepUp)
         val btnSleepDown = findViewById<View>(R.id.btnSleepDown)
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
@@ -1021,39 +1025,60 @@ class MainActivity : AppCompatActivity() {
         btnEpgSelect.setOnClickListener { showEpgSelectionDialog() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
         var sleepIndex = sleepOptions.indexOf(prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)).takeIf { it >= 0 } ?: 0
-        var sleepSelectionActive = false
         var pendingSleepApply: Runnable? = null
-        fun applySleepState() {
+        var sleepTitleResetRunnable: Runnable? = null
+        fun updateSleepValueText() {
             val selected = sleepOptions[sleepIndex]
-            pendingSleepApply?.let { handler.removeCallbacks(it) }
+            tvSleepTimerValue.text = if (selected == 0) "выключено" else "$selected мин"
+        }
+        fun refreshSleepTitle() {
+            val selected = prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)
+            tvSleepTimerTitle.text = if (selected > 0) "Таймер запущен на $selected минут" else "Таймер сна"
+        }
+        fun showSleepTitleTemporary(message: String) {
+            sleepTitleResetRunnable?.let { handler.removeCallbacks(it) }
+            tvSleepTimerTitle.text = message
+            sleepTitleResetRunnable = Runnable { refreshSleepTitle() }
+            handler.postDelayed(sleepTitleResetRunnable!!, 5000L)
+        }
+        fun applySleepSelection() {
+            val selected = sleepOptions[sleepIndex]
             prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, selected).apply()
+            updateSleepValueText()
+            refreshSleepTitle()
             if (selected == 0) {
-                tvSleepTimerValue.text = "выключено"
                 cancelSleepTimer()
-                return
-            }
-            tvSleepTimerValue.text = "$selected мин"
-            pendingSleepApply = Runnable {
-                cancelSleepTimer()
+                showSleepTitleTemporary("Таймер отключен")
+            } else {
                 startSleepTimer(selected)
+                showSleepTitleTemporary("Таймер запущен на $selected минут")
             }
-            handler.postDelayed(pendingSleepApply!!, 5000)
         }
-        fun changeSleep(delta: Int) {
-            sleepIndex = (sleepIndex + delta + sleepOptions.size) % sleepOptions.size
-            applySleepState()
+        fun scheduleSleepApply() {
+            pendingSleepApply?.let { handler.removeCallbacks(it) }
+            pendingSleepApply = Runnable { applySleepSelection() }
+            handler.postDelayed(pendingSleepApply!!, 7000L)
         }
-        applySleepState()
-        btnSleepUp.setOnClickListener { changeSleep(1) }
-        btnSleepDown.setOnClickListener { changeSleep(-1) }
+        fun changeSleep() {
+            sleepIndex = (sleepIndex + 1) % sleepOptions.size
+            updateSleepValueText()
+            scheduleSleepApply()
+        }
+        updateSleepValueText()
+            refreshSleepTitle()
+        btnSleepUp.setOnClickListener { changeSleep() }
+        btnSleepDown.setOnClickListener { changeSleep() }
         sleepRow.isFocusable = true
-        sleepRow.setOnClickListener { sleepSelectionActive = !sleepSelectionActive }
+        sleepRow.setOnClickListener { changeSleep() }
         sleepRow.setOnKeyListener { _, keyCode, event ->
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
             when (keyCode) {
-                KeyEvent.KEYCODE_DPAD_UP -> if (sleepSelectionActive) { changeSleep(1); true } else false
-                KeyEvent.KEYCODE_DPAD_DOWN -> if (sleepSelectionActive) { changeSleep(-1); true } else false
-                KeyEvent.KEYCODE_BACK -> if (sleepSelectionActive) { sleepSelectionActive = false; true } else false
+                KeyEvent.KEYCODE_DPAD_CENTER,
+                KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    changeSleep()
+                    true
+                }
                 else -> false
             }
         }
@@ -1093,11 +1118,20 @@ class MainActivity : AppCompatActivity() {
             R.id.btnAdvancedSettings,
             R.id.btnUserSettings
         )
-        rowIds.forEach { id ->
+        val containerHeight = (homeSettingsScreen.layoutParams?.height ?: 0).takeIf { it > 0 }
+            ?: (resources.displayMetrics.heightPixels - dpToPx(40))
+        val contentHeight = rowIds.size * rowHeight + (rowIds.size - 1) * rowMargin
+        val centeredTopMargin = (((containerHeight - contentHeight) / 2) - dpToPx(17)).coerceAtLeast(0)
+
+        rowIds.forEachIndexed { index, id ->
             val row = findViewById<View>(id)
-            val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEach
+            val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
             lp.height = rowHeight
-            lp.topMargin = if (id == R.id.btnPlaylistSettings) 0 else rowMargin
+            lp.topMargin = if (index == 0) centeredTopMargin else rowMargin
+            lp.marginStart = dpToPx(12)
+            lp.marginEnd = dpToPx(12)
+            lp.bottomToBottom = ConstraintSet.UNSET
+            lp.bottomMargin = 0
             row.layoutParams = lp
         }
     }
@@ -1818,19 +1852,27 @@ class MainActivity : AppCompatActivity() {
         return builder.build()
     }
 
-    private fun showCenterError(message: String, durationMs: Long = 2200L) {
-        tvReloadingStatus.text = message
-        tvReloadingStatus.setBackgroundResource(R.drawable.bg_reload_toast)
+    private fun showReloadingStatus(title: String, subtitle: String, isError: Boolean = false) {
+        ivReloadingIcon.setImageResource(if (isError) R.drawable.alert else R.drawable.loader)
+        tvReloadingTitle.text = title
+        tvReloadingSubtitle.text = subtitle
+        tvReloadingSubtitle.visibility = if (subtitle.isBlank()) View.GONE else View.VISIBLE
         tvReloadingStatus.visibility = View.VISIBLE
-        handler.postDelayed({
-            tvReloadingStatus.visibility = View.GONE
-            tvReloadingStatus.text = "Обновление трансляции..."
-        }, durationMs)
+    }
+
+    private fun showCenterError(message: String, durationMs: Long = 3500L) {
+        showReloadingStatus(
+            title = "ERROR! Возникла ошибка при просмотре трансляции: $message",
+            subtitle = "Обновляем трансляцию",
+            isError = true
+        )
+        suppressReloadOverlayUntilMs = System.currentTimeMillis() + durationMs + 1500L
+        handler.postDelayed({ tvReloadingStatus.visibility = View.GONE }, durationMs)
     }
 
     private fun showPlaybackFailureAndReturn(url: String, error: String) {
         val message = "Ошибка воспроизведения\n$error\n$url\nВозврат к прямому эфиру"
-        showCenterError(message, 3000L)
+        showCenterError(message, 5000L)
         handler.removeCallbacks(returnToLiveRunnable)
         handler.postDelayed(returnToLiveRunnable, 3000L)
     }
@@ -2124,6 +2166,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (event?.action == KeyEvent.ACTION_DOWN && timerWarningPanel.visibility == View.VISIBLE &&
+            (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)
+        ) {
+            cancelSleepTimer()
+            Toast.makeText(this, "Таймер остановлен", Toast.LENGTH_SHORT).show()
+            return true
+        }
         when {
             keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> {
                 inputNumber += (keyCode - KeyEvent.KEYCODE_0).toString()
@@ -2134,6 +2183,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_CHANNEL_UP -> {
+                if (homeSettingsScreen.visibility == View.VISIBLE) return true
                 if (channels.isNotEmpty()) {
                     currentChannelIndex = (currentChannelIndex + 1) % channels.size
                     playChannel(forcePlay = true)
@@ -2142,6 +2192,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                if (homeSettingsScreen.visibility == View.VISIBLE) return true
                 if (channels.isNotEmpty()) {
                     currentChannelIndex = (currentChannelIndex - 1 + channels.size) % channels.size
                     playChannel(forcePlay = true)
