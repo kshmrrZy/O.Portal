@@ -958,14 +958,15 @@ class MainActivity : AppCompatActivity() {
                 lp.bottomToBottom = ConstraintSet.PARENT_ID
                 lp.topMargin = dpToPx(113)
                 lp.marginStart = dpToPx(19)
-                lp.marginEnd = 0
+                lp.marginEnd = dpToPx(19)
                 lp.bottomMargin = 0
-                lp.width = dpToPx(1242)
-                lp.height = dpToPx(474)
+                lp.width = (resources.displayMetrics.widthPixels - dpToPx(38)).coerceAtMost(dpToPx(1242))
+                lp.height = dpToPx(474).coerceAtMost(resources.displayMetrics.heightPixels - dpToPx(130))
                 homeSettingsScreen.layoutParams = lp
             }
             homePanel.setBackgroundColor(Color.TRANSPARENT)
             homeSettingsScreen.setBackgroundResource(R.drawable.bg_player_settings_modal)
+            tunePlayerSettingsRows()
         } else {
             (homeSettingsScreen.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
                 lp.topToBottom = R.id.tvHomeAppTitle
@@ -1063,6 +1064,29 @@ class MainActivity : AppCompatActivity() {
         if (settingsOpenedFromPlayer && channels.isNotEmpty()) {
             homePanel.visibility = View.GONE
             showUI()
+        }
+    }
+
+
+    private fun tunePlayerSettingsRows() {
+        val dm = resources.displayMetrics
+        val scale = minOf(dm.widthPixels / 1280f, dm.heightPixels / 720f).coerceAtLeast(0.65f)
+        val rowHeight = (71.4f * scale).toInt()
+        val rowMargin = (8f * scale).toInt()
+        val rowIds = intArrayOf(
+            R.id.btnPlaylistSettings,
+            R.id.btnEpgSelect,
+            R.id.btnSleepTimerSettings,
+            R.id.itemStartMode,
+            R.id.btnAdvancedSettings,
+            R.id.btnUserSettings
+        )
+        rowIds.forEach { id ->
+            val row = findViewById<View>(id)
+            val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEach
+            lp.height = rowHeight
+            lp.topMargin = if (id == R.id.btnPlaylistSettings) 0 else rowMargin
+            row.layoutParams = lp
         }
     }
 
