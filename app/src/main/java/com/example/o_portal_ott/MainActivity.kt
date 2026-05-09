@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.text.SpannableString
 import android.text.Spanned
+import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
 import android.util.Log
@@ -145,6 +146,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homePanel: View
     private lateinit var ivHomeSettings: ImageView
     private lateinit var ivHomePower: ImageView
+    private lateinit var homeSettingsScreen: View
+    private lateinit var playerSettingsOverlay: View
+    private var settingsOpenedFromPlayer = false
 
     private var lastHomePanelWidth = 0
     private var lastHomePanelHeight = 0
@@ -389,6 +393,8 @@ class MainActivity : AppCompatActivity() {
         homePanel = findViewById(R.id.homePanel)
         ivHomeSettings = findViewById(R.id.ivHomeSettings)
         ivHomePower = findViewById(R.id.ivHomePower)
+        homeSettingsScreen = findViewById(R.id.homeSettingsScreen)
+        playerSettingsOverlay = findViewById(R.id.playerSettingsOverlay)
         tvEpg.isSelected = true
         applyGolosTypeface(window.decorView)
         applyHomeAppTitleStyle()
@@ -400,18 +406,20 @@ class MainActivity : AppCompatActivity() {
         homePanel.post { applyHomeScreenScale(force = true) }
     }
 
-    private fun applyHomeAppTitleStyle() {
-        val title = SpannableString("O.Portal")
+    private fun applyHomeAppTitleStyle(settingsMode: Boolean = false) {
+        val rawTitle = if (settingsMode) "O.Portal > Настройки" else "O.Portal"
+        val title = SpannableString(rawTitle)
         golosTypeface?.let { font ->
             tvHomeAppTitle.typeface = Typeface.create(font, Typeface.NORMAL)
             title.setSpan(
                 TypefaceSpan(Typeface.create(font, Typeface.BOLD)),
                 2,
-                title.length,
+                8,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
             tvHomeSystemTime.typeface = Typeface.create(font, Typeface.BOLD)
-        } ?: title.setSpan(StyleSpan(Typeface.BOLD), 2, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        } ?: title.setSpan(StyleSpan(Typeface.BOLD), 2, 8, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        if (settingsMode) title.setSpan(RelativeSizeSpan(0.75f), 11, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         tvHomeAppTitle.text = title
     }
 
@@ -481,7 +489,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupInteractions() {
-        ivHomeSettings.setOnClickListener { showSettingsDialog() }
+        ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
         ivHomePower.setOnClickListener { closeAppCompletely() }
 
         btnLiveReload.setOnClickListener {
@@ -652,6 +660,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupBackHandling() {
         onBackPressedDispatcher.addCallback(this) {
+            if (homeSettingsScreen.visibility == View.VISIBLE) {
+                hideSettingsScreen()
+                return@addCallback
+            }
             val now = System.currentTimeMillis()
             if (now - lastBackPressAt < 2000L) {
                 closeAppCompletely()
@@ -928,64 +940,79 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSettingsDialog() {
-        val view = layoutInflater.inflate(R.layout.dialog_settings, null)
-        val btnPlaylistSettings = view.findViewById<TextView>(R.id.btnPlaylistSettings)
-        val btnEpgSelect = view.findViewById<TextView>(R.id.btnEpgSelect)
-        val btnClose = view.findViewById<TextView>(R.id.btnCloseSettingsDialog)
-        val tbStartMode = view.findViewById<ToggleButton>(R.id.tbStartMode)
-        val tbShowLockButton = view.findViewById<ToggleButton>(R.id.tbShowLockButton)
-        val tbGpuDecoder = view.findViewById<ToggleButton>(R.id.tbGpuDecoder)
+        settingsOpenedFromPlayer = homePanel.visibility != View.VISIBLE
+        if (settingsOpenedFromPlayer) {
+            playerSettingsOverlay.visibility = View.VISIBLE
+            tvHomeAppTitle.visibility = View.GONE
+            tvHomeSystemTime.visibility = View.GONE
+            ivHomeSettings.visibility = View.GONE
+            ivHomePower.visibility = View.GONE
+        }
+        homePanel.visibility = View.VISIBLE
+        homePanel.post { applyHomeScreenScale(force = true) }
+        tvHomeStartTitle.visibility = View.GONE
+        tvHomeStartSubtitle.visibility = View.GONE
+        applyHomeAppTitleStyle(settingsMode = true)
+        homeSettingsScreen.visibility = View.VISIBLE
 
-        applyGolosTypeface(view)
+        val btnPlaylistSettings = findViewById<View>(R.id.btnPlaylistSettings)
+        val btnEpgSelect = findViewById<View>(R.id.btnEpgSelect)
+        val tbStartMode = findViewById<ToggleButton>(R.id.tbStartMode)
+        val tbSleepTimer = findViewById<ToggleButton>(R.id.tbSleepTimer)
+        val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
+        val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
 
         tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
-        tbShowLockButton.isChecked = prefs.getBoolean(PREF_SHOW_LOCK_BUTTON, true)
-        tbGpuDecoder.isChecked = prefs.getBoolean(PREF_USE_GPU_DECODER, true)
-
-        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
-            .setView(view)
-            .create()
-
         tbStartMode.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean(PREF_START_LAST_CHANNEL, isChecked).apply()
             shouldOpenLastChannelOnStart = isChecked
         }
 
-        tbShowLockButton.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean(PREF_SHOW_LOCK_BUTTON, isChecked).apply()
-            applyLockButtonVisibility()
+        btnPlaylistSettings.setOnClickListener { showPlaylistSettingsDialog() }
+        btnEpgSelect.setOnClickListener { showEpgSelectionDialog() }
+        val sleepOptions = arrayOf(10, 20, 30, 60, 90, 120, 240)
+        var sleepIndex = 0
+        tbSleepTimer.textOn = "${sleepOptions[sleepIndex]} мин"
+        tbSleepTimer.textOff = "Выключен"
+        tbSleepTimer.isChecked = false
+        tbSleepTimer.setOnClickListener {
+            if (!tbSleepTimer.isChecked) {
+                cancelSleepTimer()
+                tbSleepTimer.text = tbSleepTimer.textOff
+            } else {
+                sleepIndex = (sleepIndex + 1) % sleepOptions.size
+                val minutes = sleepOptions[sleepIndex]
+                tbSleepTimer.textOn = "$minutes мин"
+                tbSleepTimer.text = tbSleepTimer.textOn
+                handler.postDelayed({ startSleepTimer(minutes) }, 5000)
+            }
         }
+        btnAdvancedSettings.setOnClickListener { showSettingsPlaceholderDialog() }
+        btnUserSettings.setOnClickListener { showSettingsPlaceholderDialog() }
+        btnClose.setOnClickListener { hideSettingsScreen() }
+    }
 
-        tbGpuDecoder.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean(PREF_USE_GPU_DECODER, isChecked).apply()
-            preferGpuDecoding = isChecked
-            softwareDecoderMode = !preferGpuDecoding
-            stopPlayback()
-            setupPlayer(preferSoftwareDecoder = softwareDecoderMode)
-            playChannel(forcePlay = true)
+    private fun hideSettingsScreen() {
+        homeSettingsScreen.visibility = View.GONE
+        applyHomeAppTitleStyle(settingsMode = false)
+        tvHomeStartTitle.visibility = View.VISIBLE
+        tvHomeStartSubtitle.visibility = View.VISIBLE
+        playerSettingsOverlay.visibility = View.GONE
+        tvHomeAppTitle.visibility = View.VISIBLE
+        tvHomeSystemTime.visibility = View.VISIBLE
+        ivHomeSettings.visibility = View.VISIBLE
+        ivHomePower.visibility = View.VISIBLE
+        if (settingsOpenedFromPlayer && channels.isNotEmpty()) {
+            homePanel.visibility = View.GONE
+            showUI()
         }
+    }
 
-        btnPlaylistSettings.setOnClickListener {
-            dialog.dismiss()
-            showPlaylistSettingsDialog()
-        }
-
-        btnEpgSelect.setOnClickListener {
-            dialog.dismiss()
-            showEpgSelectionDialog()
-        }
-
-        btnClose.setOnClickListener { dialog.dismiss() }
-
-        dialog.show()
-        dialog.window?.decorView?.let { applyGolosTypeface(it) }
-        val dm = resources.displayMetrics
-        dialog.window?.apply {
-            setBackgroundDrawableResource(android.R.color.transparent)
-            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setGravity(Gravity.CENTER)
-            setLayout((dm.widthPixels * 0.82f).toInt(), (dm.heightPixels * 0.82f).toInt())
-        }
+    private fun showSettingsPlaceholderDialog() {
+        AlertDialog.Builder(this)
+            .setMessage("В данный момент ничего нет! Попробуйте посмотреть позже")
+            .setPositiveButton("ОК", null)
+            .show()
     }
 
     private fun showPlaylistSettingsDialog() {

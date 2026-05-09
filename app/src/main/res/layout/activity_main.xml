@@ -333,6 +333,23 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintVertical_bias="0.068" />
 
+
+        <ScrollView
+            android:id="@+id/homeSettingsScreen"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:visibility="gone"
+            android:layout_marginTop="8dp"
+            android:overScrollMode="ifContentScrolls"
+            app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
+            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
+            app:layout_constraintEnd_toEndOf="@id/ivHomePower"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <include layout="@layout/dialog_settings" />
+
+        </ScrollView>
+
         <TextView
             android:id="@+id/tvHomeStartTitle"
             style="@style/AppGolosText"
@@ -398,6 +415,13 @@
         android:background="@drawable/bg_channel_list_gradient"
         android:visibility="gone"
         android:elevation="50dp" />
+
+    <View
+        android:id="@+id/playerSettingsOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#12050505"
+        android:visibility="gone" />
 
 
 </FrameLayout>
