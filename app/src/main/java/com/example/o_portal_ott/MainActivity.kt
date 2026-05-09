@@ -956,12 +956,12 @@ class MainActivity : AppCompatActivity() {
                 lp.startToStart = ConstraintSet.PARENT_ID
                 lp.endToEnd = ConstraintSet.PARENT_ID
                 lp.bottomToBottom = ConstraintSet.PARENT_ID
-                lp.topMargin = dpToPx(113)
+                lp.topMargin = dpToPx(40)
                 lp.marginStart = dpToPx(19)
                 lp.marginEnd = dpToPx(19)
                 lp.bottomMargin = 0
                 lp.width = (resources.displayMetrics.widthPixels - dpToPx(38)).coerceAtMost(dpToPx(1242))
-                lp.height = dpToPx(474).coerceAtMost(resources.displayMetrics.heightPixels - dpToPx(130))
+                lp.height = dpToPx(620).coerceAtMost(resources.displayMetrics.heightPixels - dpToPx(60))
                 homeSettingsScreen.layoutParams = lp
             }
             homePanel.setBackgroundColor(Color.TRANSPARENT)
@@ -1071,8 +1071,8 @@ class MainActivity : AppCompatActivity() {
     private fun tunePlayerSettingsRows() {
         val dm = resources.displayMetrics
         val scale = minOf(dm.widthPixels / 1280f, dm.heightPixels / 720f).coerceAtLeast(0.65f)
-        val rowHeight = (71.4f * scale).toInt()
-        val rowMargin = (8f * scale).toInt()
+        val rowHeight = (78f * scale).toInt()
+        val rowMargin = (10f * scale).toInt()
         val rowIds = intArrayOf(
             R.id.btnPlaylistSettings,
             R.id.btnEpgSelect,
