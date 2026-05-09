@@ -933,14 +933,13 @@ class MainActivity : AppCompatActivity() {
         val btnEpgSelect = view.findViewById<TextView>(R.id.btnEpgSelect)
         val btnClose = view.findViewById<TextView>(R.id.btnCloseSettingsDialog)
         val tbStartMode = view.findViewById<ToggleButton>(R.id.tbStartMode)
-        val tbShowLockButton = view.findViewById<ToggleButton>(R.id.tbShowLockButton)
-        val tbGpuDecoder = view.findViewById<ToggleButton>(R.id.tbGpuDecoder)
+        val btnSleepTimerSettings = view.findViewById<View>(R.id.btnSleepTimerSettings)
+        val btnAdvancedSettings = view.findViewById<View>(R.id.btnAdvancedSettings)
+        val btnUserSettings = view.findViewById<View>(R.id.btnUserSettings)
 
         applyGolosTypeface(view)
 
         tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
-        tbShowLockButton.isChecked = prefs.getBoolean(PREF_SHOW_LOCK_BUTTON, true)
-        tbGpuDecoder.isChecked = prefs.getBoolean(PREF_USE_GPU_DECODER, true)
 
         val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
             .setView(view)
@@ -951,20 +950,6 @@ class MainActivity : AppCompatActivity() {
             shouldOpenLastChannelOnStart = isChecked
         }
 
-        tbShowLockButton.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean(PREF_SHOW_LOCK_BUTTON, isChecked).apply()
-            applyLockButtonVisibility()
-        }
-
-        tbGpuDecoder.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean(PREF_USE_GPU_DECODER, isChecked).apply()
-            preferGpuDecoding = isChecked
-            softwareDecoderMode = !preferGpuDecoding
-            stopPlayback()
-            setupPlayer(preferSoftwareDecoder = softwareDecoderMode)
-            playChannel(forcePlay = true)
-        }
-
         btnPlaylistSettings.setOnClickListener {
             dialog.dismiss()
             showPlaylistSettingsDialog()
@@ -973,6 +958,19 @@ class MainActivity : AppCompatActivity() {
         btnEpgSelect.setOnClickListener {
             dialog.dismiss()
             showEpgSelectionDialog()
+        }
+
+        btnSleepTimerSettings.setOnClickListener {
+            dialog.dismiss()
+            showTimerDialog()
+        }
+
+        btnAdvancedSettings.setOnClickListener {
+            showPlaceholderDialog()
+        }
+
+        btnUserSettings.setOnClickListener {
+            showPlaceholderDialog()
         }
 
         btnClose.setOnClickListener { dialog.dismiss() }
@@ -986,6 +984,14 @@ class MainActivity : AppCompatActivity() {
             setGravity(Gravity.CENTER)
             setLayout((dm.widthPixels * 0.82f).toInt(), (dm.heightPixels * 0.82f).toInt())
         }
+    }
+
+
+    private fun showPlaceholderDialog() {
+        AlertDialog.Builder(this)
+            .setMessage("В данный момент ничего нет! Попробуйте посмотреть позже")
+            .setPositiveButton("ОК", null)
+            .show()
     }
 
     private fun showPlaylistSettingsDialog() {
