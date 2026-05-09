@@ -581,6 +581,11 @@ class MainActivity : AppCompatActivity() {
                     return true
                 }
 
+                if (homeSettingsScreen.visibility == View.VISIBLE && abs(dx) > abs(dy) && abs(dx) > 120) {
+                    if (dx < -120) hideSettingsScreen()
+                    return true
+                }
+
                 if (dx > 120 && abs(dx) > abs(dy)) {
                     showChannelList()
                     return true
@@ -956,16 +961,17 @@ class MainActivity : AppCompatActivity() {
                 lp.startToStart = ConstraintSet.PARENT_ID
                 lp.endToEnd = ConstraintSet.PARENT_ID
                 lp.bottomToBottom = ConstraintSet.PARENT_ID
-                lp.topMargin = dpToPx(40)
+                lp.topMargin = dpToPx(20)
                 lp.marginStart = dpToPx(19)
                 lp.marginEnd = dpToPx(19)
-                lp.bottomMargin = 0
+                lp.bottomMargin = dpToPx(20)
                 lp.width = (resources.displayMetrics.widthPixels - dpToPx(38)).coerceAtMost(dpToPx(1242))
-                lp.height = dpToPx(620).coerceAtMost(resources.displayMetrics.heightPixels - dpToPx(60))
+                lp.height = (resources.displayMetrics.heightPixels - dpToPx(40)).coerceAtMost(dpToPx(680))
                 homeSettingsScreen.layoutParams = lp
             }
             homePanel.setBackgroundColor(Color.TRANSPARENT)
             homeSettingsScreen.setBackgroundResource(R.drawable.bg_player_settings_modal)
+            homeSettingsScreen.setPadding(0, dpToPx(12), 0, dpToPx(12))
             tunePlayerSettingsRows()
         } else {
             (homeSettingsScreen.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
@@ -976,13 +982,14 @@ class MainActivity : AppCompatActivity() {
                 lp.topMargin = dpToPx(8)
                 lp.marginStart = 0
                 lp.marginEnd = 0
-                lp.bottomMargin = 0
+                lp.bottomMargin = dpToPx(20)
                 lp.width = 0
                 lp.height = 0
                 homeSettingsScreen.layoutParams = lp
             }
             homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             homeSettingsScreen.setBackgroundColor(Color.TRANSPARENT)
+            homeSettingsScreen.setPadding(0,0,0,0)
         }
         homePanel.visibility = View.VISIBLE
         homePanel.post { applyHomeScreenScale(force = true) }
@@ -2133,6 +2140,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                if (homeSettingsScreen.visibility == View.VISIBLE) return true
                 if (controlsPanel.visibility == View.VISIBLE && isArchivePlayback && sbTimeline.isEnabled) {
                     sbTimeline.progress = (sbTimeline.progress + 20).coerceAtMost(1000)
                     return true
@@ -2142,6 +2150,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_LEFT -> {
+                if (homeSettingsScreen.visibility == View.VISIBLE) { hideSettingsScreen(); return true }
                 if (controlsPanel.visibility == View.VISIBLE && isArchivePlayback && sbTimeline.isEnabled) {
                     sbTimeline.progress = (sbTimeline.progress - 20).coerceAtLeast(0)
                     return true
