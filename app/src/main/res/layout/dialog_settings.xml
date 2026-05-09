@@ -84,7 +84,7 @@
                 style="@style/AppGolosText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="для выбора нажмите на раздел и путём нажатия верх/низ задайте значение, для подтверждения нажмите ОК"
+                android:text="Телефон: нажимайте на пункт для смены значения • Пульт: нажимайте ОК для смены значения"
                 android:textColor="#99FFFFFF"
                 android:textSize="6sp" />
         </LinearLayout>

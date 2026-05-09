@@ -954,7 +954,9 @@ class MainActivity : AppCompatActivity() {
         isSettingsModalVisible = true
         if (settingsOpenedFromPlayer) {
             playerSettingsOverlay.visibility = View.GONE
-        homePanel.setBackgroundResource(R.drawable.bg_home_screen)
+            hideUI()
+            timerWarningPanel.visibility = View.GONE
+            homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             tvHomeAppTitle.visibility = View.GONE
             tvHomeSystemTime.visibility = View.GONE
             ivHomeSettings.visibility = View.GONE
@@ -974,7 +976,7 @@ class MainActivity : AppCompatActivity() {
             }
             homePanel.setBackgroundColor(Color.TRANSPARENT)
             homeSettingsScreen.setBackgroundResource(R.drawable.bg_player_settings_modal)
-            homeSettingsScreen.setPadding(dpToPx(5), dpToPx(12), dpToPx(5), dpToPx(12))
+            homeSettingsScreen.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
             tunePlayerSettingsRows()
         } else {
             (homeSettingsScreen.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
@@ -1021,39 +1023,39 @@ class MainActivity : AppCompatActivity() {
         btnEpgSelect.setOnClickListener { showEpgSelectionDialog() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
         var sleepIndex = sleepOptions.indexOf(prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)).takeIf { it >= 0 } ?: 0
-        var sleepSelectionActive = false
-        var pendingSleepApply: Runnable? = null
-        fun applySleepState() {
+        fun updateSleepValueText() {
             val selected = sleepOptions[sleepIndex]
-            pendingSleepApply?.let { handler.removeCallbacks(it) }
+            tvSleepTimerValue.text = if (selected == 0) "выключено" else "$selected мин"
+        }
+        fun applySleepSelection() {
+            val selected = sleepOptions[sleepIndex]
             prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, selected).apply()
+            updateSleepValueText()
             if (selected == 0) {
-                tvSleepTimerValue.text = "выключено"
                 cancelSleepTimer()
-                return
-            }
-            tvSleepTimerValue.text = "$selected мин"
-            pendingSleepApply = Runnable {
+            } else {
                 cancelSleepTimer()
                 startSleepTimer(selected)
             }
-            handler.postDelayed(pendingSleepApply!!, 5000)
         }
-        fun changeSleep(delta: Int) {
-            sleepIndex = (sleepIndex + delta + sleepOptions.size) % sleepOptions.size
-            applySleepState()
+        fun changeSleep() {
+            sleepIndex = (sleepIndex + 1) % sleepOptions.size
+            applySleepSelection()
         }
-        applySleepState()
-        btnSleepUp.setOnClickListener { changeSleep(1) }
-        btnSleepDown.setOnClickListener { changeSleep(-1) }
+        updateSleepValueText()
+        btnSleepUp.setOnClickListener { changeSleep() }
+        btnSleepDown.setOnClickListener { changeSleep() }
         sleepRow.isFocusable = true
-        sleepRow.setOnClickListener { sleepSelectionActive = !sleepSelectionActive }
+        sleepRow.setOnClickListener { changeSleep() }
         sleepRow.setOnKeyListener { _, keyCode, event ->
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
             when (keyCode) {
-                KeyEvent.KEYCODE_DPAD_UP -> if (sleepSelectionActive) { changeSleep(1); true } else false
-                KeyEvent.KEYCODE_DPAD_DOWN -> if (sleepSelectionActive) { changeSleep(-1); true } else false
-                KeyEvent.KEYCODE_BACK -> if (sleepSelectionActive) { sleepSelectionActive = false; true } else false
+                KeyEvent.KEYCODE_DPAD_CENTER,
+                KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    changeSleep()
+                    true
+                }
                 else -> false
             }
         }
