@@ -176,6 +176,7 @@ class MainActivity : AppCompatActivity() {
     private var candidates: List<String> = emptyList()
 
     private var timerEndAtMillis: Long = 0L
+    private var suppressReloadOverlayUntilMs: Long = 0L
     private var lastBackPressAt = 0L
 
     private var shouldOpenLastChannelOnStart = false
@@ -254,7 +255,6 @@ class MainActivity : AppCompatActivity() {
 
 
     private val returnToLiveRunnable = Runnable {
-        showReloadingStatus(title = "Выполняется обновление трансляции! Ожидайте...", subtitle = "")
         playChannel(forcePlay = true)
     }
 
@@ -404,6 +404,7 @@ class MainActivity : AppCompatActivity() {
         homeSettingsScreen = findViewById(R.id.homeSettingsScreen)
         playerSettingsOverlay = findViewById(R.id.playerSettingsOverlay)
         tvEpg.isSelected = true
+        prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, 0).apply()
         applyGolosTypeface(window.decorView)
         applyHomeAppTitleStyle()
         homePanel.addOnLayoutChangeListener { _, _, _, right, bottom, _, _, oldRight, oldBottom ->
@@ -504,7 +505,9 @@ class MainActivity : AppCompatActivity() {
         ivHomePower.setOnClickListener { closeAppCompletely() }
 
         btnLiveReload.setOnClickListener {
-            showReloadingStatus(title = "Выполняется обновление трансляции! Ожидайте...", subtitle = "")
+            if (System.currentTimeMillis() >= suppressReloadOverlayUntilMs) {
+                showReloadingStatus(title = "Выполняется обновление трансляции! Ожидайте...", subtitle = "")
+            }
             playChannel(forcePlay = true)
             handler.postDelayed({
                 tvReloadingStatus.visibility = View.GONE
@@ -749,6 +752,7 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(timerFinishRunnable)
         handler.removeCallbacks(timerWarnRunnable)
         timerWarningPanel.visibility = View.GONE
+        prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, 0).apply()
     }
 
     private fun showChannelList() {
@@ -952,6 +956,7 @@ class MainActivity : AppCompatActivity() {
             playerSettingsOverlay.visibility = View.GONE
             hideUI()
             timerWarningPanel.visibility = View.GONE
+        prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, 0).apply()
             homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             tvHomeAppTitle.visibility = View.GONE
             tvHomeSystemTime.visibility = View.GONE
@@ -1116,7 +1121,7 @@ class MainActivity : AppCompatActivity() {
         val containerHeight = (homeSettingsScreen.layoutParams?.height ?: 0).takeIf { it > 0 }
             ?: (resources.displayMetrics.heightPixels - dpToPx(40))
         val contentHeight = rowIds.size * rowHeight + (rowIds.size - 1) * rowMargin
-        val centeredTopMargin = (((containerHeight - contentHeight) / 2) - dpToPx(5)).coerceAtLeast(dpToPx(8))
+        val centeredTopMargin = (((containerHeight - contentHeight) / 2) - dpToPx(12)).coerceAtLeast(dpToPx(6))
 
         rowIds.forEachIndexed { index, id ->
             val row = findViewById<View>(id)
@@ -1851,21 +1856,23 @@ class MainActivity : AppCompatActivity() {
         ivReloadingIcon.setImageResource(if (isError) R.drawable.alert else R.drawable.loader)
         tvReloadingTitle.text = title
         tvReloadingSubtitle.text = subtitle
+        tvReloadingSubtitle.visibility = if (subtitle.isBlank()) View.GONE else View.VISIBLE
         tvReloadingStatus.visibility = View.VISIBLE
     }
 
-    private fun showCenterError(message: String, durationMs: Long = 2200L) {
+    private fun showCenterError(message: String, durationMs: Long = 3500L) {
         showReloadingStatus(
             title = "ERROR! Возникла ошибка при просмотре трансляции: $message",
             subtitle = "Обновляем трансляцию",
             isError = true
         )
+        suppressReloadOverlayUntilMs = System.currentTimeMillis() + durationMs + 1500L
         handler.postDelayed({ tvReloadingStatus.visibility = View.GONE }, durationMs)
     }
 
     private fun showPlaybackFailureAndReturn(url: String, error: String) {
         val message = "Ошибка воспроизведения\n$error\n$url\nВозврат к прямому эфиру"
-        showCenterError(message, 3000L)
+        showCenterError(message, 5000L)
         handler.removeCallbacks(returnToLiveRunnable)
         handler.postDelayed(returnToLiveRunnable, 3000L)
     }
