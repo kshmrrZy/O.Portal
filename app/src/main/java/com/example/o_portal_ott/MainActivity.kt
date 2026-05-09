@@ -1000,9 +1000,14 @@ class MainActivity : AppCompatActivity() {
             showTimerDialog()
         }
 
-        val emptyMessage = "В данный момент ничего нет! Попробуйте посмотреть позже"
-        btnExtraSettings.setOnClickListener { Toast.makeText(this, emptyMessage, Toast.LENGTH_LONG).show() }
-        btnUserSettings.setOnClickListener { Toast.makeText(this, emptyMessage, Toast.LENGTH_LONG).show() }
+        btnExtraSettings.setOnClickListener {
+            dialog.dismiss()
+            showSettingsPlaceholderDialog("Дополнительные настройки")
+        }
+        btnUserSettings.setOnClickListener {
+            dialog.dismiss()
+            showSettingsPlaceholderDialog("Настройка пользователя")
+        }
 
         btnClose.setOnClickListener { dialog.dismiss() }
 
@@ -1014,6 +1019,58 @@ class MainActivity : AppCompatActivity() {
             clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             setGravity(Gravity.CENTER)
             setLayout((dm.widthPixels * 0.98f).toInt(), (dm.heightPixels * 0.96f).toInt())
+        }
+    }
+
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun showSettingsPlaceholderDialog(title: String) {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            background = ContextCompat.getDrawable(this@MainActivity, R.drawable.bg_glass_panel)
+        }
+
+        val titleView = TextView(this).apply {
+            text = title
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+        }
+
+        val messageView = TextView(this).apply {
+            text = "В данный момент ничего нет! Попробуйте посмотреть позже"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setPadding(0, dp(16), 0, dp(20))
+        }
+
+        val closeView = TextView(this).apply {
+            text = "Закрыть"
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setPadding(dp(24), dp(10), dp(24), dp(10))
+            background = ContextCompat.getDrawable(this@MainActivity, R.drawable.bg_watch_button)
+        }
+
+        root.addView(titleView)
+        root.addView(messageView)
+        root.addView(closeView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        applyGolosTypeface(root)
+
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
+            .setView(root)
+            .create()
+
+        closeView.setOnClickListener { dialog.dismiss() }
+
+        dialog.show()
+        val dm = resources.displayMetrics
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setGravity(Gravity.CENTER)
+            setLayout((dm.widthPixels * 0.78f).toInt(), WindowManager.LayoutParams.WRAP_CONTENT)
         }
     }
 
