@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="white">#FFFFFFFF</color>
+    <string name="app_name">O.Portal</string>
+    <string name="home_power_button">Закрыть приложение</string>
+    <string name="home_settings_button">Открыть настройки</string>
+    <style name="AppButton" parent="android:style/Widget.Button">
+        <item name="android:fontFamily">@font/main_font</item>
+        <item name="fontFamily">@font/main_font</item>
+    </style>
+    <style name="AppGolosText">
+        <item name="android:fontFamily">@font/main_font</item>
+        <item name="fontFamily">@font/main_font</item>
+        <item name="android:textFontWeight">500</item>
+    </style>
+    <style name="AppTextView" parent="android:style/Widget.TextView">
+        <item name="android:fontFamily">@font/main_font</item>
+        <item name="fontFamily">@font/main_font</item>
+    </style>
+    <style name="Base.Theme.O_portal_OTT" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        
+        
+        <item name="android:fontFamily">@font/main_font</item>
+        <item name="fontFamily">@font/main_font</item>
+        <item name="android:textViewStyle">@style/AppTextView</item>
+        <item name="android:buttonStyle">@style/AppButton</item>
+    </style>
+    <style name="Theme.O_portal_OTT" parent="Base.Theme.O_portal_OTT"/>
+    <style name="WhiteTextShadow" parent="AppGolosText">
+        <item name="android:shadowColor">#80000000</item>
+        <item name="android:shadowDx">0</item>
+        <item name="android:shadowDy">0</item>
+        <item name="android:shadowRadius">2</item>
+    </style>
+    <style name="WhiteTitleTextShadow" parent="WhiteTextShadow">
+        <item name="android:textStyle">bold</item>
+    </style>
+</resources>
