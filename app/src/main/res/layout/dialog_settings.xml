@@ -27,8 +27,8 @@
         android:clickable="true"
         android:focusable="true"
         android:text="назад"
-        android:textColor="#B3FFFFFF"
-        android:textSize="10sp"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 

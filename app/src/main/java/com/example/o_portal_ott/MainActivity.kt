@@ -1114,6 +1114,7 @@ class MainActivity : AppCompatActivity() {
         val scale = minOf(dm.widthPixels / 1280f, dm.heightPixels / 720f).coerceAtLeast(0.65f)
         val rowHeight = (78f * scale).toInt()
         val rowMargin = (10f * scale).toInt()
+        val backLabel = findViewById<TextView>(R.id.tvSettingsBack)
         val rowIds = intArrayOf(
             R.id.btnPlaylistSettings,
             R.id.btnEpgSelect,
@@ -1126,6 +1127,12 @@ class MainActivity : AppCompatActivity() {
             ?: (resources.displayMetrics.heightPixels - dpToPx(40))
         val contentHeight = rowIds.size * rowHeight + (rowIds.size - 1) * rowMargin
         val centeredTopMargin = (((containerHeight - contentHeight) / 2) - dpToPx(17)).coerceAtLeast(0)
+
+        (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.marginStart = dpToPx(12)
+            lp.topMargin = (centeredTopMargin - dpToPx(18)).coerceAtLeast(0)
+            backLabel.layoutParams = lp
+        }
 
         rowIds.forEachIndexed { index, id ->
             val row = findViewById<View>(id)
