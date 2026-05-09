@@ -18,18 +18,32 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <TextView
+        android:id="@+id/tvSettingsBack"
+        style="@style/AppGolosText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        android:text="назад"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <LinearLayout
         android:id="@+id/btnPlaylistSettings"
         android:layout_width="0dp"
         android:layout_height="46dp"
-        android:layout_marginTop="0dp"
+        android:layout_marginTop="4dp"
         android:background="@drawable/bg_settings_row"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingHorizontal="12dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tvSettingsTitle">
+        app:layout_constraintTop_toBottomOf="@id/tvSettingsBack">
 
         <ImageView
             android:layout_width="24dp"
