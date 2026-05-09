@@ -139,7 +139,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sbTimeline: SeekBar
     private lateinit var tvCurrentTime: TextView
     private lateinit var tvProgramEndTime: TextView
-    private lateinit var tvReloadingStatus: TextView
+    private lateinit var tvReloadingStatus: View
+    private lateinit var ivReloadingIcon: ImageView
+    private lateinit var tvReloadingTitle: TextView
+    private lateinit var tvReloadingSubtitle: TextView
     private lateinit var listBackgroundOverlay: View
     private lateinit var timerWarningPanel: View
     private lateinit var btnStopTimer: TextView
@@ -251,7 +254,7 @@ class MainActivity : AppCompatActivity() {
 
 
     private val returnToLiveRunnable = Runnable {
-        tvReloadingStatus.text = "Возвращаемся к прямой трансляции"
+        showReloadingStatus(title = "Выполняется обновление трансляции! Ожидайте...", subtitle = "")
         playChannel(forcePlay = true)
     }
 
@@ -389,6 +392,9 @@ class MainActivity : AppCompatActivity() {
         tvCurrentTime = findViewById(R.id.tvCurrentTime)
         tvProgramEndTime = findViewById(R.id.tvProgramEndInfo)
         tvReloadingStatus = findViewById(R.id.tvReloadingStatus)
+        ivReloadingIcon = findViewById(R.id.ivReloadingIcon)
+        tvReloadingTitle = findViewById(R.id.tvReloadingTitle)
+        tvReloadingSubtitle = findViewById(R.id.tvReloadingSubtitle)
         listBackgroundOverlay = findViewById(R.id.listBackgroundOverlay)
         timerWarningPanel = findViewById(R.id.timerWarningPanel)
         btnStopTimer = findViewById(R.id.btnStopTimer)
@@ -498,14 +504,10 @@ class MainActivity : AppCompatActivity() {
         ivHomePower.setOnClickListener { closeAppCompletely() }
 
         btnLiveReload.setOnClickListener {
-            tvReloadingStatus.visibility = View.VISIBLE
-            if (isArchivePlayback) {
-                tvReloadingStatus.text = "Возвращаемся к прямой трансляции"
-            }
+            showReloadingStatus(title = "Выполняется обновление трансляции! Ожидайте...", subtitle = "")
             playChannel(forcePlay = true)
             handler.postDelayed({
                 tvReloadingStatus.visibility = View.GONE
-                tvReloadingStatus.text = "Обновление трансляции..."
             }, 1200)
         }
         sbTimeline.max = 1000
@@ -567,6 +569,7 @@ class MainActivity : AppCompatActivity() {
         mDetector = GestureDetectorCompat(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
                 if (e1 == null) return false
+                if (homeSettingsScreen.visibility == View.VISIBLE) return true
                 if (isLocked) {
                     showLockedMessage()
                     return false
@@ -685,14 +688,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showExitWarning() {
-        tvReloadingStatus.text = "Нажмите ещё раз для выхода!"
-        tvReloadingStatus.setBackgroundResource(R.drawable.live_btn_bg)
-        tvReloadingStatus.visibility = View.VISIBLE
-        handler.postDelayed({
-            tvReloadingStatus.visibility = View.GONE
-            tvReloadingStatus.text = "Обновление трансляции..."
-            tvReloadingStatus.setBackgroundResource(R.drawable.bg_reload_toast)
-        }, 1800)
+        showReloadingStatus("Нажмите ещё раз для выхода!", "")
+        handler.postDelayed({ tvReloadingStatus.visibility = View.GONE }, 1800)
     }
 
     private fun closeAppCompletely() {
@@ -1119,7 +1116,7 @@ class MainActivity : AppCompatActivity() {
         val containerHeight = (homeSettingsScreen.layoutParams?.height ?: 0).takeIf { it > 0 }
             ?: (resources.displayMetrics.heightPixels - dpToPx(40))
         val contentHeight = rowIds.size * rowHeight + (rowIds.size - 1) * rowMargin
-        val centeredTopMargin = (((containerHeight - contentHeight) / 2) - dpToPx(2)).coerceAtLeast(dpToPx(10))
+        val centeredTopMargin = (((containerHeight - contentHeight) / 2) - dpToPx(5)).coerceAtLeast(dpToPx(8))
 
         rowIds.forEachIndexed { index, id ->
             val row = findViewById<View>(id)
@@ -1850,14 +1847,20 @@ class MainActivity : AppCompatActivity() {
         return builder.build()
     }
 
-    private fun showCenterError(message: String, durationMs: Long = 2200L) {
-        tvReloadingStatus.text = message
-        tvReloadingStatus.setBackgroundResource(R.drawable.bg_reload_toast)
+    private fun showReloadingStatus(title: String, subtitle: String, isError: Boolean = false) {
+        ivReloadingIcon.setImageResource(if (isError) R.drawable.alert else R.drawable.loader)
+        tvReloadingTitle.text = title
+        tvReloadingSubtitle.text = subtitle
         tvReloadingStatus.visibility = View.VISIBLE
-        handler.postDelayed({
-            tvReloadingStatus.visibility = View.GONE
-            tvReloadingStatus.text = "Обновление трансляции..."
-        }, durationMs)
+    }
+
+    private fun showCenterError(message: String, durationMs: Long = 2200L) {
+        showReloadingStatus(
+            title = "ERROR! Возникла ошибка при просмотре трансляции: $message",
+            subtitle = "Обновляем трансляцию",
+            isError = true
+        )
+        handler.postDelayed({ tvReloadingStatus.visibility = View.GONE }, durationMs)
     }
 
     private fun showPlaybackFailureAndReturn(url: String, error: String) {
