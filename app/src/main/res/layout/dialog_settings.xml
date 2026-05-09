@@ -78,7 +78,7 @@
             android:layout_marginStart="14dp"
             android:layout_weight="1"
             android:orientation="vertical">
-            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Таймер сна" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
+            <TextView android:id="@+id/tvSleepTimerTitle" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Таймер сна" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
             <TextView
                 android:id="@+id/tvSleepTimerHint"
                 style="@style/AppGolosText"

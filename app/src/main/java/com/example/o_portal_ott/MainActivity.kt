@@ -740,7 +740,6 @@ class MainActivity : AppCompatActivity() {
         timerEndAtMillis = System.currentTimeMillis() + minutes * 60_000L
         handler.postDelayed(timerFinishRunnable, minutes * 60_000L)
         handler.postDelayed(timerWarnRunnable, (minutes * 60_000L - 30_000L).coerceAtLeast(0L))
-        Toast.makeText(this, "Таймер установлен на $minutes минут", Toast.LENGTH_SHORT).show()
     }
 
     private fun showTimerWarning() {
@@ -1008,6 +1007,7 @@ class MainActivity : AppCompatActivity() {
         val tbStartMode = findViewById<ToggleButton>(R.id.tbStartMode)
         val sleepRow = findViewById<View>(R.id.btnSleepTimerSettings)
         val tvSleepTimerValue = findViewById<TextView>(R.id.tvSleepTimerValue)
+        val tvSleepTimerTitle = findViewById<TextView>(R.id.tvSleepTimerTitle)
         val btnSleepUp = findViewById<View>(R.id.btnSleepUp)
         val btnSleepDown = findViewById<View>(R.id.btnSleepDown)
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
@@ -1023,9 +1023,17 @@ class MainActivity : AppCompatActivity() {
         btnEpgSelect.setOnClickListener { showEpgSelectionDialog() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
         var sleepIndex = sleepOptions.indexOf(prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)).takeIf { it >= 0 } ?: 0
+        var pendingSleepApply: Runnable? = null
+        var sleepTitleResetRunnable: Runnable? = null
         fun updateSleepValueText() {
             val selected = sleepOptions[sleepIndex]
             tvSleepTimerValue.text = if (selected == 0) "выключено" else "$selected мин"
+        }
+        fun showSleepTitleTemporary(message: String) {
+            sleepTitleResetRunnable?.let { handler.removeCallbacks(it) }
+            tvSleepTimerTitle.text = message
+            sleepTitleResetRunnable = Runnable { tvSleepTimerTitle.text = "Таймер сна" }
+            handler.postDelayed(sleepTitleResetRunnable!!, 5000L)
         }
         fun applySleepSelection() {
             val selected = sleepOptions[sleepIndex]
@@ -1033,14 +1041,21 @@ class MainActivity : AppCompatActivity() {
             updateSleepValueText()
             if (selected == 0) {
                 cancelSleepTimer()
+                showSleepTitleTemporary("Таймер отключен")
             } else {
-                cancelSleepTimer()
                 startSleepTimer(selected)
+                showSleepTitleTemporary("Запущен на $selected минут")
             }
+        }
+        fun scheduleSleepApply() {
+            pendingSleepApply?.let { handler.removeCallbacks(it) }
+            pendingSleepApply = Runnable { applySleepSelection() }
+            handler.postDelayed(pendingSleepApply!!, 7000L)
         }
         fun changeSleep() {
             sleepIndex = (sleepIndex + 1) % sleepOptions.size
-            applySleepSelection()
+            updateSleepValueText()
+            scheduleSleepApply()
         }
         updateSleepValueText()
         btnSleepUp.setOnClickListener { changeSleep() }
@@ -1100,6 +1115,8 @@ class MainActivity : AppCompatActivity() {
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEach
             lp.height = rowHeight
             lp.topMargin = if (id == R.id.btnPlaylistSettings) 0 else rowMargin
+            lp.marginStart = dpToPx(12)
+            lp.marginEnd = dpToPx(12)
             row.layoutParams = lp
         }
     }
