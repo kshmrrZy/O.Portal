@@ -1022,23 +1022,28 @@ class MainActivity : AppCompatActivity() {
         btnPlaylistSettings.setOnClickListener { showPlaylistSettingsDialog() }
         btnEpgSelect.setOnClickListener { showEpgSelectionDialog() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
-        var sleepIndex = 0
+        var sleepIndex = sleepOptions.indexOf(prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)).takeIf { it >= 0 } ?: 0
         var pendingSleepApply: Runnable? = null
         var sleepTitleResetRunnable: Runnable? = null
         fun updateSleepValueText() {
             val selected = sleepOptions[sleepIndex]
             tvSleepTimerValue.text = if (selected == 0) "выключено" else "$selected мин"
         }
+        fun refreshSleepTitle() {
+            val selected = prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)
+            tvSleepTimerTitle.text = if (selected > 0) "Таймер запущен на $selected минут" else "Таймер сна"
+        }
         fun showSleepTitleTemporary(message: String) {
             sleepTitleResetRunnable?.let { handler.removeCallbacks(it) }
             tvSleepTimerTitle.text = message
-            sleepTitleResetRunnable = Runnable { tvSleepTimerTitle.text = "Таймер сна" }
+            sleepTitleResetRunnable = Runnable { refreshSleepTitle() }
             handler.postDelayed(sleepTitleResetRunnable!!, 5000L)
         }
         fun applySleepSelection() {
             val selected = sleepOptions[sleepIndex]
             prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, selected).apply()
             updateSleepValueText()
+            refreshSleepTitle()
             if (selected == 0) {
                 cancelSleepTimer()
                 showSleepTitleTemporary("Таймер отключен")
@@ -1058,6 +1063,7 @@ class MainActivity : AppCompatActivity() {
             scheduleSleepApply()
         }
         updateSleepValueText()
+            refreshSleepTitle()
         btnSleepUp.setOnClickListener { changeSleep() }
         btnSleepDown.setOnClickListener { changeSleep() }
         sleepRow.isFocusable = true
@@ -1113,7 +1119,7 @@ class MainActivity : AppCompatActivity() {
         val containerHeight = (homeSettingsScreen.layoutParams?.height ?: 0).takeIf { it > 0 }
             ?: (resources.displayMetrics.heightPixels - dpToPx(40))
         val contentHeight = rowIds.size * rowHeight + (rowIds.size - 1) * rowMargin
-        val centeredTopMargin = ((containerHeight - contentHeight) / 2).coerceAtLeast(dpToPx(12))
+        val centeredTopMargin = (((containerHeight - contentHeight) / 2) - dpToPx(2)).coerceAtLeast(dpToPx(10))
 
         rowIds.forEachIndexed { index, id ->
             val row = findViewById<View>(id)
@@ -2167,6 +2173,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_CHANNEL_UP -> {
+                if (homeSettingsScreen.visibility == View.VISIBLE) return true
                 if (channels.isNotEmpty()) {
                     currentChannelIndex = (currentChannelIndex + 1) % channels.size
                     playChannel(forcePlay = true)
@@ -2175,6 +2182,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                if (homeSettingsScreen.visibility == View.VISIBLE) return true
                 if (channels.isNotEmpty()) {
                     currentChannelIndex = (currentChannelIndex - 1 + channels.size) % channels.size
                     playChannel(forcePlay = true)
