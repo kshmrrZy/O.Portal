@@ -950,6 +950,31 @@ class MainActivity : AppCompatActivity() {
             tvHomeSystemTime.visibility = View.GONE
             ivHomeSettings.visibility = View.GONE
             ivHomePower.visibility = View.GONE
+            (homeSettingsScreen.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+                lp.topToTop = ConstraintSet.PARENT_ID
+                lp.startToStart = ConstraintSet.PARENT_ID
+                lp.endToEnd = ConstraintSet.PARENT_ID
+                lp.bottomToBottom = ConstraintSet.PARENT_ID
+                lp.topMargin = dpToPx(113)
+                lp.marginStart = dpToPx(20)
+                lp.marginEnd = dpToPx(20)
+                lp.bottomMargin = dpToPx(133)
+                homeSettingsScreen.layoutParams = lp
+            }
+            homeSettingsScreen.setBackgroundResource(R.drawable.bg_player_settings_glass)
+        } else {
+            (homeSettingsScreen.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+                lp.topToBottom = R.id.tvHomeAppTitle
+                lp.startToStart = R.id.tvHomeAppTitle
+                lp.endToEnd = R.id.ivHomePower
+                lp.bottomToBottom = ConstraintSet.PARENT_ID
+                lp.topMargin = dpToPx(8)
+                lp.marginStart = 0
+                lp.marginEnd = 0
+                lp.bottomMargin = 0
+                homeSettingsScreen.layoutParams = lp
+            }
+            homeSettingsScreen.setBackgroundColor(Color.TRANSPARENT)
         }
         homePanel.visibility = View.VISIBLE
         homePanel.post { applyHomeScreenScale(force = true) }
@@ -979,16 +1004,21 @@ class MainActivity : AppCompatActivity() {
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
         var sleepIndex = 0
         var sleepSelectionActive = false
+        var pendingSleepApply: Runnable? = null
         fun applySleepState() {
             val selected = sleepOptions[sleepIndex]
+            pendingSleepApply?.let { handler.removeCallbacks(it) }
             if (selected == 0) {
                 tvSleepTimerValue.text = "выключено"
                 cancelSleepTimer()
-            } else {
-                tvSleepTimerValue.text = "$selected мин"
-                cancelSleepTimer()
-                handler.postDelayed({ startSleepTimer(selected) }, 5000)
+                return
             }
+            tvSleepTimerValue.text = "$selected мин"
+            pendingSleepApply = Runnable {
+                cancelSleepTimer()
+                startSleepTimer(selected)
+            }
+            handler.postDelayed(pendingSleepApply!!, 5000)
         }
         fun changeSleep(delta: Int) {
             sleepIndex = (sleepIndex + delta + sleepOptions.size) % sleepOptions.size
@@ -1027,6 +1057,8 @@ class MainActivity : AppCompatActivity() {
             showUI()
         }
     }
+
+    private fun dpToPx(value: Int): Int = (resources.displayMetrics.density * value).toInt()
 
     private fun showSettingsPlaceholderDialog() {
         AlertDialog.Builder(this)
