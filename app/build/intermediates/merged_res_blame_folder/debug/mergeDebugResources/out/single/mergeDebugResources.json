@@ -1,0 +1,258 @@
+[
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-xhdpi_ic_launcher.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-xhdpi\\ic_launcher.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-xhdpi_ic_launcher_background.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-xhdpi\\ic_launcher_background.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_ic_lock_open.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\ic_lock_open.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\font_main_font.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\font\\main_font.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_ic_launcher_background.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\ic_launcher_background.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-xxxhdpi_ic_launcher.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-xxxhdpi\\ic_launcher.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_ic_settings_black_24dp.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\ic_settings_black_24dp.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_bg_date_chip.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\bg_date_chip.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\layout_dialog_epg_selection.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\dialog_epg_selection.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-mdpi_ic_launcher_foreground.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-mdpi\\ic_launcher_foreground.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\xml_backup_rules.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\xml\\backup_rules.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\layout_dialog_channel_schedule.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\dialog_channel_schedule.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-hdpi_ic_launcher_background.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-hdpi\\ic_launcher_background.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_bg_watch_button.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\bg_watch_button.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_bg_glass_panel.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\bg_glass_panel.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-xxhdpi_ic_launcher.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-xxhdpi\\ic_launcher.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\xml_network_security_config.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\xml\\network_security_config.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-hdpi_ic_launcher_monochrome.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-hdpi\\ic_launcher_monochrome.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable-v24_ic_launcher_foreground.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable-v24\\ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_bg_home_screen.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\bg_home_screen.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\xml_data_extraction_rules.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\xml\\data_extraction_rules.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-xhdpi_ic_launcher_monochrome.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-xhdpi\\ic_launcher_monochrome.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-xhdpi_ic_launcher_foreground.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-xhdpi\\ic_launcher_foreground.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-mdpi_ic_launcher_background.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-mdpi\\ic_launcher_background.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_bg_schedule_root.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\bg_schedule_root.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\layout_dialog_settings.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\dialog_settings.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_fibspower.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\fibspower.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_bg_soft_button.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\bg_soft_button.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_bg_schedule_panel.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\bg_schedule_panel.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_ic_pause.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\ic_pause.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\layout_dialog_playlist_settings.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\dialog_playlist_settings.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-xxhdpi_ic_launcher_monochrome.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-xxhdpi\\ic_launcher_monochrome.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\font_golos_text.ttf.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\font\\golos_text.ttf"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\layout_dialog_channel_list.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\dialog_channel_list.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_ic_home_power.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\ic_home_power.xml"
+    },
+    {
+        "merged": "com.example.o_portal_ott.app-debug-40:/drawable_fibspower.png.flat",
+        "source": "com.example.o_portal_ott.app-main-42:/drawable/fibspower.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_ic_lock_closed.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\ic_lock_closed.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-mdpi_ic_launcher_monochrome.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-mdpi\\ic_launcher_monochrome.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_bg_channel_list_gradient.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\bg_channel_list_gradient.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-xxhdpi_ic_launcher_foreground.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-xxhdpi\\ic_launcher_foreground.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\layout_item_channel.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\item_channel.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-hdpi_ic_launcher.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-hdpi\\ic_launcher.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-xxxhdpi_ic_launcher_background.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-xxxhdpi\\ic_launcher_background.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-anydpi-v26\\ic_launcher_round.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_ic_play.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\ic_play.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-anydpi-v26\\ic_launcher.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_ic_home_settings.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\ic_home_settings.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_live_btn_bg.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\live_btn_bg.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-hdpi_ic_launcher_foreground.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-hdpi\\ic_launcher_foreground.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\layout_dialog_timer.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\dialog_timer.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_bottom_panel_bg.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\bottom_panel_bg.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_bg_archive_available.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\bg_archive_available.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_fibssettings.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\fibssettings.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-xxxhdpi_ic_launcher_monochrome.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-xxxhdpi\\ic_launcher_monochrome.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-xxxhdpi_ic_launcher_foreground.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-xxxhdpi\\ic_launcher_foreground.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_bg_reload_toast.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\bg_reload_toast.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_bg_now_on_air.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\bg_now_on_air.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\layout_item_schedule_program.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\item_schedule_program.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-mdpi_ic_launcher.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-mdpi\\ic_launcher.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\mipmap-xxhdpi_ic_launcher_background.png.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\mipmap-xxhdpi\\ic_launcher_background.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_selector_channel_item.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\selector_channel_item.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\drawable_top_panel_bg.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\drawable\\top_panel_bg.xml"
+    },
+    {
+        "merged": "com.example.o_portal_ott.app-debug-40:/drawable_fibssettings.png.flat",
+        "source": "com.example.o_portal_ott.app-main-42:/drawable/fibssettings.png"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-debug-40:\\layout_activity_main.xml.flat",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\activity_main.xml"
+    }
+]

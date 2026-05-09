@@ -1,0 +1,42 @@
+[
+    {
+        "merged": "com.example.o_portal_ott.app-mergeDebugResources-39:/layout/activity_main.xml",
+        "source": "com.example.o_portal_ott.app-main-42:/layout/activity_main.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-mergeDebugResources-39:\\layout\\dialog_playlist_settings.xml",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\dialog_playlist_settings.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-mergeDebugResources-39:\\layout\\item_channel.xml",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\item_channel.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-mergeDebugResources-39:\\layout\\dialog_channel_schedule.xml",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\dialog_channel_schedule.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-mergeDebugResources-39:\\layout\\item_schedule_program.xml",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\item_schedule_program.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-mergeDebugResources-39:\\layout\\dialog_channel_list.xml",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\dialog_channel_list.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-mergeDebugResources-39:\\layout\\dialog_timer.xml",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\dialog_timer.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-mergeDebugResources-39:\\layout\\activity_main.xml",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\activity_main.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-mergeDebugResources-39:\\layout\\dialog_settings.xml",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\dialog_settings.xml"
+    },
+    {
+        "merged": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-mergeDebugResources-39:\\layout\\dialog_epg_selection.xml",
+        "source": "C:\\Users\\user\\.gradle\\daemon\\9.3.1\\com.example.o_portal_ott.app-main-42:\\layout\\dialog_epg_selection.xml"
+    }
+]
