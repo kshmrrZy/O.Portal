@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.text.SpannableString
 import android.text.Spanned
+import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
 import android.util.Log
@@ -146,6 +147,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var ivHomeSettings: ImageView
     private lateinit var ivHomePower: ImageView
     private lateinit var homeSettingsScreen: View
+    private lateinit var playerSettingsOverlay: View
+    private var settingsOpenedFromPlayer = false
 
     private var lastHomePanelWidth = 0
     private var lastHomePanelHeight = 0
@@ -391,6 +394,7 @@ class MainActivity : AppCompatActivity() {
         ivHomeSettings = findViewById(R.id.ivHomeSettings)
         ivHomePower = findViewById(R.id.ivHomePower)
         homeSettingsScreen = findViewById(R.id.homeSettingsScreen)
+        playerSettingsOverlay = findViewById(R.id.playerSettingsOverlay)
         tvEpg.isSelected = true
         applyGolosTypeface(window.decorView)
         applyHomeAppTitleStyle()
@@ -415,6 +419,7 @@ class MainActivity : AppCompatActivity() {
             )
             tvHomeSystemTime.typeface = Typeface.create(font, Typeface.BOLD)
         } ?: title.setSpan(StyleSpan(Typeface.BOLD), 2, 8, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        if (settingsMode) title.setSpan(RelativeSizeSpan(0.75f), 11, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         tvHomeAppTitle.text = title
     }
 
@@ -655,6 +660,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupBackHandling() {
         onBackPressedDispatcher.addCallback(this) {
+            if (homeSettingsScreen.visibility == View.VISIBLE) {
+                hideSettingsScreen()
+                return@addCallback
+            }
             val now = System.currentTimeMillis()
             if (now - lastBackPressAt < 2000L) {
                 closeAppCompletely()
@@ -931,6 +940,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSettingsDialog() {
+        settingsOpenedFromPlayer = homePanel.visibility != View.VISIBLE
+        if (settingsOpenedFromPlayer) {
+            playerSettingsOverlay.visibility = View.VISIBLE
+            tvHomeAppTitle.visibility = View.GONE
+            tvHomeSystemTime.visibility = View.GONE
+            ivHomeSettings.visibility = View.GONE
+            ivHomePower.visibility = View.GONE
+        }
         homePanel.visibility = View.VISIBLE
         homePanel.post { applyHomeScreenScale(force = true) }
         tvHomeStartTitle.visibility = View.GONE
@@ -944,7 +961,6 @@ class MainActivity : AppCompatActivity() {
         val tbSleepTimer = findViewById<ToggleButton>(R.id.tbSleepTimer)
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
-        val btnClose = findViewById<View>(R.id.btnCloseSettingsDialog)
 
         tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
         tbStartMode.setOnCheckedChangeListener { _, isChecked ->
@@ -981,7 +997,12 @@ class MainActivity : AppCompatActivity() {
         applyHomeAppTitleStyle(settingsMode = false)
         tvHomeStartTitle.visibility = View.VISIBLE
         tvHomeStartSubtitle.visibility = View.VISIBLE
-        if (channels.isNotEmpty()) {
+        playerSettingsOverlay.visibility = View.GONE
+        tvHomeAppTitle.visibility = View.VISIBLE
+        tvHomeSystemTime.visibility = View.VISIBLE
+        ivHomeSettings.visibility = View.VISIBLE
+        ivHomePower.visibility = View.VISIBLE
+        if (settingsOpenedFromPlayer && channels.isNotEmpty()) {
             homePanel.visibility = View.GONE
             showUI()
         }
