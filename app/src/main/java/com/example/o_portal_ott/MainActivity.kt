@@ -145,7 +145,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homePanel: View
     private lateinit var ivHomeSettings: ImageView
     private lateinit var ivHomePower: ImageView
-    private lateinit var tvHomeSettingsTitle: TextView
     private lateinit var homeSettingsScreen: View
 
     private var lastHomePanelWidth = 0
@@ -391,7 +390,6 @@ class MainActivity : AppCompatActivity() {
         homePanel = findViewById(R.id.homePanel)
         ivHomeSettings = findViewById(R.id.ivHomeSettings)
         ivHomePower = findViewById(R.id.ivHomePower)
-        tvHomeSettingsTitle = findViewById(R.id.tvHomeSettingsTitle)
         homeSettingsScreen = findViewById(R.id.homeSettingsScreen)
         tvEpg.isSelected = true
         applyGolosTypeface(window.decorView)
@@ -404,18 +402,19 @@ class MainActivity : AppCompatActivity() {
         homePanel.post { applyHomeScreenScale(force = true) }
     }
 
-    private fun applyHomeAppTitleStyle() {
-        val title = SpannableString("O.Portal")
+    private fun applyHomeAppTitleStyle(settingsMode: Boolean = false) {
+        val rawTitle = if (settingsMode) "O.Portal > Настройки" else "O.Portal"
+        val title = SpannableString(rawTitle)
         golosTypeface?.let { font ->
             tvHomeAppTitle.typeface = Typeface.create(font, Typeface.NORMAL)
             title.setSpan(
                 TypefaceSpan(Typeface.create(font, Typeface.BOLD)),
                 2,
-                title.length,
+                8,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
             tvHomeSystemTime.typeface = Typeface.create(font, Typeface.BOLD)
-        } ?: title.setSpan(StyleSpan(Typeface.BOLD), 2, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        } ?: title.setSpan(StyleSpan(Typeface.BOLD), 2, 8, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         tvHomeAppTitle.text = title
     }
 
@@ -936,13 +935,13 @@ class MainActivity : AppCompatActivity() {
         homePanel.post { applyHomeScreenScale(force = true) }
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
-        tvHomeSettingsTitle.visibility = View.VISIBLE
+        applyHomeAppTitleStyle(settingsMode = true)
         homeSettingsScreen.visibility = View.VISIBLE
 
         val btnPlaylistSettings = findViewById<View>(R.id.btnPlaylistSettings)
         val btnEpgSelect = findViewById<View>(R.id.btnEpgSelect)
         val tbStartMode = findViewById<ToggleButton>(R.id.tbStartMode)
-        val btnSleepTimerSettings = findViewById<View>(R.id.btnSleepTimerSettings)
+        val tbSleepTimer = findViewById<ToggleButton>(R.id.tbSleepTimer)
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
         val btnClose = findViewById<View>(R.id.btnCloseSettingsDialog)
@@ -955,7 +954,23 @@ class MainActivity : AppCompatActivity() {
 
         btnPlaylistSettings.setOnClickListener { showPlaylistSettingsDialog() }
         btnEpgSelect.setOnClickListener { showEpgSelectionDialog() }
-        btnSleepTimerSettings.setOnClickListener { showTimerDialog() }
+        val sleepOptions = arrayOf(10, 20, 30, 60, 90, 120, 240)
+        var sleepIndex = 0
+        tbSleepTimer.textOn = "${sleepOptions[sleepIndex]} мин"
+        tbSleepTimer.textOff = "Выключен"
+        tbSleepTimer.isChecked = false
+        tbSleepTimer.setOnClickListener {
+            if (!tbSleepTimer.isChecked) {
+                cancelSleepTimer()
+                tbSleepTimer.text = tbSleepTimer.textOff
+            } else {
+                sleepIndex = (sleepIndex + 1) % sleepOptions.size
+                val minutes = sleepOptions[sleepIndex]
+                tbSleepTimer.textOn = "$minutes мин"
+                tbSleepTimer.text = tbSleepTimer.textOn
+                handler.postDelayed({ startSleepTimer(minutes) }, 5000)
+            }
+        }
         btnAdvancedSettings.setOnClickListener { showSettingsPlaceholderDialog() }
         btnUserSettings.setOnClickListener { showSettingsPlaceholderDialog() }
         btnClose.setOnClickListener { hideSettingsScreen() }
@@ -963,7 +978,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun hideSettingsScreen() {
         homeSettingsScreen.visibility = View.GONE
-        tvHomeSettingsTitle.visibility = View.GONE
+        applyHomeAppTitleStyle(settingsMode = false)
         tvHomeStartTitle.visibility = View.VISIBLE
         tvHomeStartSubtitle.visibility = View.VISIBLE
         if (channels.isNotEmpty()) {
