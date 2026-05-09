@@ -956,8 +956,8 @@ class MainActivity : AppCompatActivity() {
         btnPlaylistSettings.setOnClickListener { showPlaylistSettingsDialog() }
         btnEpgSelect.setOnClickListener { showEpgSelectionDialog() }
         btnSleepTimerSettings.setOnClickListener { showTimerDialog() }
-        btnAdvancedSettings.setOnClickListener { showPlaceholderDialog() }
-        btnUserSettings.setOnClickListener { showPlaceholderDialog() }
+        btnAdvancedSettings.setOnClickListener { showSettingsPlaceholderDialog() }
+        btnUserSettings.setOnClickListener { showSettingsPlaceholderDialog() }
         btnClose.setOnClickListener { hideSettingsScreen() }
     }
 
@@ -972,15 +972,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showPlaceholderDialog() {
-        AlertDialog.Builder(this)
-            .setMessage("В данный момент ничего нет! Попробуйте посмотреть позже")
-            .setPositiveButton("ОК", null)
-            .show()
-    }
-
-
-    private fun showPlaceholderDialog() {
+    private fun showSettingsPlaceholderDialog() {
         AlertDialog.Builder(this)
             .setMessage("В данный момент ничего нет! Попробуйте посмотреть позже")
             .setPositiveButton("ОК", null)
