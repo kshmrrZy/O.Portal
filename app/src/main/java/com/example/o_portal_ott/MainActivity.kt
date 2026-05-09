@@ -1044,7 +1044,7 @@ class MainActivity : AppCompatActivity() {
                 showSleepTitleTemporary("Таймер отключен")
             } else {
                 startSleepTimer(selected)
-                showSleepTitleTemporary("Запущен на $selected минут")
+                showSleepTitleTemporary("Таймер запущен на $selected минут")
             }
         }
         fun scheduleSleepApply() {
@@ -1110,13 +1110,23 @@ class MainActivity : AppCompatActivity() {
             R.id.btnAdvancedSettings,
             R.id.btnUserSettings
         )
-        rowIds.forEach { id ->
+        rowIds.forEachIndexed { index, id ->
             val row = findViewById<View>(id)
-            val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEach
+            val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
             lp.height = rowHeight
-            lp.topMargin = if (id == R.id.btnPlaylistSettings) 0 else rowMargin
+            lp.topMargin = if (index == 0) dpToPx(12) else rowMargin
             lp.marginStart = dpToPx(12)
             lp.marginEnd = dpToPx(12)
+            if (index == 0) {
+                lp.topToTop = ConstraintSet.PARENT_ID
+            }
+            if (index == rowIds.lastIndex) {
+                lp.bottomToBottom = ConstraintSet.PARENT_ID
+                lp.bottomMargin = dpToPx(12)
+            } else {
+                lp.bottomToBottom = ConstraintSet.UNSET
+                lp.bottomMargin = 0
+            }
             row.layoutParams = lp
         }
     }
