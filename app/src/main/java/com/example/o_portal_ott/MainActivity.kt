@@ -1022,7 +1022,7 @@ class MainActivity : AppCompatActivity() {
         btnPlaylistSettings.setOnClickListener { showPlaylistSettingsDialog() }
         btnEpgSelect.setOnClickListener { showEpgSelectionDialog() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
-        var sleepIndex = sleepOptions.indexOf(prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)).takeIf { it >= 0 } ?: 0
+        var sleepIndex = 0
         var pendingSleepApply: Runnable? = null
         var sleepTitleResetRunnable: Runnable? = null
         fun updateSleepValueText() {
@@ -1114,19 +1114,11 @@ class MainActivity : AppCompatActivity() {
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
             lp.height = rowHeight
-            lp.topMargin = if (index == 0) dpToPx(12) else rowMargin
+            lp.topMargin = if (index == 0) dpToPx(48) else rowMargin
             lp.marginStart = dpToPx(12)
             lp.marginEnd = dpToPx(12)
-            if (index == 0) {
-                lp.topToTop = ConstraintSet.PARENT_ID
-            }
-            if (index == rowIds.lastIndex) {
-                lp.bottomToBottom = ConstraintSet.PARENT_ID
-                lp.bottomMargin = dpToPx(12)
-            } else {
-                lp.bottomToBottom = ConstraintSet.UNSET
-                lp.bottomMargin = 0
-            }
+            lp.bottomToBottom = ConstraintSet.UNSET
+            lp.bottomMargin = 0
             row.layoutParams = lp
         }
     }
