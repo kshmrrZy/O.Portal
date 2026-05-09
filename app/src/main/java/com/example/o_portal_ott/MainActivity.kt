@@ -945,7 +945,8 @@ class MainActivity : AppCompatActivity() {
     private fun showSettingsDialog() {
         settingsOpenedFromPlayer = homePanel.visibility != View.VISIBLE
         if (settingsOpenedFromPlayer) {
-            playerSettingsOverlay.visibility = View.VISIBLE
+            playerSettingsOverlay.visibility = View.GONE
+        homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             tvHomeAppTitle.visibility = View.GONE
             tvHomeSystemTime.visibility = View.GONE
             ivHomeSettings.visibility = View.GONE
@@ -956,12 +957,15 @@ class MainActivity : AppCompatActivity() {
                 lp.endToEnd = ConstraintSet.PARENT_ID
                 lp.bottomToBottom = ConstraintSet.PARENT_ID
                 lp.topMargin = dpToPx(113)
-                lp.marginStart = dpToPx(20)
-                lp.marginEnd = dpToPx(20)
-                lp.bottomMargin = dpToPx(133)
+                lp.marginStart = dpToPx(19)
+                lp.marginEnd = 0
+                lp.bottomMargin = 0
+                lp.width = dpToPx(1242)
+                lp.height = dpToPx(474)
                 homeSettingsScreen.layoutParams = lp
             }
-            homeSettingsScreen.setBackgroundResource(R.drawable.bg_player_settings_glass)
+            homePanel.setBackgroundColor(Color.TRANSPARENT)
+            homeSettingsScreen.setBackgroundResource(R.drawable.bg_player_settings_modal)
         } else {
             (homeSettingsScreen.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
                 lp.topToBottom = R.id.tvHomeAppTitle
@@ -972,8 +976,11 @@ class MainActivity : AppCompatActivity() {
                 lp.marginStart = 0
                 lp.marginEnd = 0
                 lp.bottomMargin = 0
+                lp.width = 0
+                lp.height = 0
                 homeSettingsScreen.layoutParams = lp
             }
+            homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             homeSettingsScreen.setBackgroundColor(Color.TRANSPARENT)
         }
         homePanel.visibility = View.VISIBLE
@@ -1048,6 +1055,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartTitle.visibility = View.VISIBLE
         tvHomeStartSubtitle.visibility = View.VISIBLE
         playerSettingsOverlay.visibility = View.GONE
+        homePanel.setBackgroundResource(R.drawable.bg_home_screen)
         tvHomeAppTitle.visibility = View.VISIBLE
         tvHomeSystemTime.visibility = View.VISIBLE
         ivHomeSettings.visibility = View.VISIBLE
