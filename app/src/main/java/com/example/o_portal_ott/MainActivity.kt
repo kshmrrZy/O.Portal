@@ -929,8 +929,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSettingsDialog() {
         val view = layoutInflater.inflate(R.layout.dialog_settings, null)
-        val btnPlaylistSettings = view.findViewById<TextView>(R.id.btnPlaylistSettings)
-        val btnEpgSelect = view.findViewById<TextView>(R.id.btnEpgSelect)
+        val btnPlaylistSettings = view.findViewById<View>(R.id.btnPlaylistSettings)
+        val btnEpgSelect = view.findViewById<View>(R.id.btnEpgSelect)
         val btnClose = view.findViewById<TextView>(R.id.btnCloseSettingsDialog)
         val tbStartMode = view.findViewById<ToggleButton>(R.id.tbStartMode)
         val btnSleepTimerSettings = view.findViewById<View>(R.id.btnSleepTimerSettings)
