@@ -740,7 +740,6 @@ class MainActivity : AppCompatActivity() {
         timerEndAtMillis = System.currentTimeMillis() + minutes * 60_000L
         handler.postDelayed(timerFinishRunnable, minutes * 60_000L)
         handler.postDelayed(timerWarnRunnable, (minutes * 60_000L - 30_000L).coerceAtLeast(0L))
-        Toast.makeText(this, "Таймер установлен на $minutes минут", Toast.LENGTH_SHORT).show()
     }
 
     private fun showTimerWarning() {
@@ -954,7 +953,9 @@ class MainActivity : AppCompatActivity() {
         isSettingsModalVisible = true
         if (settingsOpenedFromPlayer) {
             playerSettingsOverlay.visibility = View.GONE
-        homePanel.setBackgroundResource(R.drawable.bg_home_screen)
+            hideUI()
+            timerWarningPanel.visibility = View.GONE
+            homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             tvHomeAppTitle.visibility = View.GONE
             tvHomeSystemTime.visibility = View.GONE
             ivHomeSettings.visibility = View.GONE
@@ -974,7 +975,7 @@ class MainActivity : AppCompatActivity() {
             }
             homePanel.setBackgroundColor(Color.TRANSPARENT)
             homeSettingsScreen.setBackgroundResource(R.drawable.bg_player_settings_modal)
-            homeSettingsScreen.setPadding(dpToPx(5), dpToPx(12), dpToPx(5), dpToPx(12))
+            homeSettingsScreen.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
             tunePlayerSettingsRows()
         } else {
             (homeSettingsScreen.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
@@ -1006,6 +1007,7 @@ class MainActivity : AppCompatActivity() {
         val tbStartMode = findViewById<ToggleButton>(R.id.tbStartMode)
         val sleepRow = findViewById<View>(R.id.btnSleepTimerSettings)
         val tvSleepTimerValue = findViewById<TextView>(R.id.tvSleepTimerValue)
+        val tvSleepTimerTitle = findViewById<TextView>(R.id.tvSleepTimerTitle)
         val btnSleepUp = findViewById<View>(R.id.btnSleepUp)
         val btnSleepDown = findViewById<View>(R.id.btnSleepDown)
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
@@ -1021,39 +1023,54 @@ class MainActivity : AppCompatActivity() {
         btnEpgSelect.setOnClickListener { showEpgSelectionDialog() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
         var sleepIndex = sleepOptions.indexOf(prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)).takeIf { it >= 0 } ?: 0
-        var sleepSelectionActive = false
         var pendingSleepApply: Runnable? = null
-        fun applySleepState() {
+        var sleepTitleResetRunnable: Runnable? = null
+        fun updateSleepValueText() {
             val selected = sleepOptions[sleepIndex]
-            pendingSleepApply?.let { handler.removeCallbacks(it) }
+            tvSleepTimerValue.text = if (selected == 0) "выключено" else "$selected мин"
+        }
+        fun showSleepTitleTemporary(message: String) {
+            sleepTitleResetRunnable?.let { handler.removeCallbacks(it) }
+            tvSleepTimerTitle.text = message
+            sleepTitleResetRunnable = Runnable { tvSleepTimerTitle.text = "Таймер сна" }
+            handler.postDelayed(sleepTitleResetRunnable!!, 5000L)
+        }
+        fun applySleepSelection() {
+            val selected = sleepOptions[sleepIndex]
             prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, selected).apply()
+            updateSleepValueText()
             if (selected == 0) {
-                tvSleepTimerValue.text = "выключено"
                 cancelSleepTimer()
-                return
-            }
-            tvSleepTimerValue.text = "$selected мин"
-            pendingSleepApply = Runnable {
-                cancelSleepTimer()
+                showSleepTitleTemporary("Таймер отключен")
+            } else {
                 startSleepTimer(selected)
+                showSleepTitleTemporary("Таймер запущен на $selected минут")
             }
-            handler.postDelayed(pendingSleepApply!!, 5000)
         }
-        fun changeSleep(delta: Int) {
-            sleepIndex = (sleepIndex + delta + sleepOptions.size) % sleepOptions.size
-            applySleepState()
+        fun scheduleSleepApply() {
+            pendingSleepApply?.let { handler.removeCallbacks(it) }
+            pendingSleepApply = Runnable { applySleepSelection() }
+            handler.postDelayed(pendingSleepApply!!, 7000L)
         }
-        applySleepState()
-        btnSleepUp.setOnClickListener { changeSleep(1) }
-        btnSleepDown.setOnClickListener { changeSleep(-1) }
+        fun changeSleep() {
+            sleepIndex = (sleepIndex + 1) % sleepOptions.size
+            updateSleepValueText()
+            scheduleSleepApply()
+        }
+        updateSleepValueText()
+        btnSleepUp.setOnClickListener { changeSleep() }
+        btnSleepDown.setOnClickListener { changeSleep() }
         sleepRow.isFocusable = true
-        sleepRow.setOnClickListener { sleepSelectionActive = !sleepSelectionActive }
+        sleepRow.setOnClickListener { changeSleep() }
         sleepRow.setOnKeyListener { _, keyCode, event ->
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
             when (keyCode) {
-                KeyEvent.KEYCODE_DPAD_UP -> if (sleepSelectionActive) { changeSleep(1); true } else false
-                KeyEvent.KEYCODE_DPAD_DOWN -> if (sleepSelectionActive) { changeSleep(-1); true } else false
-                KeyEvent.KEYCODE_BACK -> if (sleepSelectionActive) { sleepSelectionActive = false; true } else false
+                KeyEvent.KEYCODE_DPAD_CENTER,
+                KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    changeSleep()
+                    true
+                }
                 else -> false
             }
         }
@@ -1093,11 +1110,23 @@ class MainActivity : AppCompatActivity() {
             R.id.btnAdvancedSettings,
             R.id.btnUserSettings
         )
-        rowIds.forEach { id ->
+        rowIds.forEachIndexed { index, id ->
             val row = findViewById<View>(id)
-            val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEach
+            val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
             lp.height = rowHeight
-            lp.topMargin = if (id == R.id.btnPlaylistSettings) 0 else rowMargin
+            lp.topMargin = if (index == 0) dpToPx(12) else rowMargin
+            lp.marginStart = dpToPx(12)
+            lp.marginEnd = dpToPx(12)
+            if (index == 0) {
+                lp.topToTop = ConstraintSet.PARENT_ID
+            }
+            if (index == rowIds.lastIndex) {
+                lp.bottomToBottom = ConstraintSet.PARENT_ID
+                lp.bottomMargin = dpToPx(12)
+            } else {
+                lp.bottomToBottom = ConstraintSet.UNSET
+                lp.bottomMargin = 0
+            }
             row.layoutParams = lp
         }
     }
