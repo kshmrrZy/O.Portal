@@ -979,6 +979,14 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+
+    private fun showPlaceholderDialog() {
+        AlertDialog.Builder(this)
+            .setMessage("В данный момент ничего нет! Попробуйте посмотреть позже")
+            .setPositiveButton("ОК", null)
+            .show()
+    }
+
     private fun showPlaylistSettingsDialog() {
         val view = layoutInflater.inflate(R.layout.dialog_playlist_settings, null)
         val spPlaylist = view.findViewById<Spinner>(R.id.spPlaylist)
