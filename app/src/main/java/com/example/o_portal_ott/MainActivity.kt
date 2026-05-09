@@ -1110,11 +1110,16 @@ class MainActivity : AppCompatActivity() {
             R.id.btnAdvancedSettings,
             R.id.btnUserSettings
         )
+        val containerHeight = (homeSettingsScreen.layoutParams?.height ?: 0).takeIf { it > 0 }
+            ?: (resources.displayMetrics.heightPixels - dpToPx(40))
+        val contentHeight = rowIds.size * rowHeight + (rowIds.size - 1) * rowMargin
+        val centeredTopMargin = ((containerHeight - contentHeight) / 2).coerceAtLeast(dpToPx(12))
+
         rowIds.forEachIndexed { index, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
             lp.height = rowHeight
-            lp.topMargin = if (index == 0) dpToPx(48) else rowMargin
+            lp.topMargin = if (index == 0) centeredTopMargin else rowMargin
             lp.marginStart = dpToPx(12)
             lp.marginEnd = dpToPx(12)
             lp.bottomToBottom = ConstraintSet.UNSET
@@ -2145,6 +2150,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (event?.action == KeyEvent.ACTION_DOWN && timerWarningPanel.visibility == View.VISIBLE &&
+            (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)
+        ) {
+            cancelSleepTimer()
+            Toast.makeText(this, "Таймер остановлен", Toast.LENGTH_SHORT).show()
+            return true
+        }
         when {
             keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> {
                 inputNumber += (keyCode - KeyEvent.KEYCODE_0).toString()

@@ -62,6 +62,14 @@
                 android:textSize="14sp"
                 android:textStyle="bold" />
 
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Нажмите кнопку OK на пульте для остановки таймера"
+                android:textColor="#99FFFFFF"
+                android:textSize="10sp" />
             <TextView
                 android:id="@+id/btnStopTimer"
                 android:layout_width="wrap_content"
