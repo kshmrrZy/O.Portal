@@ -412,7 +412,7 @@ class MainActivity : AppCompatActivity() {
         golosTypeface?.let { font ->
             tvHomeAppTitle.typeface = Typeface.create(font, Typeface.NORMAL)
             title.setSpan(
-                TypefaceSpan(Typeface.create(font, Typeface.BLACK)),
+                TypefaceSpan(Typeface.create(font, Typeface.BOLD)),
                 2,
                 8,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
