@@ -412,14 +412,17 @@ class MainActivity : AppCompatActivity() {
         golosTypeface?.let { font ->
             tvHomeAppTitle.typeface = Typeface.create(font, Typeface.NORMAL)
             title.setSpan(
-                TypefaceSpan(Typeface.create(font, Typeface.BOLD)),
+                TypefaceSpan(Typeface.create(font, Typeface.BLACK)),
                 2,
                 8,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
             tvHomeSystemTime.typeface = Typeface.create(font, Typeface.BOLD)
         } ?: title.setSpan(StyleSpan(Typeface.BOLD), 2, 8, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        if (settingsMode) title.setSpan(RelativeSizeSpan(0.75f), 11, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        if (settingsMode) {
+            title.setSpan(TypefaceSpan(Typeface.create(golosTypeface, Typeface.BOLD)), 11, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            title.setSpan(RelativeSizeSpan(0.75f), 11, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
         tvHomeAppTitle.text = title
     }
 
@@ -958,7 +961,10 @@ class MainActivity : AppCompatActivity() {
         val btnPlaylistSettings = findViewById<View>(R.id.btnPlaylistSettings)
         val btnEpgSelect = findViewById<View>(R.id.btnEpgSelect)
         val tbStartMode = findViewById<ToggleButton>(R.id.tbStartMode)
-        val tbSleepTimer = findViewById<ToggleButton>(R.id.tbSleepTimer)
+        val sleepRow = findViewById<View>(R.id.btnSleepTimerSettings)
+        val tvSleepTimerValue = findViewById<TextView>(R.id.tvSleepTimerValue)
+        val btnSleepUp = findViewById<View>(R.id.btnSleepUp)
+        val btnSleepDown = findViewById<View>(R.id.btnSleepDown)
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
 
@@ -970,26 +976,40 @@ class MainActivity : AppCompatActivity() {
 
         btnPlaylistSettings.setOnClickListener { showPlaylistSettingsDialog() }
         btnEpgSelect.setOnClickListener { showEpgSelectionDialog() }
-        val sleepOptions = arrayOf(10, 20, 30, 60, 90, 120, 240)
+        val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
         var sleepIndex = 0
-        tbSleepTimer.textOn = "${sleepOptions[sleepIndex]} мин"
-        tbSleepTimer.textOff = "Выключен"
-        tbSleepTimer.isChecked = false
-        tbSleepTimer.setOnClickListener {
-            if (!tbSleepTimer.isChecked) {
+        var sleepSelectionActive = false
+        fun applySleepState() {
+            val selected = sleepOptions[sleepIndex]
+            if (selected == 0) {
+                tvSleepTimerValue.text = "выключено"
                 cancelSleepTimer()
-                tbSleepTimer.text = tbSleepTimer.textOff
             } else {
-                sleepIndex = (sleepIndex + 1) % sleepOptions.size
-                val minutes = sleepOptions[sleepIndex]
-                tbSleepTimer.textOn = "$minutes мин"
-                tbSleepTimer.text = tbSleepTimer.textOn
-                handler.postDelayed({ startSleepTimer(minutes) }, 5000)
+                tvSleepTimerValue.text = "$selected мин"
+                cancelSleepTimer()
+                handler.postDelayed({ startSleepTimer(selected) }, 5000)
+            }
+        }
+        fun changeSleep(delta: Int) {
+            sleepIndex = (sleepIndex + delta + sleepOptions.size) % sleepOptions.size
+            applySleepState()
+        }
+        applySleepState()
+        btnSleepUp.setOnClickListener { changeSleep(1) }
+        btnSleepDown.setOnClickListener { changeSleep(-1) }
+        sleepRow.isFocusable = true
+        sleepRow.setOnClickListener { sleepSelectionActive = !sleepSelectionActive }
+        sleepRow.setOnKeyListener { _, keyCode, event ->
+            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP -> if (sleepSelectionActive) { changeSleep(1); true } else false
+                KeyEvent.KEYCODE_DPAD_DOWN -> if (sleepSelectionActive) { changeSleep(-1); true } else false
+                KeyEvent.KEYCODE_BACK -> if (sleepSelectionActive) { sleepSelectionActive = false; true } else false
+                else -> false
             }
         }
         btnAdvancedSettings.setOnClickListener { showSettingsPlaceholderDialog() }
         btnUserSettings.setOnClickListener { showSettingsPlaceholderDialog() }
-        btnClose.setOnClickListener { hideSettingsScreen() }
     }
 
     private fun hideSettingsScreen() {
