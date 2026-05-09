@@ -1005,6 +1005,7 @@ class MainActivity : AppCompatActivity() {
         homeSettingsScreen.visibility = View.VISIBLE
 
         val btnPlaylistSettings = findViewById<View>(R.id.btnPlaylistSettings)
+        val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
         val btnEpgSelect = findViewById<View>(R.id.btnEpgSelect)
         val tbStartMode = findViewById<ToggleButton>(R.id.tbStartMode)
         val sleepRow = findViewById<View>(R.id.btnSleepTimerSettings)
@@ -1014,6 +1015,9 @@ class MainActivity : AppCompatActivity() {
         val btnSleepDown = findViewById<View>(R.id.btnSleepDown)
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
+
+        tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
+        tvSettingsBack.setOnClickListener { hideSettingsScreen() }
 
         tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
         tbStartMode.setOnCheckedChangeListener { _, isChecked ->
@@ -2603,4 +2607,3 @@ class MainActivity : AppCompatActivity() {
         val btnWatch: TextView
     )
 }
-
