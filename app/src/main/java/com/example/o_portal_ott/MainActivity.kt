@@ -1027,7 +1027,7 @@ class MainActivity : AppCompatActivity() {
         val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings)
 
         tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
-        tvSettingsBack.translationY = 0f
+        tvSettingsBack.translationY = -10f
         tvSettingsBack.setOnClickListener { hideSettingsScreen() }
         userSettingsPanel.visibility = View.GONE
 
@@ -1105,12 +1105,12 @@ class MainActivity : AppCompatActivity() {
             settingsRows.forEach { it.visibility = View.GONE }
             userSettingsPanel.visibility = View.VISIBLE
             tvSettingsBack.visibility = View.VISIBLE
-            tvSettingsBack.translationY = -dpToPx(4).toFloat()
+            tvSettingsBack.translationY = -dpToPx(14).toFloat()
             tvSettingsBack.setOnClickListener {
                 userSettingsPanel.visibility = View.GONE
                 settingsRows.forEach { it.visibility = View.VISIBLE }
                 tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
-                tvSettingsBack.translationY = 0f
+                tvSettingsBack.translationY = -10f
                 tvSettingsBack.setOnClickListener { hideSettingsScreen() }
                 applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
             }
@@ -1217,61 +1217,61 @@ class MainActivity : AppCompatActivity() {
 
         (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.marginStart = dpToPx(12)
-            lp.topMargin = (centeredTopMargin - dpToPx(18)).coerceAtLeast(0)
+            lp.topMargin = (centeredTopMargin - dpToPx(28)).coerceAtLeast(0)
             backLabel.layoutParams = lp
         }
 
         (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.marginStart = dpToPx(12)
-            lp.topMargin = (centeredTopMargin - dpToPx(16)).coerceAtLeast(0)
+            lp.topMargin = (centeredTopMargin - dpToPx(26)).coerceAtLeast(0)
             backLabel.layoutParams = lp
         }
 
         (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.marginStart = dpToPx(12)
-            lp.topMargin = (centeredTopMargin - dpToPx(17)).coerceAtLeast(0)
+            lp.topMargin = (centeredTopMargin - dpToPx(27)).coerceAtLeast(0)
             backLabel.layoutParams = lp
         }
 
         (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.marginStart = dpToPx(12)
-            lp.topMargin = (centeredTopMargin - dpToPx(18)).coerceAtLeast(0)
+            lp.topMargin = (centeredTopMargin - dpToPx(28)).coerceAtLeast(0)
             backLabel.layoutParams = lp
         }
 
         (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.marginStart = dpToPx(12)
-            lp.topMargin = (centeredTopMargin - dpToPx(18)).coerceAtLeast(0)
+            lp.topMargin = (centeredTopMargin - dpToPx(28)).coerceAtLeast(0)
             backLabel.layoutParams = lp
         }
 
         (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.marginStart = dpToPx(12)
-            lp.topMargin = (centeredTopMargin - dpToPx(18)).coerceAtLeast(0)
+            lp.topMargin = (centeredTopMargin - dpToPx(28)).coerceAtLeast(0)
             backLabel.layoutParams = lp
         }
 
         (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.marginStart = dpToPx(12)
-            lp.topMargin = (centeredTopMargin - dpToPx(18)).coerceAtLeast(0)
+            lp.topMargin = (centeredTopMargin - dpToPx(28)).coerceAtLeast(0)
             backLabel.layoutParams = lp
         }
 
         (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.marginStart = dpToPx(12)
-            lp.topMargin = (centeredTopMargin - dpToPx(18)).coerceAtLeast(0)
+            lp.topMargin = (centeredTopMargin - dpToPx(28)).coerceAtLeast(0)
             backLabel.layoutParams = lp
         }
 
         (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.marginStart = dpToPx(12)
-            lp.topMargin = (centeredTopMargin - dpToPx(18)).coerceAtLeast(0)
+            lp.topMargin = (centeredTopMargin - dpToPx(28)).coerceAtLeast(0)
             backLabel.layoutParams = lp
         }
 
         (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.marginStart = dpToPx(12)
-            lp.topMargin = (centeredTopMargin - dpToPx(18)).coerceAtLeast(0)
+            lp.topMargin = (centeredTopMargin - dpToPx(28)).coerceAtLeast(0)
             backLabel.layoutParams = lp
         }
 
