@@ -1043,6 +1043,8 @@ class MainActivity : AppCompatActivity() {
         val epgSettingsPanel = findViewById<View>(R.id.epgSettingsPanel)
         playlistSettingsPanel.visibility = View.GONE
         epgSettingsPanel.visibility = View.GONE
+        userSettingsPanel.visibility = View.GONE
+        settingsRows.forEach { it.visibility = View.VISIBLE }
         btnPlaylistSettings.setOnClickListener { openPlaylistSettingsScreen() }
         btnEpgSelect.setOnClickListener { openEpgSettingsScreen() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
@@ -1142,7 +1144,7 @@ class MainActivity : AppCompatActivity() {
         val names = listOf<EditText>(findViewById(R.id.etPlaylistName1), findViewById(R.id.etPlaylistName2), findViewById(R.id.etPlaylistName3))
         val urls = listOf<EditText>(findViewById(R.id.etPlaylistUrl1), findViewById(R.id.etPlaylistUrl2), findViewById(R.id.etPlaylistUrl3))
         val toggles = listOf<ImageView>(findViewById(R.id.ivPlaylistToggle1), findViewById(R.id.ivPlaylistToggle2), findViewById(R.id.ivPlaylistToggle3))
-        val states = MutableList(3) { true }
+        val states = MutableList(3) { false }
 
         fun bindData() {
             val profiles = getThirdPartyPlaylistProfiles()
@@ -1150,7 +1152,7 @@ class MainActivity : AppCompatActivity() {
                 val p = profiles.getOrNull(i)
                 names[i].setText(p?.name ?: "")
                 urls[i].setText(p?.value ?: "")
-                states[i] = p?.enabled ?: true
+                states[i] = p?.enabled == true && !p.value.isNullOrBlank()
                 toggles[i].setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft)
             }
         }
@@ -1190,14 +1192,19 @@ class MainActivity : AppCompatActivity() {
 
         val urls = listOf<EditText>(findViewById(R.id.etEpgUrl1), findViewById(R.id.etEpgUrl2), findViewById(R.id.etEpgUrl3))
         val toggles = listOf<ImageView>(findViewById(R.id.ivEpgToggle1), findViewById(R.id.ivEpgToggle2), findViewById(R.id.ivEpgToggle3))
-        val states = MutableList(3) { true }
+        val states = MutableList(3) { false }
         val tbInterval = findViewById<ToggleButton>(R.id.tbEpgRefreshInterval)
         val intervals = listOf(1,3,5,7)
         var intervalIndex = intervals.indexOf(prefs.getInt(PREF_EPG_REFRESH_INTERVAL_DAYS, 1)).takeIf { it >= 0 } ?: 0
         var pendingApply: Runnable? = null
 
         val current = getCustomEpgSources().ifEmpty { extractEpgSourcesFromPlaylist(currentPlaylistText) }.take(3)
-        urls.forEachIndexed { i, et -> et.setText(current.getOrNull(i) ?: "") }
+        val selected = getSelectedEpgSources()
+        urls.forEachIndexed { i, et ->
+            val value = current.getOrNull(i) ?: ""
+            et.setText(value)
+            states[i] = value.isNotBlank() && (selected.isEmpty() || selected.contains(value))
+        }
         toggles.forEachIndexed { i, v -> v.setOnClickListener { states[i] = !states[i]; v.setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft) } }
 
         fun updateIntervalText() {
@@ -1489,7 +1496,14 @@ class MainActivity : AppCompatActivity() {
         etToken.isEnabled = true
         btnChangeUser.setOnClickListener {
             prefs.edit().remove(PREF_USER_NAME).remove(PREF_USER_TOKEN).remove(PREF_USER_LOGIN).remove(PREF_USER_PLAYLIST).apply()
+            val profiles = getPlaylistProfiles().filterNot { it.name == "Пользователь" }
+            savePlaylistProfiles(profiles)
+            setSelectedPlaylistName("По умолчанию")
+            currentPlaylistText = ""
+            channels.clear()
+            synchronized(epgDataLock) { epgData.clear() }
             bindInlineUserSettings(panel)
+            loadPlaylist(forceReload = true, showErrors = false, autoPlay = false)
         }
         btnChangeToken.setOnClickListener {
             prefs.edit().remove(PREF_USER_NAME).apply()
@@ -1524,7 +1538,7 @@ class MainActivity : AppCompatActivity() {
                             if (idx >= 0) profiles[idx] = p else profiles.add(p)
                             savePlaylistProfiles(profiles)
                             setSelectedPlaylistName("Пользователь")
-                            loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
+                            loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
                             bindInlineUserSettings(panel)
                         } else {
                             AlertDialog.Builder(this)
