@@ -1134,6 +1134,12 @@ class MainActivity : AppCompatActivity() {
             backLabel.layoutParams = lp
         }
 
+        (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.marginStart = dpToPx(12)
+            lp.topMargin = (centeredTopMargin - dpToPx(16)).coerceAtLeast(0)
+            backLabel.layoutParams = lp
+        }
+
         rowIds.forEachIndexed { index, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
