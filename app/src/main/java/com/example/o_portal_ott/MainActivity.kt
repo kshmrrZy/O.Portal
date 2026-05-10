@@ -1001,6 +1001,7 @@ class MainActivity : AppCompatActivity() {
     private fun showSettingsDialog() {
         settingsOpenedFromPlayer = homePanel.visibility != View.VISIBLE
         isSettingsModalVisible = true
+        homePlaylistTilesPanel.visibility = View.GONE
         if (settingsOpenedFromPlayer) {
             playerSettingsOverlay.visibility = View.GONE
             hideUI()
