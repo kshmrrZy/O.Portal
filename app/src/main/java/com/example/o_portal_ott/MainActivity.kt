@@ -379,8 +379,7 @@ class MainActivity : AppCompatActivity() {
         val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
         loadPlaylist(showErrors = true, autoPlay = shouldOpenLastChannelOnStart && !isAuthorizedUser)
         if (!shouldOpenLastChannelOnStart) {
-            showStartPage()
-            if (isAuthorizedUser) handler.postDelayed({ showHomePlaylistSelector() }, 200L)
+            if (isAuthorizedUser) showPlaylistPageOnHome() else showStartPage()
         }
     }
 
@@ -631,6 +630,14 @@ class MainActivity : AppCompatActivity() {
         homePanel.post { applyHomeScreenScale(force = true) }
         topInfoPanel.visibility = View.GONE
         controlsPanel.visibility = View.GONE
+    }
+
+
+    private fun showPlaylistPageOnHome() {
+        showStartPage()
+        tvHomeStartTitle.visibility = View.GONE
+        tvHomeStartSubtitle.visibility = View.GONE
+        handler.postDelayed({ showHomePlaylistSelector() }, 120L)
     }
 
     private fun hideStartPage() {
@@ -1272,9 +1279,9 @@ class MainActivity : AppCompatActivity() {
         val cleanToken = token.trim()
         if (cleanToken.isBlank()) return
         val existing = getPlaylistProfiles().toMutableList()
-        val thirdParty = existing.filter { it.name !in setOf("Пользователь", "По умолчанию", "Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные") }
+        val thirdParty = existing.filter { it.name !in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные") }
         if (thirdParty.isNotEmpty()) {
-            savePlaylistProfiles((existing.filter { it.name == "Пользователь" || it.name == "По умолчанию" } + thirdParty).distinctBy { it.name })
+            savePlaylistProfiles(thirdParty.distinctBy { it.name })
             return
         }
         val portal = listOf(
@@ -1285,8 +1292,7 @@ class MainActivity : AppCompatActivity() {
             PlaylistProfile("Only4", "url", "https://o.avff.ru/list/only4.m3u8?token=$cleanToken", true),
             PlaylistProfile("Избранные", "url", "https://o.avff.ru/my/$cleanToken.m3u", true)
         )
-        val system = existing.filter { it.name == "Пользователь" || it.name == "По умолчанию" }
-        savePlaylistProfiles((system + portal).distinctBy { it.name })
+        savePlaylistProfiles((portal).distinctBy { it.name })
     }
 
     private fun hideSettingsScreen() {
@@ -1437,10 +1443,9 @@ class MainActivity : AppCompatActivity() {
             if (idx >= 0) profiles[idx] = profile else profiles.add(profile)
             savePlaylistProfiles(profiles)
             syncPortalPlaylistsForAuthorizedUser(token)
-            setSelectedPlaylistName("Пользователь")
+            setSelectedPlaylistName("Избранные")
             loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
-            showStartPage()
-            handler.postDelayed({ showHomePlaylistSelector() }, 200L)
+            showPlaylistPageOnHome()
             tvStatus.text = "Вы авторизованы как $name"
         }
 
@@ -1523,14 +1528,16 @@ class MainActivity : AppCompatActivity() {
         etToken.isEnabled = true
         btnChangeUser.setOnClickListener {
             prefs.edit().remove(PREF_USER_NAME).remove(PREF_USER_TOKEN).remove(PREF_USER_LOGIN).remove(PREF_USER_PLAYLIST).apply()
-            val profiles = getPlaylistProfiles().filterNot { it.name in setOf("Пользователь", "Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные") }
+            val profiles = getPlaylistProfiles().filterNot { it.name in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные") }
             savePlaylistProfiles(profiles)
-            setSelectedPlaylistName("По умолчанию")
+            setSelectedPlaylistName(profiles.firstOrNull()?.name ?: "")
             currentPlaylistText = ""
             channels.clear()
             synchronized(epgDataLock) { epgData.clear() }
             bindInlineUserSettings(panel)
             loadPlaylist(forceReload = true, showErrors = false, autoPlay = false)
+            hideSettingsScreen()
+            showStartPage()
         }
         btnChangeToken.setOnClickListener {
             prefs.edit().remove(PREF_USER_NAME).apply()
@@ -1565,10 +1572,9 @@ class MainActivity : AppCompatActivity() {
                             if (idx >= 0) profiles[idx] = p else profiles.add(p)
                             savePlaylistProfiles(profiles)
                             syncPortalPlaylistsForAuthorizedUser(token)
-                            setSelectedPlaylistName("Пользователь")
+                            setSelectedPlaylistName("Избранные")
                             loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
-                            showStartPage()
-                            handler.postDelayed({ showHomePlaylistSelector() }, 200L)
+                            showPlaylistPageOnHome()
                             bindInlineUserSettings(panel)
                         } else {
                             AlertDialog.Builder(this)
@@ -2898,9 +2904,7 @@ class MainActivity : AppCompatActivity() {
     private fun ensureDefaultPlaylistProfile() {
         val profiles = getPlaylistProfiles().toMutableList()
         if (profiles.isEmpty()) {
-            profiles += PlaylistProfile("По умолчанию", "token", "")
-            savePlaylistProfiles(profiles)
-            setSelectedPlaylistName("По умолчанию")
+            savePlaylistProfiles(emptyList())
         }
     }
 
