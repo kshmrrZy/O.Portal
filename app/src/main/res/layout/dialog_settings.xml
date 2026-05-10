@@ -290,7 +290,7 @@
         android:id="@+id/userSettingsPanel"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginTop="33dp"
+        android:layout_marginTop="35dp"
         android:orientation="vertical"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"

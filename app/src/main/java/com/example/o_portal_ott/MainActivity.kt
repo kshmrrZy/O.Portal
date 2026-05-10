@@ -156,6 +156,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homeSettingsScreen: View
     private lateinit var playerSettingsOverlay: View
     private var settingsOpenedFromPlayer = false
+    private var homeActionIndex = 0
     private var isSettingsModalVisible = false
 
     private var lastHomePanelWidth = 0
@@ -581,7 +582,7 @@ class MainActivity : AppCompatActivity() {
         mDetector = GestureDetectorCompat(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
                 if (e1 == null) return false
-                if (homeSettingsScreen.visibility == View.VISIBLE) return true
+                if (homePanel.visibility == View.VISIBLE) return true
                 if (isLocked) {
                     showLockedMessage()
                     return false
@@ -1039,7 +1040,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         val playlistSettingsPanel = findViewById<View>(R.id.playlistSettingsPanel)
+        val epgSettingsPanel = findViewById<View>(R.id.epgSettingsPanel)
         playlistSettingsPanel.visibility = View.GONE
+        epgSettingsPanel.visibility = View.GONE
         btnPlaylistSettings.setOnClickListener { openPlaylistSettingsScreen() }
         btnEpgSelect.setOnClickListener { openEpgSettingsScreen() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
@@ -1199,7 +1202,12 @@ class MainActivity : AppCompatActivity() {
 
         fun updateIntervalText() {
             val d = intervals[intervalIndex]
-            tbInterval.textOn = "$d ${if (d == 1) "день" else "дня"}"
+            tbInterval.textOn = when (d) {
+                1 -> "1 день"
+                3 -> "3 дня"
+                5 -> "5 дней"
+                else -> "7 дней"
+            }
             tbInterval.textOff = tbInterval.textOn
             tbInterval.text = tbInterval.textOn
         }
@@ -1232,10 +1240,14 @@ class MainActivity : AppCompatActivity() {
 
         tvSettingsBack.setOnClickListener {
             epgPanel.visibility = View.GONE
-            settingsRows.forEach { it.visibility = View.VISIBLE }
-            tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
-            tvSettingsBack.setOnClickListener { hideSettingsScreen() }
-            applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
+            if (settingsOpenedFromPlayer) {
+                hideSettingsScreen()
+            } else {
+                settingsRows.forEach { it.visibility = View.VISIBLE }
+                tvSettingsBack.visibility = View.GONE
+                tvSettingsBack.setOnClickListener { hideSettingsScreen() }
+                applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
+            }
         }
     }
 
@@ -2591,6 +2603,26 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Таймер остановлен", Toast.LENGTH_SHORT).show()
             return true
         }
+
+        if (homePanel.visibility == View.VISIBLE && homeSettingsScreen.visibility != View.VISIBLE) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> return true
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    homeActionIndex = 1 - homeActionIndex
+                    ivHomeSettings.alpha = if (homeActionIndex == 0) 1f else 0.6f
+                    ivHomePower.alpha = if (homeActionIndex == 1) 1f else 0.6f
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    if (homeActionIndex == 0) ivHomeSettings.performClick() else ivHomePower.performClick()
+                    return true
+                }
+            }
+        }
+        if (homeSettingsScreen.visibility == View.VISIBLE && !settingsOpenedFromPlayer) {
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return true
+        }
+
         when {
             keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> {
                 inputNumber += (keyCode - KeyEvent.KEYCODE_0).toString()
@@ -2601,7 +2633,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_CHANNEL_UP -> {
-                if (homeSettingsScreen.visibility == View.VISIBLE) return true
+                if (homePanel.visibility == View.VISIBLE) return true
                 if (channels.isNotEmpty()) {
                     currentChannelIndex = (currentChannelIndex + 1) % channels.size
                     playChannel(forcePlay = true)
@@ -2610,7 +2642,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_CHANNEL_DOWN -> {
-                if (homeSettingsScreen.visibility == View.VISIBLE) return true
+                if (homeSettingsScreen.visibility == View.VISIBLE || homePanel.visibility == View.VISIBLE) return true
                 if (channels.isNotEmpty()) {
                     currentChannelIndex = (currentChannelIndex - 1 + channels.size) % channels.size
                     playChannel(forcePlay = true)
@@ -2619,7 +2651,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                if (homeSettingsScreen.visibility == View.VISIBLE) return true
+                if (homeSettingsScreen.visibility == View.VISIBLE || homePanel.visibility == View.VISIBLE) return true
                 if (controlsPanel.visibility == View.VISIBLE && isArchivePlayback && sbTimeline.isEnabled) {
                     sbTimeline.progress = (sbTimeline.progress + 20).coerceAtMost(1000)
                     return true
