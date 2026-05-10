@@ -134,6 +134,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvHomeAppTitle: TextView
     private lateinit var tvHomeStartTitle: TextView
     private lateinit var tvHomeStartSubtitle: TextView
+    private lateinit var homePlaylistTilesPanel: View
     private lateinit var ivLogo: ImageView
     private lateinit var btnLock: ImageButton
     private lateinit var btnSettings: ImageButton
@@ -393,6 +394,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeAppTitle = findViewById(R.id.tvHomeAppTitle)
         tvHomeStartTitle = findViewById(R.id.tvHomeStartTitle)
         tvHomeStartSubtitle = findViewById(R.id.tvHomeStartSubtitle)
+        homePlaylistTilesPanel = findViewById(R.id.homePlaylistTilesPanel)
         ivLogo = findViewById(R.id.ivChannelLogo)
         btnLock = findViewById(R.id.btnLock)
         btnSettings = findViewById(R.id.btnSettings)
@@ -627,6 +629,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showStartPage() {
         homePanel.visibility = View.VISIBLE
+        homePlaylistTilesPanel.visibility = View.GONE
         homePanel.post { applyHomeScreenScale(force = true) }
         topInfoPanel.visibility = View.GONE
         controlsPanel.visibility = View.GONE
@@ -637,7 +640,25 @@ class MainActivity : AppCompatActivity() {
         showStartPage()
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
-        handler.postDelayed({ showHomePlaylistSelector() }, 120L)
+        homePlaylistTilesPanel.visibility = View.VISIBLE
+        val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6))
+        val profiles = getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
+        tiles.forEachIndexed { i, tv ->
+            val p = profiles.getOrNull(i)
+            if (p == null) {
+                tv.visibility = View.INVISIBLE
+                tv.setOnClickListener(null)
+            } else {
+                tv.visibility = View.VISIBLE
+                tv.text = p.name
+                tv.setOnClickListener {
+                    setSelectedPlaylistName(p.name)
+                    homePlaylistTilesPanel.visibility = View.GONE
+                    hideStartPage()
+                    loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
+                }
+            }
+        }
     }
 
     private fun hideStartPage() {
