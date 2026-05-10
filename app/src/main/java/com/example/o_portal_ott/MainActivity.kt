@@ -1265,6 +1265,28 @@ class MainActivity : AppCompatActivity() {
         savePlaylistProfiles(systemProfiles + thirdParty.take(3))
     }
 
+
+    private fun syncPortalPlaylistsForAuthorizedUser(token: String) {
+        val cleanToken = token.trim()
+        if (cleanToken.isBlank()) return
+        val existing = getPlaylistProfiles().toMutableList()
+        val thirdParty = existing.filter { it.name !in setOf("Пользователь", "По умолчанию", "Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные") }
+        if (thirdParty.isNotEmpty()) {
+            savePlaylistProfiles((existing.filter { it.name == "Пользователь" || it.name == "По умолчанию" } + thirdParty).distinctBy { it.name })
+            return
+        }
+        val portal = listOf(
+            PlaylistProfile("Wink", "url", "https://o.avff.ru/list/wink.m3u8?token=$cleanToken", true),
+            PlaylistProfile("iLook", "url", "https://o.avff.ru/list/ilook.m3u8?token=$cleanToken", true),
+            PlaylistProfile("Сервис В", "url", "https://o.avff.ru/list/servicev.m3u8?token=$cleanToken", true),
+            PlaylistProfile("Lime TV", "url", "https://o.avff.ru/list/limetv.m3u8?token=$cleanToken", true),
+            PlaylistProfile("Only4", "url", "https://o.avff.ru/list/only4.m3u8?token=$cleanToken", true),
+            PlaylistProfile("Избранные", "url", "https://o.avff.ru/my/$cleanToken.m3u", true)
+        )
+        val system = existing.filter { it.name == "Пользователь" || it.name == "По умолчанию" }
+        savePlaylistProfiles((system + portal).distinctBy { it.name })
+    }
+
     private fun hideSettingsScreen() {
         isSettingsModalVisible = false
         homeSettingsScreen.visibility = View.GONE
@@ -1412,6 +1434,7 @@ class MainActivity : AppCompatActivity() {
             val profile = PlaylistProfile("Пользователь", "url", playlist, true)
             if (idx >= 0) profiles[idx] = profile else profiles.add(profile)
             savePlaylistProfiles(profiles)
+            syncPortalPlaylistsForAuthorizedUser(token)
             setSelectedPlaylistName("Пользователь")
             loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
             tvStatus.text = "Вы авторизованы как $name"
@@ -1496,7 +1519,7 @@ class MainActivity : AppCompatActivity() {
         etToken.isEnabled = true
         btnChangeUser.setOnClickListener {
             prefs.edit().remove(PREF_USER_NAME).remove(PREF_USER_TOKEN).remove(PREF_USER_LOGIN).remove(PREF_USER_PLAYLIST).apply()
-            val profiles = getPlaylistProfiles().filterNot { it.name == "Пользователь" }
+            val profiles = getPlaylistProfiles().filterNot { it.name in setOf("Пользователь", "Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные") }
             savePlaylistProfiles(profiles)
             setSelectedPlaylistName("По умолчанию")
             currentPlaylistText = ""
@@ -1537,6 +1560,7 @@ class MainActivity : AppCompatActivity() {
                             val p = PlaylistProfile("Пользователь", "url", playlist, true)
                             if (idx >= 0) profiles[idx] = p else profiles.add(p)
                             savePlaylistProfiles(profiles)
+                            syncPortalPlaylistsForAuthorizedUser(token)
                             setSelectedPlaylistName("Пользователь")
                             loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
                             bindInlineUserSettings(panel)
