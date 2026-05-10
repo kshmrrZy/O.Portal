@@ -420,8 +420,8 @@ class MainActivity : AppCompatActivity() {
         homePanel.post { applyHomeScreenScale(force = true) }
     }
 
-    private fun applyHomeAppTitleStyle(settingsMode: Boolean = false) {
-        val rawTitle = if (settingsMode) "O.Portal > Настройки" else "O.Portal"
+    private fun applyHomeAppTitleStyle(settingsMode: Boolean = false, settingsTitle: String = "Настройки") {
+        val rawTitle = if (settingsMode) "O.Portal > $settingsTitle" else "O.Portal"
         val title = SpannableString(rawTitle)
         golosTypeface?.let { font ->
             tvHomeAppTitle.typeface = Typeface.create(font, Typeface.NORMAL)
@@ -1023,12 +1023,9 @@ class MainActivity : AppCompatActivity() {
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
         val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings)
 
-        tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
+        tvSettingsBack.visibility = View.VISIBLE
         tvSettingsBack.setOnClickListener { hideSettingsScreen() }
         userSettingsPanel.visibility = View.GONE
-
-        tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
-        tvSettingsBack.setOnClickListener { hideSettingsScreen() }
 
         tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
         tbStartMode.setOnCheckedChangeListener { _, isChecked ->
@@ -1105,9 +1102,11 @@ class MainActivity : AppCompatActivity() {
             tvSettingsBack.setOnClickListener {
                 userSettingsPanel.visibility = View.GONE
                 settingsRows.forEach { it.visibility = View.VISIBLE }
-                tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
+                tvSettingsBack.visibility = View.VISIBLE
                 tvSettingsBack.setOnClickListener { hideSettingsScreen() }
+                applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
             }
+            applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройка пользователя")
             bindInlineUserSettings(userSettingsPanel)
         }
         btnUserSettings.setOnClickListener { openUserSettingsScreen() }
@@ -1175,11 +1174,17 @@ class MainActivity : AppCompatActivity() {
             backLabel.layoutParams = lp
         }
 
+        (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.marginStart = dpToPx(12)
+            lp.topMargin = (centeredTopMargin - dpToPx(18)).coerceAtLeast(0)
+            backLabel.layoutParams = lp
+        }
+
         rowIds.forEachIndexed { index, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
             lp.height = rowHeight
-            lp.topMargin = if (index == 0) (centeredTopMargin - dpToPx(4)).coerceAtLeast(0) else rowMargin
+            lp.topMargin = if (index == 0) dpToPx(2) else rowMargin
             lp.marginStart = dpToPx(12)
             lp.marginEnd = dpToPx(12)
             lp.bottomToBottom = ConstraintSet.UNSET
@@ -1290,9 +1295,22 @@ class MainActivity : AppCompatActivity() {
         etLogin.setText(prefs.getString(PREF_USER_LOGIN, "") ?: "")
         etToken.setText(prefs.getString(PREF_USER_TOKEN, "") ?: "")
         val cachedName = prefs.getString(PREF_USER_NAME, "") ?: ""
-        tvState.text = if (cachedName.isBlank()) "Имя пользователя" else "Вы авторизовались как $cachedName"
-        btnAuth.text = if (cachedName.isBlank()) "Войти" else "Сменить"
+        val isAuthorized = cachedName.isNotBlank()
+        tvState.text = if (isAuthorized) "Вы авторизовались как $cachedName" else "Имя пользователя"
+        etLogin.visibility = if (isAuthorized) View.GONE else View.VISIBLE
+        btnAuth.text = if (isAuthorized) "Сменить пользователя" else "Войти"
+        if (isAuthorized) {
+            etToken.setText(prefs.getString(PREF_USER_TOKEN, "") ?: "")
+            etToken.isEnabled = false
+        } else {
+            etToken.isEnabled = true
+        }
         btnAuth.setOnClickListener {
+            if (btnAuth.text.toString().contains("Сменить")) {
+                prefs.edit().remove(PREF_USER_NAME).apply()
+                bindInlineUserSettings(panel)
+                return@setOnClickListener
+            }
             val login = etLogin.text.toString().trim()
             val token = etToken.text.toString().trim()
             if (login.isBlank() || token.isBlank()) {
@@ -1327,7 +1345,7 @@ class MainActivity : AppCompatActivity() {
                 }.onFailure { e ->
                     handler.post {
                         btnAuth.isEnabled = true
-                        AlertDialog.Builder(this).setTitle("Ошибка сети").setMessage("Не удалось проверить авторизацию: ${e.message}").setPositiveButton("ОК", null).show()
+                        AlertDialog.Builder(this).setTitle("Ошибка сети").setMessage("Не удалось проверить авторизацию. Проверьте подключение и повторите попытку.").setPositiveButton("ОК", null).show()
                     }
                 }
             }
