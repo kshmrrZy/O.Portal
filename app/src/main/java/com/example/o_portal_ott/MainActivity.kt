@@ -1299,10 +1299,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun getThirdPartyPlaylistProfiles(): List<PlaylistProfile> = getPlaylistProfiles().filter { it.name != "Пользователь" && it.name != "По умолчанию" }
+    private fun getThirdPartyPlaylistProfiles(): List<PlaylistProfile> = getPlaylistProfiles().filter { it.name !in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные", "Пользователь", "По умолчанию") }
 
     private fun saveThirdPartyPlaylistProfiles(thirdParty: List<PlaylistProfile>) {
-        val systemProfiles = getPlaylistProfiles().filter { it.name == "Пользователь" || it.name == "По умолчанию" }
+        val systemProfiles = getPlaylistProfiles().filter { it.name in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные", "Пользователь", "По умолчанию") }
         savePlaylistProfiles(systemProfiles + thirdParty.take(3))
     }
 
