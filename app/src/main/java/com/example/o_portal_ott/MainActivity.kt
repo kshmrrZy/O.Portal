@@ -1475,6 +1475,7 @@ class MainActivity : AppCompatActivity() {
             syncPortalPlaylistsForAuthorizedUser(token)
             setSelectedPlaylistName("Избранные")
             loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
+            hideSettingsScreen()
             showPlaylistPageOnHome()
             tvStatus.text = "Вы авторизованы как $name"
         }
@@ -1604,6 +1605,7 @@ class MainActivity : AppCompatActivity() {
                             syncPortalPlaylistsForAuthorizedUser(token)
                             setSelectedPlaylistName("Избранные")
                             loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
+                            hideSettingsScreen()
                             showPlaylistPageOnHome()
                             bindInlineUserSettings(panel)
                         } else {
