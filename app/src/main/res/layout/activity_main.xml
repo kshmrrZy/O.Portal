@@ -410,23 +410,29 @@
 
 
 
-        <androidx.constraintlayout.widget.ConstraintLayout
+        <ScrollView
             android:id="@+id/homePlaylistTilesPanel"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="0dp"
             android:visibility="gone"
+            android:layout_marginTop="10dp"
+            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
+            app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent">
-
-            <TextView android:id="@+id/tvTile1" style="@style/AppGolosText" android:layout_width="157dp" android:layout_height="64dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="18sp" android:background="@drawable/bg_playlist_tile" app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle" app:layout_constraintTop_toTopOf="parent" app:layout_constraintVertical_bias="0.08"/>
-            <TextView android:id="@+id/tvTile2" style="@style/AppGolosText" android:layout_width="157dp" android:layout_height="64dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="18sp" android:background="@drawable/bg_playlist_tile" app:layout_constraintStart_toEndOf="@id/tvTile1" app:layout_constraintTop_toTopOf="@id/tvTile1" android:layout_marginStart="34dp"/>
-            <TextView android:id="@+id/tvTile3" style="@style/AppGolosText" android:layout_width="157dp" android:layout_height="64dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="18sp" android:background="@drawable/bg_playlist_tile" app:layout_constraintStart_toEndOf="@id/tvTile2" app:layout_constraintTop_toTopOf="@id/tvTile1" android:layout_marginStart="34dp"/>
-            <TextView android:id="@+id/tvTile4" style="@style/AppGolosText" android:layout_width="157dp" android:layout_height="64dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="18sp" android:background="@drawable/bg_playlist_tile" app:layout_constraintStart_toStartOf="@id/tvTile1" app:layout_constraintTop_toBottomOf="@id/tvTile1" android:layout_marginTop="34dp"/>
-            <TextView android:id="@+id/tvTile5" style="@style/AppGolosText" android:layout_width="157dp" android:layout_height="64dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="18sp" android:background="@drawable/bg_playlist_tile" app:layout_constraintStart_toStartOf="@id/tvTile2" app:layout_constraintTop_toTopOf="@id/tvTile4"/>
-            <TextView android:id="@+id/tvTile6" style="@style/AppGolosText" android:layout_width="157dp" android:layout_height="64dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="18sp" android:background="@drawable/bg_playlist_tile" app:layout_constraintStart_toStartOf="@id/tvTile3" app:layout_constraintTop_toTopOf="@id/tvTile4"/>
-        </androidx.constraintlayout.widget.ConstraintLayout>
+            app:layout_constraintBottom_toBottomOf="parent">
+            <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="vertical">
+                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
+                    <TextView android:id="@+id/tvTile1" style="@style/AppGolosText" android:layout_width="178dp" android:layout_height="76dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
+                    <TextView android:id="@+id/tvTile2" style="@style/AppGolosText" android:layout_width="178dp" android:layout_height="76dp" android:layout_marginStart="18dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
+                    <TextView android:id="@+id/tvTile3" style="@style/AppGolosText" android:layout_width="178dp" android:layout_height="76dp" android:layout_marginStart="18dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
+                </LinearLayout>
+                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:orientation="horizontal">
+                    <TextView android:id="@+id/tvTile4" style="@style/AppGolosText" android:layout_width="178dp" android:layout_height="76dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
+                    <TextView android:id="@+id/tvTile5" style="@style/AppGolosText" android:layout_width="178dp" android:layout_height="76dp" android:layout_marginStart="18dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
+                    <TextView android:id="@+id/tvTile6" style="@style/AppGolosText" android:layout_width="178dp" android:layout_height="76dp" android:layout_marginStart="18dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
 
         <TextView
             android:id="@+id/tvHomeStartTitle"

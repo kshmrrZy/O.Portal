@@ -1045,6 +1045,7 @@ class MainActivity : AppCompatActivity() {
             homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             homeSettingsScreen.setBackgroundColor(Color.TRANSPARENT)
             homeSettingsScreen.setPadding(0,0,0,0)
+            restoreDefaultSettingsRows()
         }
         homePanel.visibility = View.VISIBLE
         homePanel.post { applyHomeScreenScale(force = true) }
@@ -1343,6 +1344,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+
+    private fun restoreDefaultSettingsRows() {
+        val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings)
+        rowIds.forEachIndexed { i, id ->
+            val row = findViewById<View>(id)
+            val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
+            lp.height = dpToPx(46)
+            lp.topMargin = if (i == 0) dpToPx(4) else dpToPx(8)
+            row.layoutParams = lp
+        }
+    }
 
     private fun tunePlayerSettingsRows() {
         val dm = resources.displayMetrics
