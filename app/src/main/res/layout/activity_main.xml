@@ -432,13 +432,12 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     app:constraint_referenced_ids="tvTile1,tvTile2,tvTile3,tvTile4,tvTile5,tvTile6"
-                    app:flow_horizontalGap="18dp"
-                    app:flow_verticalGap="18dp"
+                    app:flow_horizontalGap="0dp"
+                    app:flow_verticalGap="12dp"
                     app:flow_wrapMode="aligned"
-                    app:flow_maxElementsWrap="3"
+                    app:flow_horizontalBias="0"
                     app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toTopOf="parent"
-                    app:layout_constraintEnd_toEndOf="parent"/>
+                    app:layout_constraintTop_toTopOf="parent"/>
             </androidx.constraintlayout.widget.ConstraintLayout>
         </ScrollView>
 

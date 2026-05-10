@@ -1331,15 +1331,20 @@ class MainActivity : AppCompatActivity() {
         isSettingsModalVisible = false
         homeSettingsScreen.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = false)
-        tvHomeStartTitle.visibility = View.VISIBLE
-        tvHomeStartSubtitle.visibility = View.VISIBLE
+        val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
+        if (isAuthorizedUser) {
+            showPlaylistPageOnHome()
+        } else {
+            tvHomeStartTitle.visibility = View.VISIBLE
+            tvHomeStartSubtitle.visibility = View.VISIBLE
+        }
         playerSettingsOverlay.visibility = View.GONE
         homePanel.setBackgroundResource(R.drawable.bg_home_screen)
         tvHomeAppTitle.visibility = View.VISIBLE
         tvHomeSystemTime.visibility = View.VISIBLE
         ivHomeSettings.visibility = View.VISIBLE
         ivHomePower.visibility = View.VISIBLE
-        if (settingsOpenedFromPlayer && channels.isNotEmpty()) {
+        if (settingsOpenedFromPlayer && channels.isNotEmpty() && !isAuthorizedUser) {
             homePanel.visibility = View.GONE
             showUI()
         }
