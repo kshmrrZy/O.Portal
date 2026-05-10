@@ -1023,7 +1023,7 @@ class MainActivity : AppCompatActivity() {
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
         val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings)
 
-        tvSettingsBack.visibility = View.VISIBLE
+        tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
         tvSettingsBack.setOnClickListener { hideSettingsScreen() }
         userSettingsPanel.visibility = View.GONE
 
@@ -1102,7 +1102,7 @@ class MainActivity : AppCompatActivity() {
             tvSettingsBack.setOnClickListener {
                 userSettingsPanel.visibility = View.GONE
                 settingsRows.forEach { it.visibility = View.VISIBLE }
-                tvSettingsBack.visibility = View.VISIBLE
+                tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
                 tvSettingsBack.setOnClickListener { hideSettingsScreen() }
                 applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
             }
@@ -1165,6 +1165,12 @@ class MainActivity : AppCompatActivity() {
         (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.marginStart = dpToPx(12)
             lp.topMargin = (centeredTopMargin - dpToPx(17)).coerceAtLeast(0)
+            backLabel.layoutParams = lp
+        }
+
+        (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.marginStart = dpToPx(12)
+            lp.topMargin = (centeredTopMargin - dpToPx(18)).coerceAtLeast(0)
             backLabel.layoutParams = lp
         }
 
