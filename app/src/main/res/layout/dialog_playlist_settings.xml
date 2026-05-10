@@ -4,134 +4,153 @@
     android:layout_height="match_parent"
     android:background="@drawable/bg_glass_panel"
     android:orientation="vertical"
-    android:padding="14dp">
-
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:fillViewport="true">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
-
-            <TextView
-                style="@style/WhiteTitleTextShadow"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Плейлисты"
-                android:textColor="#FFFFFF"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-
-            <Spinner
-                android:id="@+id/spPlaylist"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:background="#22FFFFFF" />
-
-            <EditText
-                android:id="@+id/etPlaylistName"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:hint="Название плейлиста"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#99FFFFFF" />
-
-            <RadioGroup
-                android:id="@+id/rgSourceType"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:orientation="horizontal">
-
-                <RadioButton
-                    android:id="@+id/rbToken"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Токен"
-                    android:textColor="#FFFFFF" />
-
-                <RadioButton
-                    android:id="@+id/rbUrl"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="12dp"
-                    android:text="URL"
-                    android:textColor="#FFFFFF" />
-            </RadioGroup>
-
-            <EditText
-                android:id="@+id/etSourceValue"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#99FFFFFF" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:id="@+id/btnAddOrUpdatePlaylist"
-                    style="@style/WhiteTitleTextShadow"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_watch_button"
-                    android:gravity="center"
-                    android:padding="10dp"
-                    android:text="Сохранить"
-                    android:textColor="#FFFFFF"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/btnApplyPlaylist"
-                    style="@style/WhiteTitleTextShadow"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="8dp"
-                    android:background="@drawable/bg_watch_button"
-                    android:gravity="center"
-                    android:padding="10dp"
-                    android:text="Применить"
-                    android:textColor="#FFFFFF"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/btnDeletePlaylist"
-                    style="@style/WhiteTitleTextShadow"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="8dp"
-                    android:background="@drawable/bg_watch_button"
-                    android:gravity="center"
-                    android:padding="10dp"
-                    android:text="Удалить"
-                    android:textColor="#FFFFFF"
-                    android:textStyle="bold" />
-            </LinearLayout>
-        </LinearLayout>
-    </ScrollView>
+    android:padding="16dp">
 
     <TextView
-        android:id="@+id/btnClosePlaylistDialog"
-        style="@style/WhiteTitleTextShadow"
+        style="@style/AppGolosText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Плейлисты"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <Spinner
+        android:id="@+id/spPlaylist"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_settings_row" />
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
-        android:background="@drawable/bg_watch_button"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <EditText
+            android:id="@+id/etPlaylistName"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_settings_row"
+            android:hint="Название плейлиста"
+            android:paddingHorizontal="12dp"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#99FFFFFF" />
+
+        <ImageView
+            android:id="@+id/ivPlaylistEnabled"
+            android:layout_width="48dp"
+            android:layout_height="28dp"
+            android:layout_marginStart="10dp"
+            android:contentDescription="Включение плейлиста"
+            android:src="@drawable/toggleright" />
+    </LinearLayout>
+
+    <RadioGroup
+        android:id="@+id/rgSourceType"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+
+        <RadioButton
+            android:id="@+id/rbToken"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Токен"
+            android:textColor="#FFFFFF" />
+
+        <RadioButton
+            android:id="@+id/rbUrl"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
+            android:text="URL"
+            android:textColor="#FFFFFF" />
+    </RadioGroup>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <EditText
+            android:id="@+id/etSourceValue"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_settings_row"
+            android:paddingHorizontal="12dp"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#99FFFFFF" />
+
+        <ImageView
+            android:id="@+id/ivSourceEnabled"
+            android:layout_width="48dp"
+            android:layout_height="28dp"
+            android:layout_marginStart="10dp"
+            android:contentDescription="Включение плейлиста"
+            android:src="@drawable/toggleright" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/btnAddOrUpdatePlaylist"
+            style="@style/AppGolosText"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_settings_row"
+            android:gravity="center"
+            android:text="Сохранить"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/btnApplyPlaylist"
+            style="@style/AppGolosText"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_settings_row"
+            android:gravity="center"
+            android:text="Применить"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/btnDeletePlaylist"
+            style="@style/AppGolosText"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_settings_row"
+            android:gravity="center"
+            android:text="Удалить"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/btnClosePlaylistDialog"
+        style="@style/AppGolosText"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_settings_row"
         android:gravity="center"
-        android:padding="10dp"
         android:text="Закрыть"
         android:textColor="#FFFFFF"
         android:textStyle="bold" />
