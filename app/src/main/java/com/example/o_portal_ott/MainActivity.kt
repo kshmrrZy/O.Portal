@@ -1025,6 +1025,7 @@ class MainActivity : AppCompatActivity() {
         val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings)
 
         tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
+        tvSettingsBack.translationY = 0f
         tvSettingsBack.setOnClickListener { hideSettingsScreen() }
         userSettingsPanel.visibility = View.GONE
 
@@ -1100,10 +1101,12 @@ class MainActivity : AppCompatActivity() {
             settingsRows.forEach { it.visibility = View.GONE }
             userSettingsPanel.visibility = View.VISIBLE
             tvSettingsBack.visibility = View.VISIBLE
+            tvSettingsBack.translationY = -dpToPx(4).toFloat()
             tvSettingsBack.setOnClickListener {
                 userSettingsPanel.visibility = View.GONE
                 settingsRows.forEach { it.visibility = View.VISIBLE }
                 tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
+                tvSettingsBack.translationY = 0f
                 tvSettingsBack.setOnClickListener { hideSettingsScreen() }
                 applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
             }
@@ -1166,6 +1169,12 @@ class MainActivity : AppCompatActivity() {
         (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.marginStart = dpToPx(12)
             lp.topMargin = (centeredTopMargin - dpToPx(17)).coerceAtLeast(0)
+            backLabel.layoutParams = lp
+        }
+
+        (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.marginStart = dpToPx(12)
+            lp.topMargin = (centeredTopMargin - dpToPx(18)).coerceAtLeast(0)
             backLabel.layoutParams = lp
         }
 
@@ -1367,9 +1376,8 @@ class MainActivity : AppCompatActivity() {
                             if (idx >= 0) profiles[idx] = p else profiles.add(p)
                             savePlaylistProfiles(profiles)
                             setSelectedPlaylistName("Пользователь")
-                            tvState.text = "Вы авторизовались как $name"
-                            btnAuth.text = "Сменить"
                             loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
+                            bindInlineUserSettings(panel)
                         } else {
                             AlertDialog.Builder(this).setTitle("Ошибка авторизации").setMessage(json.optString("message", "Неверный login или token.")).setPositiveButton("ОК", null).show()
                         }
