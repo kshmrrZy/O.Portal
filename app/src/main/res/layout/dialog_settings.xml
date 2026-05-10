@@ -18,18 +18,35 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <TextView
+        android:id="@+id/tvSettingsBack"
+        style="@style/AppGolosText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:minHeight="28dp"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="6dp"
+        android:text="назад"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <LinearLayout
         android:id="@+id/btnPlaylistSettings"
         android:layout_width="0dp"
         android:layout_height="46dp"
-        android:layout_marginTop="0dp"
+        android:layout_marginTop="4dp"
         android:background="@drawable/bg_settings_row"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingHorizontal="12dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tvSettingsTitle">
+        app:layout_constraintTop_toBottomOf="@id/tvSettingsBack">
 
         <ImageView
             android:layout_width="24dp"
@@ -160,6 +177,25 @@
         app:layout_constraintTop_toBottomOf="@id/btnAdvancedSettings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
         <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/profile" android:tint="#FFFFFF"/>
         <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Настроить пользователя" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/userSettingsPanel"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="64dp"
+        android:orientation="vertical"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView android:id="@+id/tvUserSectionState" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Имя пользователя" android:textColor="#FFFFFF" android:textSize="14sp"/>
+        <EditText android:id="@+id/etUserLoginInline" android:layout_width="match_parent" android:layout_height="46dp" android:layout_marginTop="8dp" android:background="@drawable/bg_settings_row" android:hint="введите логин" android:paddingHorizontal="14dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF"/>
+        <TextView android:id="@+id/tvUserTokenLabel" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="Токен" android:textColor="#FFFFFF" android:textSize="14sp"/>
+        <EditText android:id="@+id/etUserTokenInline" android:layout_width="match_parent" android:layout_height="46dp" android:layout_marginTop="8dp" android:background="@drawable/bg_settings_row" android:hint="введите токен с сайта o.avff.ru" android:paddingHorizontal="14dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF"/>
+        <TextView android:id="@+id/btnUserAuthInline" style="@style/AppGolosText" android:layout_width="148dp" android:layout_height="44dp" android:layout_gravity="end" android:layout_marginTop="22dp" android:background="@drawable/bg_settings_row" android:gravity="center" android:text="Войти" android:textColor="#FFFFFF" android:textSize="18sp"/>
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
