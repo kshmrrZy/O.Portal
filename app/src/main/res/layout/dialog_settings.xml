@@ -21,6 +21,8 @@
     <TextView
         android:id="@+id/tvSettingsBack"
         style="@style/AppGolosText"
+        android:elevation="12dp"
+        android:translationZ="12dp"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:minHeight="28dp"
@@ -251,7 +253,7 @@
         android:id="@+id/userSettingsPanel"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginTop="32dp"
+        android:layout_marginTop="33dp"
         android:orientation="vertical"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
