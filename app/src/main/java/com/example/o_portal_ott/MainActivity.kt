@@ -376,9 +376,11 @@ class MainActivity : AppCompatActivity() {
         startClockUpdater()
         startEpgTicker()
         applyLockButtonVisibility()
-        loadPlaylist(showErrors = true, autoPlay = shouldOpenLastChannelOnStart)
+        val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
+        loadPlaylist(showErrors = true, autoPlay = shouldOpenLastChannelOnStart && !isAuthorizedUser)
         if (!shouldOpenLastChannelOnStart) {
             showStartPage()
+            if (isAuthorizedUser) handler.postDelayed({ showHomePlaylistSelector() }, 200L)
         }
     }
 
@@ -1437,6 +1439,8 @@ class MainActivity : AppCompatActivity() {
             syncPortalPlaylistsForAuthorizedUser(token)
             setSelectedPlaylistName("Пользователь")
             loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
+            showStartPage()
+            handler.postDelayed({ showHomePlaylistSelector() }, 200L)
             tvStatus.text = "Вы авторизованы как $name"
         }
 
@@ -1562,7 +1566,9 @@ class MainActivity : AppCompatActivity() {
                             savePlaylistProfiles(profiles)
                             syncPortalPlaylistsForAuthorizedUser(token)
                             setSelectedPlaylistName("Пользователь")
-                            loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
+                            loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
+                            showStartPage()
+                            handler.postDelayed({ showHomePlaylistSelector() }, 200L)
                             bindInlineUserSettings(panel)
                         } else {
                             AlertDialog.Builder(this)
