@@ -25,6 +25,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.ArrayAdapter
+import android.widget.Button
 import android.widget.EditText
 import android.widget.GridView
 import android.widget.ImageButton
@@ -278,6 +279,10 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_APP_VERSION_CODE = "pref_app_version_code"
         private const val PREF_USE_GPU_DECODER = "pref_use_gpu_decoder"
         private const val PREF_EPG_SOURCES_FINGERPRINT = "pref_epg_sources_fingerprint"
+        private const val PREF_USER_LOGIN = "pref_user_login"
+        private const val PREF_USER_TOKEN = "pref_user_token"
+        private const val PREF_USER_NAME = "pref_user_name"
+        private const val PREF_USER_PLAYLIST = "pref_user_playlist"
 
         private const val TOKEN_PREFIX = "https://o.avff.ru/my/"
         private const val TOKEN_SUFFIX = ".m3u"
@@ -1005,6 +1010,7 @@ class MainActivity : AppCompatActivity() {
         homeSettingsScreen.visibility = View.VISIBLE
 
         val btnPlaylistSettings = findViewById<View>(R.id.btnPlaylistSettings)
+        val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
         val btnEpgSelect = findViewById<View>(R.id.btnEpgSelect)
         val tbStartMode = findViewById<ToggleButton>(R.id.tbStartMode)
         val sleepRow = findViewById<View>(R.id.btnSleepTimerSettings)
@@ -1014,6 +1020,9 @@ class MainActivity : AppCompatActivity() {
         val btnSleepDown = findViewById<View>(R.id.btnSleepDown)
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
+
+        tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
+        tvSettingsBack.setOnClickListener { hideSettingsScreen() }
 
         tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
         tbStartMode.setOnCheckedChangeListener { _, isChecked ->
@@ -1083,7 +1092,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         btnAdvancedSettings.setOnClickListener { showSettingsPlaceholderDialog() }
-        btnUserSettings.setOnClickListener { showSettingsPlaceholderDialog() }
+        btnUserSettings.setOnClickListener { showUserSettingsDialog() }
     }
 
     private fun hideSettingsScreen() {
@@ -1110,6 +1119,7 @@ class MainActivity : AppCompatActivity() {
         val scale = minOf(dm.widthPixels / 1280f, dm.heightPixels / 720f).coerceAtLeast(0.65f)
         val rowHeight = (78f * scale).toInt()
         val rowMargin = (10f * scale).toInt()
+        val backLabel = findViewById<TextView>(R.id.tvSettingsBack)
         val rowIds = intArrayOf(
             R.id.btnPlaylistSettings,
             R.id.btnEpgSelect,
@@ -1123,11 +1133,17 @@ class MainActivity : AppCompatActivity() {
         val contentHeight = rowIds.size * rowHeight + (rowIds.size - 1) * rowMargin
         val centeredTopMargin = (((containerHeight - contentHeight) / 2) - dpToPx(17)).coerceAtLeast(0)
 
+        (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.marginStart = dpToPx(12)
+            lp.topMargin = (centeredTopMargin - dpToPx(17)).coerceAtLeast(0)
+            backLabel.layoutParams = lp
+        }
+
         rowIds.forEachIndexed { index, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
             lp.height = rowHeight
-            lp.topMargin = if (index == 0) centeredTopMargin else rowMargin
+            lp.topMargin = if (index == 0) (centeredTopMargin - dpToPx(2)).coerceAtLeast(0) else rowMargin
             lp.marginStart = dpToPx(12)
             lp.marginEnd = dpToPx(12)
             lp.bottomToBottom = ConstraintSet.UNSET
@@ -1143,6 +1159,91 @@ class MainActivity : AppCompatActivity() {
             .setMessage("В данный момент ничего нет! Попробуйте посмотреть позже")
             .setPositiveButton("ОК", null)
             .show()
+    }
+
+    private fun showUserSettingsDialog() {
+        val view = layoutInflater.inflate(R.layout.dialog_user_settings, null)
+        val tvStatus = view.findViewById<TextView>(R.id.tvUserAuthStatus)
+        val etLogin = view.findViewById<EditText>(R.id.etUserLogin)
+        val etToken = view.findViewById<EditText>(R.id.etUserToken)
+        val btnApply = view.findViewById<Button>(R.id.btnUserAuthApply)
+
+        etLogin.setText(prefs.getString(PREF_USER_LOGIN, "") ?: "")
+        etToken.setText(prefs.getString(PREF_USER_TOKEN, "") ?: "")
+        val cachedName = prefs.getString(PREF_USER_NAME, "") ?: ""
+        if (cachedName.isNotBlank()) tvStatus.text = "Вы авторизованы как $cachedName"
+
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
+            .setView(view)
+            .create()
+
+        fun applyAuthorizedProfile(name: String, token: String, playlist: String) {
+            prefs.edit()
+                .putString(PREF_USER_NAME, name)
+                .putString(PREF_USER_TOKEN, token)
+                .putString(PREF_USER_PLAYLIST, playlist)
+                .apply()
+            val profiles = getPlaylistProfiles().toMutableList()
+            val idx = profiles.indexOfFirst { it.name == "Пользователь" }
+            val profile = PlaylistProfile("Пользователь", "url", playlist)
+            if (idx >= 0) profiles[idx] = profile else profiles.add(profile)
+            savePlaylistProfiles(profiles)
+            setSelectedPlaylistName("Пользователь")
+            loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
+            tvStatus.text = "Вы авторизованы как $name"
+        }
+
+        btnApply.setOnClickListener {
+            val login = etLogin.text.toString().trim()
+            val token = etToken.text.toString().trim()
+            if (login.isBlank() || token.isBlank()) {
+                AlertDialog.Builder(this)
+                    .setTitle("Ошибка авторизации")
+                    .setMessage("Необходимо передать login и token.")
+                    .setPositiveButton("ОК", null)
+                    .show()
+                return@setOnClickListener
+            }
+            btnApply.isEnabled = false
+            thread {
+                try {
+                    val url = "https://o.avff.ru/api.php?module=app&login=${Uri.encode(login)}&token=${Uri.encode(token)}"
+                    val responseText = URL(url).readText()
+                    val json = JSONObject(responseText)
+                    handler.post {
+                        btnApply.isEnabled = true
+                        if (json.optString("valid") == "OK") {
+                            val name = json.optString("name", login)
+                            val playlist = json.optString("playlist", "")
+                            prefs.edit().putString(PREF_USER_LOGIN, login).apply()
+                            applyAuthorizedProfile(name, token, playlist)
+                            Toast.makeText(this, "Авторизация успешна", Toast.LENGTH_SHORT).show()
+                            dialog.dismiss()
+                        } else {
+                            val msg = json.optString("message", "Неверный login или token.")
+                            AlertDialog.Builder(this)
+                                .setTitle("Ошибка авторизации")
+                                .setMessage(msg)
+                                .setPositiveButton("ОК", null)
+                                .show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    handler.post {
+                        btnApply.isEnabled = true
+                        AlertDialog.Builder(this)
+                            .setTitle("Ошибка сети")
+                            .setMessage("Не удалось проверить авторизацию: ${e.message ?: "неизвестная ошибка"}")
+                            .setPositiveButton("ОК", null)
+                            .show()
+                    }
+                }
+            }
+        }
+
+        dialog.show()
+        dialog.window?.decorView?.let { applyGolosTypeface(it) }
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
     }
 
     private fun showPlaylistSettingsDialog() {
@@ -2603,4 +2704,3 @@ class MainActivity : AppCompatActivity() {
         val btnWatch: TextView
     )
 }
-
