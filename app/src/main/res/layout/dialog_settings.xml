@@ -180,6 +180,74 @@
     </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/playlistSettingsPanel"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="32dp"
+        android:orientation="vertical"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            style="@style/AppGolosText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Сторонние плейлисты"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <EditText android:id="@+id/etPlaylistName1" android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="0.33" android:background="@drawable/bg_settings_row" android:hint="название плейлиста" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF" android:textSize="16sp"/>
+            <EditText android:id="@+id/etPlaylistUrl1" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginStart="8dp" android:layout_weight="0.67" android:background="@drawable/bg_settings_row" android:hint="введите ссылку на плейлист вида https://example.com/playlist.m3u8" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF" android:textSize="16sp"/>
+            <ImageView android:id="@+id/ivPlaylistToggle1" android:layout_width="48dp" android:layout_height="28dp" android:layout_marginStart="8dp" android:src="@drawable/toggleright"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <EditText android:id="@+id/etPlaylistName2" android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="0.33" android:background="@drawable/bg_settings_row" android:hint="название плейлиста" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF" android:textSize="16sp"/>
+            <EditText android:id="@+id/etPlaylistUrl2" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginStart="8dp" android:layout_weight="0.67" android:background="@drawable/bg_settings_row" android:hint="введите ссылку на плейлист вида https://example.com/playlist.m3u8" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF" android:textSize="16sp"/>
+            <ImageView android:id="@+id/ivPlaylistToggle2" android:layout_width="48dp" android:layout_height="28dp" android:layout_marginStart="8dp" android:src="@drawable/toggleright"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <EditText android:id="@+id/etPlaylistName3" android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="0.33" android:background="@drawable/bg_settings_row" android:hint="название плейлиста" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF" android:textSize="16sp"/>
+            <EditText android:id="@+id/etPlaylistUrl3" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginStart="8dp" android:layout_weight="0.67" android:background="@drawable/bg_settings_row" android:hint="введите ссылку на плейлист вида https://example.com/playlist.m3u8" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF" android:textSize="16sp"/>
+            <ImageView android:id="@+id/ivPlaylistToggle3" android:layout_width="48dp" android:layout_height="28dp" android:layout_marginStart="8dp" android:src="@drawable/toggleright"/>
+        </LinearLayout>
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:gravity="end">
+            <TextView android:id="@+id/btnSavePlaylistSettings" style="@style/AppGolosText" android:layout_width="160dp" android:layout_height="42dp" android:background="@drawable/bg_settings_row" android:gravity="center" android:text="Сохранить" android:textColor="#FFFFFF" android:textSize="16sp"/>
+            <TextView android:id="@+id/btnRefreshPlaylistSettings" style="@style/AppGolosText" android:layout_width="160dp" android:layout_height="42dp" android:layout_marginStart="10dp" android:background="@drawable/bg_settings_row" android:gravity="center" android:text="Обновить" android:textColor="#FFFFFF" android:textSize="16sp"/>
+        </LinearLayout>
+
+        <TextView
+            style="@style/AppGolosText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="На текущий момент можно добавить до 3 плейлистов, поддерживаются форматы M3U/M3U8"
+            android:textColor="#B3FFFFFF"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/userSettingsPanel"
         android:layout_width="0dp"
         android:layout_height="0dp"
@@ -196,9 +264,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">
-            <TextView android:id="@+id/tvUserSectionState" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Имя пользователя" android:textColor="#FFFFFF" android:textSize="14sp"/>
+        <TextView android:id="@+id/tvUserSectionState" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Имя пользователя" android:textColor="#FFFFFF" android:textSize="16sp"/>
             <EditText android:id="@+id/etUserLoginInline" android:layout_width="match_parent" android:layout_height="40dp" android:layout_marginTop="6dp" android:background="@drawable/bg_settings_row" android:hint="введите логин" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF"/>
-            <TextView android:id="@+id/tvUserTokenLabel" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="Токен" android:textColor="#FFFFFF" android:textSize="14sp"/>
+            <TextView android:id="@+id/tvUserTokenLabel" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="Токен" android:textColor="#FFFFFF" android:textSize="16sp"/>
             <EditText android:id="@+id/etUserTokenInline" android:layout_width="match_parent" android:layout_height="40dp" android:layout_marginTop="6dp" android:background="@drawable/bg_settings_row" android:hint="введите токен с сайта o.avff.ru" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF"/>
             <TextView android:id="@+id/btnUserAuthInline" style="@style/AppGolosText" android:layout_width="128dp" android:layout_height="38dp" android:layout_gravity="end" android:layout_marginTop="16dp" android:background="@drawable/bg_settings_row" android:gravity="center" android:text="Войти" android:textColor="#FFFFFF" android:textSize="16sp"/>
         </LinearLayout>
@@ -208,18 +276,18 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:visibility="gone">
-            <TextView android:id="@+id/tvAuthorizedLabel" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Вы авторизовались как" android:textColor="#FFFFFF" android:textSize="14sp"/>
+            <TextView android:id="@+id/tvAuthorizedLabel" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Вы авторизовались как" android:textColor="#FFFFFF" android:textSize="16sp"/>
             <TextView android:id="@+id/tvAuthorizedName" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textSize="22sp" android:textStyle="bold"/>
-            <TextView android:id="@+id/btnChangeUserInline" style="@style/AppGolosText" android:layout_width="190dp" android:layout_height="36dp" android:layout_marginTop="6dp" android:background="@drawable/bg_settings_row" android:gravity="center" android:text="Сменить пользователя" android:textColor="#FFFFFF" android:textSize="14sp"/>
-            <TextView android:id="@+id/tvAuthorizedTokenLabel" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="28dp" android:text="Токен" android:textColor="#FFFFFF" android:textSize="14sp"/>
+            <TextView android:id="@+id/btnChangeUserInline" style="@style/AppGolosText" android:layout_width="190dp" android:layout_height="36dp" android:layout_marginTop="6dp" android:background="@drawable/bg_settings_row" android:gravity="center" android:text="Сменить пользователя" android:textColor="#FFFFFF" android:textSize="16sp"/>
+            <TextView android:id="@+id/tvAuthorizedTokenLabel" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="28dp" android:text="Токен" android:textColor="#FFFFFF" android:textSize="16sp"/>
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:orientation="horizontal">
                 <TextView android:id="@+id/tvAuthorizedTokenValue" style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:paddingHorizontal="12dp" android:textColor="#E6FFFFFF" android:textSize="11sp"/>
-                <TextView android:id="@+id/btnChangeTokenInline" style="@style/AppGolosText" android:layout_width="116dp" android:layout_height="40dp" android:layout_marginStart="8dp" android:background="@drawable/bg_settings_row" android:gravity="center" android:text="Сменить" android:textColor="#FFFFFF" android:textSize="14sp"/>
+                <TextView android:id="@+id/btnChangeTokenInline" style="@style/AppGolosText" android:layout_width="116dp" android:layout_height="40dp" android:layout_marginStart="8dp" android:background="@drawable/bg_settings_row" android:gravity="center" android:text="Сменить" android:textColor="#FFFFFF" android:textSize="16sp"/>
             </LinearLayout>
-            <TextView android:id="@+id/tvAuthorizedPlaylistLabel" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="Плейлист" android:textColor="#FFFFFF" android:textSize="14sp"/>
+            <TextView android:id="@+id/tvAuthorizedPlaylistLabel" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="Плейлист" android:textColor="#FFFFFF" android:textSize="16sp"/>
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:orientation="horizontal">
                 <TextView android:id="@+id/tvAuthorizedPlaylistValue" style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:paddingHorizontal="12dp" android:textColor="#E6FFFFFF" android:textSize="11sp"/>
-                <TextView android:id="@+id/btnOpenPlaylistInline" style="@style/AppGolosText" android:layout_width="116dp" android:layout_height="40dp" android:layout_marginStart="8dp" android:background="@drawable/bg_settings_row" android:gravity="center" android:text="Перейти" android:textColor="#FFFFFF" android:textSize="14sp"/>
+                <TextView android:id="@+id/btnOpenPlaylistInline" style="@style/AppGolosText" android:layout_width="116dp" android:layout_height="40dp" android:layout_marginStart="8dp" android:background="@drawable/bg_settings_row" android:gravity="center" android:text="Перейти" android:textColor="#FFFFFF" android:textSize="16sp"/>
             </LinearLayout>
             <TextView android:id="@+id/tvAuthorizedHint" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="двойной тап позволяет скопировать ссылку на плейлист или токен, но с пульта даже не пытайтесь. вот так." android:textColor="#B3FFFFFF" android:textSize="10sp"/>
         </LinearLayout>
