@@ -101,7 +101,8 @@ data class Program(val title: String, val start: Long, val stop: Long)
 data class PlaylistProfile(
     val name: String,
     val type: String, // token|url
-    val value: String
+    val value: String,
+    val enabled: Boolean = true
 )
 
 class MainActivity : AppCompatActivity() {
@@ -1261,7 +1262,7 @@ class MainActivity : AppCompatActivity() {
                 .apply()
             val profiles = getPlaylistProfiles().toMutableList()
             val idx = profiles.indexOfFirst { it.name == "Пользователь" }
-            val profile = PlaylistProfile("Пользователь", "url", playlist)
+            val profile = PlaylistProfile("Пользователь", "url", playlist, true)
             if (idx >= 0) profiles[idx] = profile else profiles.add(profile)
             savePlaylistProfiles(profiles)
             setSelectedPlaylistName("Пользователь")
@@ -1379,7 +1380,7 @@ class MainActivity : AppCompatActivity() {
                             prefs.edit().putString(PREF_USER_LOGIN, login).putString(PREF_USER_TOKEN, token).putString(PREF_USER_NAME, name).putString(PREF_USER_PLAYLIST, playlist).apply()
                             val profiles = getPlaylistProfiles().toMutableList()
                             val idx = profiles.indexOfFirst { it.name == "Пользователь" }
-                            val p = PlaylistProfile("Пользователь", "url", playlist)
+                            val p = PlaylistProfile("Пользователь", "url", playlist, true)
                             if (idx >= 0) profiles[idx] = p else profiles.add(p)
                             savePlaylistProfiles(profiles)
                             setSelectedPlaylistName("Пользователь")
@@ -1417,6 +1418,8 @@ class MainActivity : AppCompatActivity() {
         val etPlaylistName = view.findViewById<EditText>(R.id.etPlaylistName)
         val rgSourceType = view.findViewById<RadioGroup>(R.id.rgSourceType)
         val etSourceValue = view.findViewById<EditText>(R.id.etSourceValue)
+        val ivPlaylistEnabled = view.findViewById<ImageView>(R.id.ivPlaylistEnabled)
+        val ivSourceEnabled = view.findViewById<ImageView>(R.id.ivSourceEnabled)
         val btnAddOrUpdate = view.findViewById<TextView>(R.id.btnAddOrUpdatePlaylist)
         val btnApply = view.findViewById<TextView>(R.id.btnApplyPlaylist)
         val btnDelete = view.findViewById<TextView>(R.id.btnDeletePlaylist)
@@ -1437,6 +1440,9 @@ class MainActivity : AppCompatActivity() {
             etPlaylistName.setText(p.name)
             etSourceValue.text?.clear()
             rgSourceType.check(if (p.type == "token") R.id.rbToken else R.id.rbUrl)
+            val toggleRes = if (p.enabled) R.drawable.toggleright else R.drawable.toggleleft
+            ivPlaylistEnabled.setImageResource(toggleRes)
+            ivSourceEnabled.setImageResource(toggleRes)
         }
 
         fun updateSourceHint() {
@@ -1448,11 +1454,24 @@ class MainActivity : AppCompatActivity() {
                 }
         }
 
+        fun isToggleAllowed(profile: PlaylistProfile): Boolean = profile.name != "Пользователь"
+
+        fun toggleCurrentProfileState() {
+            if (selectedIndex !in profiles.indices) return
+            val current = profiles[selectedIndex]
+            if (!isToggleAllowed(current)) return
+            profiles[selectedIndex] = current.copy(enabled = !current.enabled)
+            savePlaylistProfiles(profiles)
+            fillFields(selectedIndex)
+        }
+
         refreshSpinner()
         fillFields(selectedIndex)
         updateSourceHint()
 
         rgSourceType.setOnCheckedChangeListener { _, _ -> updateSourceHint() }
+        ivPlaylistEnabled.setOnClickListener { toggleCurrentProfileState() }
+        ivSourceEnabled.setOnClickListener { toggleCurrentProfileState() }
 
         spPlaylist.setOnItemSelectedListener(object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
@@ -1480,7 +1499,9 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            val profile = PlaylistProfile(name, type, value)
+            val existingProfile = profiles.firstOrNull { it.name.equals(name, true) }
+            val enabledState = existingProfile?.enabled ?: true
+            val profile = PlaylistProfile(name, type, value, enabledState)
             val existing = profiles.indexOfFirst { it.name.equals(name, true) }
             if (existing >= 0) profiles[existing] = profile else profiles.add(profile)
             selectedIndex = profiles.indexOfFirst { it.name == name }
@@ -2687,7 +2708,8 @@ class MainActivity : AppCompatActivity() {
                         PlaylistProfile(
                             name = o.optString("name"),
                             type = o.optString("type", "url"),
-                            value = o.optString("value")
+                            value = o.optString("value"),
+                            enabled = o.optBoolean("enabled", true)
                         )
                     )
                 }
@@ -2705,6 +2727,7 @@ class MainActivity : AppCompatActivity() {
                     put("name", it.name)
                     put("type", it.type)
                     put("value", it.value)
+                    put("enabled", it.enabled)
                 }
             )
         }
@@ -2713,7 +2736,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun resolveCurrentPlaylistUrl(): String {
         val selected = getSelectedPlaylistName()
-        val profile = getPlaylistProfiles().firstOrNull { it.name == selected } ?: getPlaylistProfiles().firstOrNull()
+        val profiles = getPlaylistProfiles()
+        val profile = profiles.firstOrNull { it.name == selected && it.enabled }
+            ?: profiles.firstOrNull { it.enabled }
         return when (profile?.type) {
             "token" -> {
                 val token = profile.value.trim()
