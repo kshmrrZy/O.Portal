@@ -1109,7 +1109,7 @@ class MainActivity : AppCompatActivity() {
             settingsRows.forEach { it.visibility = View.GONE }
             userSettingsPanel.visibility = View.VISIBLE
             tvSettingsBack.visibility = View.VISIBLE
-            tvSettingsBack.translationY = -dpToPx(14).toFloat()
+            tvSettingsBack.translationY = -10f
             tvSettingsBack.setOnClickListener {
                 userSettingsPanel.visibility = View.GONE
                 settingsRows.forEach { it.visibility = View.VISIBLE }
