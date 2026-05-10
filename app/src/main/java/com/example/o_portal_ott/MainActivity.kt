@@ -1005,6 +1005,7 @@ class MainActivity : AppCompatActivity() {
         homeSettingsScreen.visibility = View.VISIBLE
 
         val btnPlaylistSettings = findViewById<View>(R.id.btnPlaylistSettings)
+        val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
         val btnEpgSelect = findViewById<View>(R.id.btnEpgSelect)
         val tbStartMode = findViewById<ToggleButton>(R.id.tbStartMode)
         val sleepRow = findViewById<View>(R.id.btnSleepTimerSettings)
@@ -1014,6 +1015,9 @@ class MainActivity : AppCompatActivity() {
         val btnSleepDown = findViewById<View>(R.id.btnSleepDown)
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
+
+        tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
+        tvSettingsBack.setOnClickListener { hideSettingsScreen() }
 
         tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
         tbStartMode.setOnCheckedChangeListener { _, isChecked ->
@@ -1110,6 +1114,7 @@ class MainActivity : AppCompatActivity() {
         val scale = minOf(dm.widthPixels / 1280f, dm.heightPixels / 720f).coerceAtLeast(0.65f)
         val rowHeight = (78f * scale).toInt()
         val rowMargin = (10f * scale).toInt()
+        val backLabel = findViewById<TextView>(R.id.tvSettingsBack)
         val rowIds = intArrayOf(
             R.id.btnPlaylistSettings,
             R.id.btnEpgSelect,
@@ -1122,6 +1127,12 @@ class MainActivity : AppCompatActivity() {
             ?: (resources.displayMetrics.heightPixels - dpToPx(40))
         val contentHeight = rowIds.size * rowHeight + (rowIds.size - 1) * rowMargin
         val centeredTopMargin = (((containerHeight - contentHeight) / 2) - dpToPx(17)).coerceAtLeast(0)
+
+        (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.marginStart = dpToPx(12)
+            lp.topMargin = (centeredTopMargin - dpToPx(16)).coerceAtLeast(0)
+            backLabel.layoutParams = lp
+        }
 
         rowIds.forEachIndexed { index, id ->
             val row = findViewById<View>(id)
@@ -2603,4 +2614,3 @@ class MainActivity : AppCompatActivity() {
         val btnWatch: TextView
     )
 }
-
