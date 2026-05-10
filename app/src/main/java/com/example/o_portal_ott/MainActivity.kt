@@ -73,6 +73,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.PushbackInputStream
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.UnknownHostException
 import java.text.SimpleDateFormat
@@ -1208,6 +1209,12 @@ class MainActivity : AppCompatActivity() {
             backLabel.layoutParams = lp
         }
 
+        (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.marginStart = dpToPx(12)
+            lp.topMargin = (centeredTopMargin - dpToPx(18)).coerceAtLeast(0)
+            backLabel.layoutParams = lp
+        }
+
         rowIds.forEachIndexed { index, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
@@ -1355,7 +1362,7 @@ class MainActivity : AppCompatActivity() {
             val login = etLogin.text.toString().trim()
             val token = etToken.text.toString().trim()
             if (login.isBlank() || token.isBlank()) {
-                AlertDialog.Builder(this).setTitle("Ошибка авторизации").setMessage("Необходимо передать login и token.").setPositiveButton("ОК", null).show()
+                AlertDialog.Builder(this).setMessage("Необходимо передать login и token.").setPositiveButton("ОК", null).show()
                 return@setOnClickListener
             }
             btnAuth.isEnabled = false
@@ -1379,13 +1386,25 @@ class MainActivity : AppCompatActivity() {
                             loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
                             bindInlineUserSettings(panel)
                         } else {
-                            AlertDialog.Builder(this).setTitle("Ошибка авторизации").setMessage(json.optString("message", "Неверный login или token.")).setPositiveButton("ОК", null).show()
+                            AlertDialog.Builder(this)
+                                .setMessage(json.optString("message", "Неверный login или token."))
+                                .setPositiveButton("ОК", null)
+                                .show()
                         }
                     }
                 }.onFailure { e ->
                     handler.post {
                         btnAuth.isEnabled = true
-                        AlertDialog.Builder(this).setTitle("Ошибка сети").setMessage("Не удалось проверить авторизацию. Проверьте подключение и повторите попытку.").setPositiveButton("ОК", null).show()
+                        val isNetworkError = e is UnknownHostException ||
+                                e is SocketTimeoutException ||
+                                e.message?.contains("Unable to resolve host", ignoreCase = true) == true ||
+                                e.message?.contains("timeout", ignoreCase = true) == true
+                        val message = if (isNetworkError) {
+                            "Ошибка сети. Проверьте подключение и повторите попытку."
+                        } else {
+                            "Неверный login или token."
+                        }
+                        AlertDialog.Builder(this).setMessage(message).setPositiveButton("ОК", null).show()
                     }
                 }
             }
