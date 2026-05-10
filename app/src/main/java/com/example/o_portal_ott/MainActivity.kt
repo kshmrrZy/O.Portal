@@ -1186,6 +1186,12 @@ class MainActivity : AppCompatActivity() {
             backLabel.layoutParams = lp
         }
 
+        (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.marginStart = dpToPx(12)
+            lp.topMargin = (centeredTopMargin - dpToPx(18)).coerceAtLeast(0)
+            backLabel.layoutParams = lp
+        }
+
         rowIds.forEachIndexed { index, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
@@ -1298,25 +1304,24 @@ class MainActivity : AppCompatActivity() {
         val etLogin = panel.findViewById<EditText>(R.id.etUserLoginInline)
         val etToken = panel.findViewById<EditText>(R.id.etUserTokenInline)
         val btnAuth = panel.findViewById<TextView>(R.id.btnUserAuthInline)
+        val authForm = panel.findViewById<View>(R.id.userAuthForm)
+        val authorizedView = panel.findViewById<View>(R.id.userAuthorizedView)
+        val tvAuthorizedName = panel.findViewById<TextView>(R.id.tvAuthorizedName)
+        val btnChangeUser = panel.findViewById<TextView>(R.id.btnChangeUserInline)
         etLogin.setText(prefs.getString(PREF_USER_LOGIN, "") ?: "")
         etToken.setText(prefs.getString(PREF_USER_TOKEN, "") ?: "")
         val cachedName = prefs.getString(PREF_USER_NAME, "") ?: ""
         val isAuthorized = cachedName.isNotBlank()
-        tvState.text = if (isAuthorized) "Вы авторизовались как $cachedName" else "Имя пользователя"
-        etLogin.visibility = if (isAuthorized) View.GONE else View.VISIBLE
-        btnAuth.text = if (isAuthorized) "Сменить пользователя" else "Войти"
-        if (isAuthorized) {
-            etToken.setText(prefs.getString(PREF_USER_TOKEN, "") ?: "")
-            etToken.isEnabled = false
-        } else {
-            etToken.isEnabled = true
+        authForm.visibility = if (isAuthorized) View.GONE else View.VISIBLE
+        authorizedView.visibility = if (isAuthorized) View.VISIBLE else View.GONE
+        tvState.text = "Имя пользователя"
+        tvAuthorizedName.text = cachedName
+        etToken.isEnabled = true
+        btnChangeUser.setOnClickListener {
+            prefs.edit().remove(PREF_USER_NAME).remove(PREF_USER_TOKEN).remove(PREF_USER_LOGIN).remove(PREF_USER_PLAYLIST).apply()
+            bindInlineUserSettings(panel)
         }
         btnAuth.setOnClickListener {
-            if (btnAuth.text.toString().contains("Сменить")) {
-                prefs.edit().remove(PREF_USER_NAME).apply()
-                bindInlineUserSettings(panel)
-                return@setOnClickListener
-            }
             val login = etLogin.text.toString().trim()
             val token = etToken.text.toString().trim()
             if (login.isBlank() || token.isBlank()) {
