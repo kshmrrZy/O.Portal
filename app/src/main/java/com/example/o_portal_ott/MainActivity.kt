@@ -1037,7 +1037,9 @@ class MainActivity : AppCompatActivity() {
             shouldOpenLastChannelOnStart = isChecked
         }
 
-        btnPlaylistSettings.setOnClickListener { showPlaylistSettingsDialog() }
+        val playlistSettingsPanel = findViewById<View>(R.id.playlistSettingsPanel)
+        playlistSettingsPanel.visibility = View.GONE
+        btnPlaylistSettings.setOnClickListener { openPlaylistSettingsScreen() }
         btnEpgSelect.setOnClickListener { showEpgSelectionDialog() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
         var sleepIndex = sleepOptions.indexOf(prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)).takeIf { it >= 0 } ?: 0
@@ -1116,6 +1118,63 @@ class MainActivity : AppCompatActivity() {
             bindInlineUserSettings(userSettingsPanel)
         }
         btnUserSettings.setOnClickListener { openUserSettingsScreen() }
+    }
+
+    private fun openPlaylistSettingsScreen() {
+        val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
+        val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
+        val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
+        val settingsRows = listOf(
+            findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect),
+            findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode),
+            findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings)
+        )
+        settingsRows.forEach { it.visibility = View.GONE }
+        userSettingsPanel.visibility = View.GONE
+        playlistPanel.visibility = View.VISIBLE
+        tvSettingsBack.visibility = View.VISIBLE
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки плейлистов")
+
+        val names = listOf<EditText>(findViewById(R.id.etPlaylistName1), findViewById(R.id.etPlaylistName2), findViewById(R.id.etPlaylistName3))
+        val urls = listOf<EditText>(findViewById(R.id.etPlaylistUrl1), findViewById(R.id.etPlaylistUrl2), findViewById(R.id.etPlaylistUrl3))
+        val toggles = listOf<ImageView>(findViewById(R.id.ivPlaylistToggle1), findViewById(R.id.ivPlaylistToggle2), findViewById(R.id.ivPlaylistToggle3))
+        val states = MutableList(3) { true }
+
+        fun bindData() {
+            val profiles = getThirdPartyPlaylistProfiles()
+            for (i in 0..2) {
+                val p = profiles.getOrNull(i)
+                names[i].setText(p?.name ?: "")
+                urls[i].setText(p?.value ?: "")
+                states[i] = p?.enabled ?: true
+                toggles[i].setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft)
+            }
+        }
+        toggles.forEachIndexed { i, iv -> iv.setOnClickListener { states[i] = !states[i]; iv.setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft) } }
+
+        findViewById<View>(R.id.btnSavePlaylistSettings).setOnClickListener {
+            val items = (0..2).map { i -> PlaylistProfile(names[i].text.toString().trim(), "url", urls[i].text.toString().trim(), states[i]) }
+                .filter { it.name.isNotBlank() && it.value.isNotBlank() }
+            saveThirdPartyPlaylistProfiles(items)
+            Toast.makeText(this, "Сторонние плейлисты сохранены", Toast.LENGTH_SHORT).show()
+        }
+        findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener { loadPlaylist(forceReload = true, showErrors = true) }
+
+        tvSettingsBack.setOnClickListener {
+            playlistPanel.visibility = View.GONE
+            settingsRows.forEach { it.visibility = View.VISIBLE }
+            tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
+            tvSettingsBack.setOnClickListener { hideSettingsScreen() }
+            applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
+        }
+        bindData()
+    }
+
+    private fun getThirdPartyPlaylistProfiles(): List<PlaylistProfile> = getPlaylistProfiles().filter { it.name != "Пользователь" && it.name != "По умолчанию" }
+
+    private fun saveThirdPartyPlaylistProfiles(thirdParty: List<PlaylistProfile>) {
+        val systemProfiles = getPlaylistProfiles().filter { it.name == "Пользователь" || it.name == "По умолчанию" }
+        savePlaylistProfiles(systemProfiles + thirdParty.take(3))
     }
 
     private fun hideSettingsScreen() {
@@ -1762,7 +1821,10 @@ class MainActivity : AppCompatActivity() {
                         AlertDialog.Builder(this)
                             .setTitle("Ошибка загрузки")
                             .setMessage("Не удалось загрузить плейлист по умолчанию. Проверьте токен или ссылку в настройках.")
-                            .setPositiveButton("Открыть настройки") { _, _ -> showPlaylistSettingsDialog() }
+                            .setPositiveButton("Открыть настройки") { _, _ ->
+                                showSettingsDialog()
+                                openPlaylistSettingsScreen()
+                            }
                             .setNegativeButton("Закрыть", null)
                             .show()
                     }
