@@ -24,6 +24,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.content.Intent
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -1192,6 +1193,12 @@ class MainActivity : AppCompatActivity() {
             backLabel.layoutParams = lp
         }
 
+        (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.marginStart = dpToPx(12)
+            lp.topMargin = (centeredTopMargin - dpToPx(18)).coerceAtLeast(0)
+            backLabel.layoutParams = lp
+        }
+
         rowIds.forEachIndexed { index, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
@@ -1308,6 +1315,10 @@ class MainActivity : AppCompatActivity() {
         val authorizedView = panel.findViewById<View>(R.id.userAuthorizedView)
         val tvAuthorizedName = panel.findViewById<TextView>(R.id.tvAuthorizedName)
         val btnChangeUser = panel.findViewById<TextView>(R.id.btnChangeUserInline)
+        val tvAuthorizedTokenValue = panel.findViewById<TextView>(R.id.tvAuthorizedTokenValue)
+        val tvAuthorizedPlaylistValue = panel.findViewById<TextView>(R.id.tvAuthorizedPlaylistValue)
+        val btnChangeToken = panel.findViewById<TextView>(R.id.btnChangeTokenInline)
+        val btnOpenPlaylist = panel.findViewById<TextView>(R.id.btnOpenPlaylistInline)
         etLogin.setText(prefs.getString(PREF_USER_LOGIN, "") ?: "")
         etToken.setText(prefs.getString(PREF_USER_TOKEN, "") ?: "")
         val cachedName = prefs.getString(PREF_USER_NAME, "") ?: ""
@@ -1316,10 +1327,20 @@ class MainActivity : AppCompatActivity() {
         authorizedView.visibility = if (isAuthorized) View.VISIBLE else View.GONE
         tvState.text = "Имя пользователя"
         tvAuthorizedName.text = cachedName
+        tvAuthorizedTokenValue.text = prefs.getString(PREF_USER_TOKEN, "") ?: ""
+        tvAuthorizedPlaylistValue.text = prefs.getString(PREF_USER_PLAYLIST, "") ?: ""
         etToken.isEnabled = true
         btnChangeUser.setOnClickListener {
             prefs.edit().remove(PREF_USER_NAME).remove(PREF_USER_TOKEN).remove(PREF_USER_LOGIN).remove(PREF_USER_PLAYLIST).apply()
             bindInlineUserSettings(panel)
+        }
+        btnChangeToken.setOnClickListener {
+            prefs.edit().remove(PREF_USER_NAME).apply()
+            bindInlineUserSettings(panel)
+        }
+        btnOpenPlaylist.setOnClickListener {
+            val url = prefs.getString(PREF_USER_PLAYLIST, "") ?: ""
+            if (url.isNotBlank()) startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         }
         btnAuth.setOnClickListener {
             val login = etLogin.text.toString().trim()
