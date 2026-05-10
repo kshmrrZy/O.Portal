@@ -2137,7 +2137,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showPlaybackFailureAndReturn(url: String, error: String) {
-        val message = "Ошибка воспроизведения\n$error\n$url\nВозврат к прямому эфиру"
+        val message = "Ошибка воспроизведения\n$error\n"
         showCenterError(message, 5000L)
         handler.removeCallbacks(returnToLiveRunnable)
         handler.postDelayed(returnToLiveRunnable, 3000L)
