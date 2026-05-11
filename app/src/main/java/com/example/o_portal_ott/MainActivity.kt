@@ -393,7 +393,10 @@ class MainActivity : AppCompatActivity() {
         tvSystemTime = findViewById(R.id.tvSystemTime)
         tvHomeSystemTime = findViewById(R.id.tvHomeSystemTime)
         tvHomeAppTitle = findViewById(R.id.tvHomeAppTitle)
-        tvHomeAppTitle.text = SpannableString("O.Portal").apply { setSpan(StyleSpan(Typeface.BOLD), 2, length, 0) }
+        tvHomeAppTitle.text = SpannableString("O.Portal").apply {
+            val extra = ResourcesCompat.getFont(this@MainActivity, R.font.golostext_extrabold)
+            if (extra != null) setSpan(TypefaceSpan(extra), 2, length, 0) else setSpan(StyleSpan(Typeface.BOLD), 2, length, 0)
+        }
         tvHomeStartTitle = findViewById(R.id.tvHomeStartTitle)
         tvHomeStartSubtitle = findViewById(R.id.tvHomeStartSubtitle)
         homePlaylistTilesPanel = findViewById(R.id.homePlaylistTilesPanel)
@@ -682,7 +685,7 @@ class MainActivity : AppCompatActivity() {
             PlaylistProfile("Избранные", "url", "https://o.avff.ru/my/$token.m3u", true)
         ) else if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
         val shownProfiles = profiles.take(6)
-        if (token.isNotBlank()) savePlaylistProfiles((profiles.filter { it.type != "group" }))
+        if (token.isNotBlank()) savePlaylistProfiles((profiles.filter { it.type != "group" } + thirdParty).distinctBy { it.name })
         tiles.forEachIndexed { i, tv ->
             val p = shownProfiles.getOrNull(i)
             if (p == null) {
