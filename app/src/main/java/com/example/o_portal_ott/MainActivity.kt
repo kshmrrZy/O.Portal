@@ -44,7 +44,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
-import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.GestureDetectorCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -57,6 +56,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
@@ -119,6 +119,8 @@ class MainActivity : AppCompatActivity() {
     private var lastPlaybackPositionMs = -1L
     private var lastProgressWallClockMs = 0L
     private var bufferingSinceMs = 0L
+    private var playerEventListener: androidx.media3.common.Player.Listener? = null
+    private var playerAnalyticsListener: AnalyticsListener? = null
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -199,6 +201,14 @@ class MainActivity : AppCompatActivity() {
     private val startupSlowStreamRunnable: Runnable = Runnable {
         if (!firstFrameRendered) {
             showCenterError("Поток долго загружается", 3000L)
+        }
+    }
+    private val memoryLogRunnable: Runnable = object : Runnable {
+        override fun run() {
+            logMemoryStats("periodic")
+            if (mediaPlayer != null && !isArchivePlayback) {
+                handler.postDelayed(this, 5000L)
+            }
         }
     }
 
@@ -2323,6 +2333,9 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.setMediaItem(buildMediaItem(archiveUrl))
             mediaPlayer?.prepare()
             mediaPlayer?.play()
+            logMemoryStats("play_archive_start")
+            handler.removeCallbacks(memoryLogRunnable)
+            handler.post(memoryLogRunnable)
             handler.postDelayed(startupSlowStreamRunnable, 45_000L)
             lastPlaybackPositionMs = -1L
             lastProgressWallClockMs = System.currentTimeMillis()
@@ -2366,6 +2379,9 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.setMediaItem(buildMediaItem(ch.url))
             mediaPlayer?.prepare()
             mediaPlayer?.play()
+            logMemoryStats("play_channel_start")
+            handler.removeCallbacks(memoryLogRunnable)
+            handler.post(memoryLogRunnable)
             handler.postDelayed(startupSlowStreamRunnable, 45_000L)
             isPlaybackPaused = false
             isArchivePlayback = false
@@ -2532,13 +2548,17 @@ class MainActivity : AppCompatActivity() {
                 )
             )
 
+        val allocator = DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE)
         val loadControl = DefaultLoadControl.Builder()
+            .setAllocator(allocator)
             .setBufferDurationsMs(
-                10_000,
-                45_000,
                 2_500,
-                5_000
+                6_000,
+                700,
+                1_200
             )
+            .setTargetBufferBytes(4 * C.DEFAULT_BUFFER_SEGMENT_SIZE)
+            .setBackBuffer(0, false)
             .build()
 
         val codecSelector = if (preferSoftwareDecoder) {
@@ -2555,8 +2575,9 @@ class MainActivity : AppCompatActivity() {
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             .setEnableDecoderFallback(true)
             .setMediaCodecSelector(codecSelector)
-        
+
         val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory)
+
         trackSelector = DefaultTrackSelector(this).apply {
             setParameters(
                 buildUponParameters()
@@ -2577,7 +2598,7 @@ class MainActivity : AppCompatActivity() {
             .build()
             .also { player ->
                 findViewById<PlayerView>(R.id.videoLayout).player = player
-                player.addListener(object : androidx.media3.common.Player.Listener {
+                val listener = object : androidx.media3.common.Player.Listener {
                     override fun onRenderedFirstFrame() {
                         firstFrameRendered = true
                         lastPlaybackPositionMs = player.currentPosition
@@ -2600,11 +2621,14 @@ class MainActivity : AppCompatActivity() {
                             else -> "UNKNOWN($playbackState)"
                         }
                         Log.i("PLAYER_STATE", "state=$state isLoading=${player.isLoading} playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} suppression=${player.playbackSuppressionReason} playerError=${player.playerError?.message} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl")
-                        Log.i("PLAYER_STATE", "state=$state isLoading=${player.isLoading} playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} suppression=${player.playbackSuppressionReason} playerError=${player.playerError?.message} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl")
+                        if (playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
+                            logMemoryStats("state_buffering")
+                        }
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
                         Log.e("PLAYER_STATE", "onPlayerError url=$lastRequestedPlaybackUrl message=${error.message}", error)
+                        logMemoryStats("on_player_error")
                         handler.post {
                             handler.removeCallbacks(startupSlowStreamRunnable)
                             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
@@ -2616,8 +2640,11 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     }
-                })
-                player.addAnalyticsListener(object : AnalyticsListener {
+                }
+                player.addListener(listener)
+                playerEventListener = listener
+
+                val analyticsListener = object : AnalyticsListener {
                     override fun onLoadStarted(
                         eventTime: AnalyticsListener.EventTime,
                         loadEventInfo: LoadEventInfo,
@@ -2644,7 +2671,6 @@ class MainActivity : AppCompatActivity() {
                         Log.e("PLAYER_NET", "onLoadError type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} canceled=$wasCanceled headers=${loadEventInfo.responseHeaders} error=${error.message} url=$lastRequestedPlaybackUrl", error)
                     }
 
-
                     override fun onDroppedVideoFrames(
                         eventTime: AnalyticsListener.EventTime,
                         droppedFrames: Int,
@@ -2661,8 +2687,19 @@ class MainActivity : AppCompatActivity() {
                     ) {
                         Log.i("PLAYER_STATE", "videoDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs url=$lastRequestedPlaybackUrl")
                     }
-                })
+                }
+                player.addAnalyticsListener(analyticsListener)
+                playerAnalyticsListener = analyticsListener
             }
+    }
+
+    private fun logMemoryStats(stage: String) {
+        val rt = Runtime.getRuntime()
+        val maxMb = rt.maxMemory() / (1024 * 1024)
+        val totalMb = rt.totalMemory() / (1024 * 1024)
+        val freeMb = rt.freeMemory() / (1024 * 1024)
+        val usedMb = totalMb - freeMb
+        Log.i("PLAYER_MEM", "stage=$stage usedMb=$usedMb totalMb=$totalMb freeMb=$freeMb maxMb=$maxMb url=$lastRequestedPlaybackUrl")
     }
 
 
@@ -2703,6 +2740,9 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.setMediaItem(buildMediaItem(url))
         mediaPlayer?.prepare()
         mediaPlayer?.playWhenReady = true
+        logMemoryStats("retry_without_audio_start")
+        handler.removeCallbacks(memoryLogRunnable)
+        handler.post(memoryLogRunnable)
         firstFrameRendered = false
         handler.removeCallbacks(startupSlowStreamRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
@@ -2753,6 +2793,9 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.setMediaItem(buildMediaItem(url))
         mediaPlayer?.prepare()
         mediaPlayer?.playWhenReady = true
+        logMemoryStats("restart_stream_start")
+        handler.removeCallbacks(memoryLogRunnable)
+        handler.post(memoryLogRunnable)
         firstFrameRendered = false
         handler.removeCallbacks(startupSlowStreamRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
@@ -2919,6 +2962,7 @@ class MainActivity : AppCompatActivity() {
         super.onStop()
         handler.removeCallbacks(epgTickerRunnable)
         handler.removeCallbacks(timelineTickerRunnable)
+        handler.removeCallbacks(memoryLogRunnable)
         mediaPlayer?.pause()
         shouldReloadStreamOnStart = true
     }
@@ -2968,9 +3012,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun stopPlayback() {
-        mediaPlayer?.stop()
-        mediaPlayer?.release()
+        handler.removeCallbacks(memoryLogRunnable)
+        mediaPlayer?.let { player ->
+            playerEventListener?.let { player.removeListener(it) }
+            playerAnalyticsListener?.let { player.removeAnalyticsListener(it) }
+            player.clearMediaItems()
+            player.stop()
+            player.release()
+        }
         mediaPlayer = null
+        playerEventListener = null
+        playerAnalyticsListener = null
         trackSelector = null
         handler.removeCallbacks(startupSlowStreamRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
