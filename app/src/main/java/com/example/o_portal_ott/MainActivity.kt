@@ -264,7 +264,7 @@ class MainActivity : AppCompatActivity() {
         private const val USE_FFMPEG_AUDIO_FOR_MPEG_L2 = true
         private const val PREF_PLAYLISTS = "playlist_profiles"
         private const val PREF_SELECTED_PLAYLIST = "selected_playlist"
-        private const val PREF_SELECTED_EPG = "selected_epg"
+       private const val PREF_SELECTED_EPG = "selected_epg"
         private const val PREF_LAST_CHANNEL = "last_channel"
         private const val PREF_EPG_CACHE = "epg_cache"
         private const val PREF_EPG_STATUS = "epg_status"
@@ -3379,3 +3379,30 @@ class MainActivity : AppCompatActivity() {
         }
     }
 }
+    private fun logDebug(tag: String, message: String, tr: Throwable? = null) {
+        Log.i(tag, message, tr)
+        runCatching {
+            val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
+            val line = "$ts [$tag] $message\n"
+            openFileOutput("player_debug.log", Context.MODE_APPEND).use { it.write(line.toByteArray()) }
+        }
+    }
+
+    private fun exportDebugLogToDownloads() {
+        val src = File(filesDir, "player_debug.log")
+        if (!src.exists()) {
+            Toast.makeText(this, "Файл лога ещё не создан", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val dstDir = getExternalFilesDir("Download") ?: run {
+            Toast.makeText(this, "Не удалось открыть папку Download", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val dst = File(dstDir, "player_debug_${System.currentTimeMillis()}.log")
+        runCatching {
+            src.copyTo(dst, overwrite = true)
+            Toast.makeText(this, "Лог экспортирован: ${dst.absolutePath}", Toast.LENGTH_LONG).show()
+        }.onFailure {
+            Toast.makeText(this, "Ошибка экспорта: ${it.message}", Toast.LENGTH_LONG).show()
+        }
+    }
