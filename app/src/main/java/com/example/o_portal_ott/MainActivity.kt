@@ -54,12 +54,17 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+<<<<<<< codex/fix-visibility-of-text-b8m97a
+=======
 import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
+>>>>>>> main
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.LoadEventInfo
+import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
-import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.PlayerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.model.GlideUrl
@@ -2318,6 +2323,7 @@ class MainActivity : AppCompatActivity() {
             }
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = archiveUrl
+            logHlsManifestPreview(archiveUrl)
             mediaPlayer?.setMediaItem(buildMediaItem(archiveUrl))
             mediaPlayer?.prepare()
             mediaPlayer?.play()
@@ -2352,6 +2358,7 @@ class MainActivity : AppCompatActivity() {
             }
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = ch.url
+            logHlsManifestPreview(ch.url)
             firstFrameRendered = false
             handler.removeCallbacks(startupSlowStreamRunnable)
             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
@@ -2407,6 +2414,33 @@ class MainActivity : AppCompatActivity() {
         }
 
         return builder.build()
+    }
+
+    private fun logHlsManifestPreview(url: String) {
+        if (!url.contains(".m3u8", ignoreCase = true)) return
+        thread(start = true) {
+            runCatching {
+                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                    instanceFollowRedirects = true
+                    connectTimeout = 12_000
+                    readTimeout = 20_000
+                    setRequestProperty("User-Agent", userAgent)
+                    setRequestProperty("Accept", "*/*")
+                    setRequestProperty("Connection", "keep-alive")
+                }
+                val code = conn.responseCode
+                val finalUrl = conn.url.toString()
+                val body = (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val lines = body.lines()
+                Log.i("PLAYER_HLS", "manifest status=$code finalUrl=$finalUrl contentType=${conn.contentType} headers=${conn.headerFields}")
+                Log.i("PLAYER_HLS", "manifest head:\n${lines.take(20).joinToString("\n")}")
+                Log.i("PLAYER_HLS", "variantLines=${lines.filter { it.contains(\"#EXT-X-STREAM-INF\") }.take(8)}")
+                Log.i("PLAYER_HLS", "segmentLines=${lines.filter { it.isNotBlank() && !it.startsWith(\"#\") }.take(8)}")
+                Log.i("PLAYER_HLS", "hasMap=${lines.any { it.startsWith(\"#EXT-X-MAP\") }} hasKey=${lines.any { it.startsWith(\"#EXT-X-KEY\") }} targetDuration=${lines.firstOrNull { it.startsWith(\"#EXT-X-TARGETDURATION\") }} mediaSequence=${lines.firstOrNull { it.startsWith(\"#EXT-X-MEDIA-SEQUENCE\") }}")
+            }.onFailure {
+                Log.e("PLAYER_HLS", "manifest preview failed url=$url error=${it.message}", it)
+            }
+        }
     }
 
     private fun showReloadingStatus(title: String, subtitle: String, isError: Boolean = false) {
@@ -2498,8 +2532,6 @@ class MainActivity : AppCompatActivity() {
             .setDefaultRequestProperties(
                 mapOf(
                     "Accept" to "*/*",
-                    "Origin" to "https://o.avff.ru",
-                    "Referer" to "https://o.avff.ru/",
                     "Connection" to "keep-alive"
                 )
             )
@@ -2528,11 +2560,15 @@ class MainActivity : AppCompatActivity() {
             .setEnableDecoderFallback(true)
             .setMediaCodecSelector(codecSelector)
 
+<<<<<<< codex/fix-visibility-of-text-b8m97a
+        val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory)
+=======
         val tsFlags = DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
 
         val hlsMediaSourceFactory = HlsMediaSource.Factory(httpFactory)
             .setAllowChunklessPreparation(false)
             .setExtractorFactory(DefaultHlsExtractorFactory(tsFlags, true))
+>>>>>>> main
 
         trackSelector = DefaultTrackSelector(this).apply {
             setParameters(
@@ -2550,7 +2586,7 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer = ExoPlayer.Builder(this, renderersFactory)
             .setTrackSelector(trackSelector!!)
             .setLoadControl(loadControl)
-            .setMediaSourceFactory(hlsMediaSourceFactory)
+            .setMediaSourceFactory(mediaSourceFactory)
             .build()
             .also { player ->
                 findViewById<PlayerView>(R.id.videoLayout).player = player
@@ -2576,7 +2612,11 @@ class MainActivity : AppCompatActivity() {
                             androidx.media3.common.Player.STATE_ENDED -> "ENDED"
                             else -> "UNKNOWN($playbackState)"
                         }
+<<<<<<< codex/fix-visibility-of-text-b8m97a
+                        Log.i("PLAYER_STATE", "state=$state isLoading=${player.isLoading} playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} suppression=${player.playbackSuppressionReason} playerError=${player.playerError?.message} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl")
+=======
                         Log.i("PLAYER_STATE", "state=$state playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl")
+>>>>>>> main
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
@@ -2594,6 +2634,35 @@ class MainActivity : AppCompatActivity() {
                     }
                 })
                 player.addAnalyticsListener(object : AnalyticsListener {
+<<<<<<< codex/fix-visibility-of-text-b8m97a
+                    override fun onLoadStarted(
+                        eventTime: AnalyticsListener.EventTime,
+                        loadEventInfo: LoadEventInfo,
+                        mediaLoadData: MediaLoadData
+                    ) {
+                        Log.i("PLAYER_NET", "onLoadStarted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} url=$lastRequestedPlaybackUrl")
+                    }
+
+                    override fun onLoadCompleted(
+                        eventTime: AnalyticsListener.EventTime,
+                        loadEventInfo: LoadEventInfo,
+                        mediaLoadData: MediaLoadData
+                    ) {
+                        Log.i("PLAYER_NET", "onLoadCompleted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} headers=${loadEventInfo.responseHeaders} url=$lastRequestedPlaybackUrl")
+                    }
+
+                    override fun onLoadError(
+                        eventTime: AnalyticsListener.EventTime,
+                        loadEventInfo: LoadEventInfo,
+                        mediaLoadData: MediaLoadData,
+                        error: IOException,
+                        wasCanceled: Boolean
+                    ) {
+                        Log.e("PLAYER_NET", "onLoadError type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} canceled=$wasCanceled headers=${loadEventInfo.responseHeaders} error=${error.message} url=$lastRequestedPlaybackUrl", error)
+                    }
+
+=======
+>>>>>>> main
                     override fun onDroppedVideoFrames(
                         eventTime: AnalyticsListener.EventTime,
                         droppedFrames: Int,
