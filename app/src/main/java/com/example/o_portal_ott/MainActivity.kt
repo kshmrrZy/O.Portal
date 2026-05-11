@@ -44,6 +44,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
+import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.GestureDetectorCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -249,7 +250,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val PREF_PLAYLISTS = "playlist_profiles"
         private const val PREF_SELECTED_PLAYLIST = "selected_playlist"
-        private const val PREF_SELECTED_EPG = "selected_epg"
+       private const val PREF_SELECTED_EPG = "selected_epg"
         private const val PREF_LAST_CHANNEL = "last_channel"
         private const val PREF_EPG_CACHE = "epg_cache"
         private const val PREF_EPG_STATUS = "epg_status"
@@ -2554,8 +2555,7 @@ class MainActivity : AppCompatActivity() {
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             .setEnableDecoderFallback(true)
             .setMediaCodecSelector(codecSelector)
-
-        val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory)
+        
         val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory)
         trackSelector = DefaultTrackSelector(this).apply {
             setParameters(
