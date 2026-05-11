@@ -3353,10 +3353,11 @@ class MainActivity : AppCompatActivity() {
     )
     private fun logDebug(tag: String, message: String, tr: Throwable? = null) {
         Log.i(tag, message, tr)
-        runCatching {
+        runCatching<Unit> {
             val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
             val line = "$ts [$tag] $message\n"
-            openFileOutput("player_debug.log", Context.MODE_APPEND).use { it.write(line.toByteArray()) }
+            val out = openFileOutput("player_debug.log", Context.MODE_APPEND)
+            out.use { stream -> stream.write(line.toByteArray()) }
         }
     }
 
@@ -3374,8 +3375,8 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             src.copyTo(dst, overwrite = true)
             Toast.makeText(this, "Лог экспортирован: ${dst.absolutePath}", Toast.LENGTH_LONG).show()
-        }.onFailure {
-            Toast.makeText(this, "Ошибка экспорта: ${it.message}", Toast.LENGTH_LONG).show()
+        }.onFailure { error: Throwable ->
+            Toast.makeText(this, "Ошибка экспорта: ${error.message}", Toast.LENGTH_LONG).show()
         }
     }
 }
