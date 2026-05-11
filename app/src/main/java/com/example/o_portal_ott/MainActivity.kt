@@ -44,7 +44,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
-import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.GestureDetectorCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -655,8 +654,8 @@ class MainActivity : AppCompatActivity() {
         tvHomeCategoryBack.visibility = View.VISIBLE
         tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
-        val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6))
-        val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }.take(6)
+        val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6), findViewById(R.id.tvTile7))
+        val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }.take(7)
         tiles.forEachIndexed { i, tv ->
             val p = list.getOrNull(i)
             if (p == null) {
@@ -683,7 +682,7 @@ class MainActivity : AppCompatActivity() {
         homePlaylistTilesPanel.visibility = View.VISIBLE
         applyHomeAppTitleStyle(settingsMode = false)
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
-        val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6))
+        val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6), findViewById(R.id.tvTile7))
         val token = (prefs.getString(PREF_USER_TOKEN, "") ?: "").trim()
         val thirdParty = getThirdPartyPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
         val profiles = if (token.isNotBlank()) {
@@ -695,9 +694,9 @@ class MainActivity : AppCompatActivity() {
                 PlaylistProfile("Lime TV", "url", "https://o.avff.ru/list/limetv.m3u8?token=$token", true),
                 PlaylistProfile("Only4", "url", "https://o.avff.ru/list/only4.m3u8?token=$token", true)
             )
-            if (thirdParty.isNotEmpty()) base.take(5) + listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else base
+            if (thirdParty.isNotEmpty()) base + listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else base
         } else if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
-        val shownProfiles = profiles.take(6)
+        val shownProfiles = profiles.take(7)
         if (token.isNotBlank()) savePlaylistProfiles((profiles.filter { it.type != "group" } + thirdParty).distinctBy { it.name })
         tiles.forEachIndexed { i, tv ->
             val p = shownProfiles.getOrNull(i)
