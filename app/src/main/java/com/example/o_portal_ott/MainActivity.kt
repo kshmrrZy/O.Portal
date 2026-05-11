@@ -259,6 +259,7 @@ class MainActivity : AppCompatActivity() {
     private val golosTypeface: Typeface? by lazy { ResourcesCompat.getFont(this, R.font.golos_text) }
 
     companion object {
+        private const val USE_FFMPEG_AUDIO_FOR_MPEG_L2 = true
         private const val PREF_PLAYLISTS = "playlist_profiles"
         private const val PREF_SELECTED_PLAYLIST = "selected_playlist"
        private const val PREF_SELECTED_EPG = "selected_epg"
@@ -2445,16 +2446,16 @@ class MainActivity : AppCompatActivity() {
                 val finalUrl = conn.url.toString()
                 val body = (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
                 val lines = body.lines()
-                Log.i("PLAYER_HLS", "manifest status=$code finalUrl=$finalUrl contentType=${conn.contentType} headers=${conn.headerFields}")
-                Log.i("PLAYER_HLS", "manifest head:\n${lines.take(20).joinToString("\n")}")
-                Log.i("PLAYER_HLS", "variantLines=${lines.filter { it.contains("#EXT-X-STREAM-INF") }.take(8)}")
-                Log.i("PLAYER_HLS", "segmentLines=${lines.filter { it.isNotBlank() && !it.startsWith("#") }.take(8)}")
-                Log.i("PLAYER_HLS", "hasMap=${lines.any { it.startsWith("#EXT-X-MAP") }} hasKey=${lines.any { it.startsWith("#EXT-X-KEY") }} targetDuration=${lines.firstOrNull { it.startsWith("#EXT-X-TARGETDURATION") }} mediaSequence=${lines.firstOrNull { it.startsWith("#EXT-X-MEDIA-SEQUENCE") }}")
+                logDebug("PLAYER_HLS", "manifest status=$code finalUrl=$finalUrl contentType=${conn.contentType} headers=${conn.headerFields}")
+                logDebug("PLAYER_HLS", "manifest head:\n${lines.take(20).joinToString("\n")}")
+                logDebug("PLAYER_HLS", "variantLines=${lines.filter { it.contains("#EXT-X-STREAM-INF") }.take(8)}")
+                logDebug("PLAYER_HLS", "segmentLines=${lines.filter { it.isNotBlank() && !it.startsWith("#") }.take(8)}")
+                logDebug("PLAYER_HLS", "hasMap=${lines.any { it.startsWith("#EXT-X-MAP") }} hasKey=${lines.any { it.startsWith("#EXT-X-KEY") }} targetDuration=${lines.firstOrNull { it.startsWith("#EXT-X-TARGETDURATION") }} mediaSequence=${lines.firstOrNull { it.startsWith("#EXT-X-MEDIA-SEQUENCE") }}")
                 if (lines.none { it.contains("#EXT-X-STREAM-INF") }) {
-                    Log.w("PLAYER_HLS", "single-variant TS playlist detected; emulator decoder may struggle with 1080p AVC High profile streams")
+                    logDebug("PLAYER_HLS", "single-variant TS playlist detected; device may struggle with 1080p AVC High profile streams")
                 }
             }.onFailure {
-                Log.e("PLAYER_HLS", "manifest preview failed url=$url error=${it.message}", it)
+                logDebug("PLAYER_HLS", "manifest preview failed url=$url error=${it.message}", it)
             }
         }
     }
@@ -2575,8 +2576,14 @@ class MainActivity : AppCompatActivity() {
             MediaCodecSelector.DEFAULT
         }
 
+        val extensionMode = if (USE_FFMPEG_AUDIO_FOR_MPEG_L2) {
+            DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+        } else {
+            DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
+        }
+        logDebug("PLAYER_STATE", "ffmpeg_mode=${if (USE_FFMPEG_AUDIO_FOR_MPEG_L2) "PREFER" else "OFF"}")
         val renderersFactory = DefaultRenderersFactory(this)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            .setExtensionRendererMode(extensionMode)
             .setEnableDecoderFallback(true)
             .setMediaCodecSelector(codecSelector)
 
@@ -2609,7 +2616,7 @@ class MainActivity : AppCompatActivity() {
                         lastProgressWallClockMs = System.currentTimeMillis()
                         handler.removeCallbacks(startupSlowStreamRunnable)
                         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-                        Log.i("PLAYER", "onRenderedFirstFrame url=$lastRequestedPlaybackUrl")
+                        logDebug("PLAYER_STATE", "onRenderedFirstFrame url=$lastRequestedPlaybackUrl")
                     }
 
                     override fun onTracksChanged(tracks: Tracks) {
@@ -2624,14 +2631,14 @@ class MainActivity : AppCompatActivity() {
                             androidx.media3.common.Player.STATE_ENDED -> "ENDED"
                             else -> "UNKNOWN($playbackState)"
                         }
-                        Log.i("PLAYER_STATE", "state=$state isLoading=${player.isLoading} playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} suppression=${player.playbackSuppressionReason} playerError=${player.playerError?.message} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl")
+                        logDebug("PLAYER_STATE", "state=$state isLoading=${player.isLoading} playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} suppression=${player.playbackSuppressionReason} playerError=${player.playerError?.message} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl")
                         if (playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
                             logMemoryStats("state_buffering")
                         }
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
-                        Log.e("PLAYER_STATE", "onPlayerError url=$lastRequestedPlaybackUrl message=${error.message}", error)
+                        logDebug("PLAYER_STATE", "onPlayerError url=$lastRequestedPlaybackUrl message=${error.message}", error)
                         logMemoryStats("on_player_error")
                         handler.post {
                             handler.removeCallbacks(startupSlowStreamRunnable)
@@ -2652,7 +2659,7 @@ class MainActivity : AppCompatActivity() {
                     private fun logDecoderCounters(stage: String, counters: DecoderCounters?) {
                         counters ?: return
                         counters.ensureUpdated()
-                        Log.i(
+                        logDebug(
                             "PLAYER_DECODER",
                             "stage=$stage renderedOutputBufferCount=${counters.renderedOutputBufferCount} skippedOutputBufferCount=${counters.skippedOutputBufferCount} droppedBufferCount=${counters.droppedBufferCount} droppedToKeyframeCount=${counters.droppedToKeyframeCount} maxConsecutiveDroppedBufferCount=${counters.maxConsecutiveDroppedBufferCount} url=$lastRequestedPlaybackUrl"
                         )
@@ -2698,7 +2705,16 @@ class MainActivity : AppCompatActivity() {
                         initializedTimestampMs: Long,
                         initializationDurationMs: Long
                     ) {
-                        Log.i("PLAYER_STATE", "videoDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs url=$lastRequestedPlaybackUrl")
+                        logDebug("PLAYER_STATE", "videoDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs url=$lastRequestedPlaybackUrl")
+                    }
+
+                    override fun onAudioDecoderInitialized(
+                        eventTime: AnalyticsListener.EventTime,
+                        decoderName: String,
+                        initializedTimestampMs: Long,
+                        initializationDurationMs: Long
+                    ) {
+                        logDebug("PLAYER_STATE", "audioDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs url=$lastRequestedPlaybackUrl")
                     }
 
                     override fun onVideoEnabled(eventTime: AnalyticsListener.EventTime, decoderCounters: DecoderCounters) {
@@ -2720,7 +2736,7 @@ class MainActivity : AppCompatActivity() {
         val totalMb = rt.totalMemory() / (1024 * 1024)
         val freeMb = rt.freeMemory() / (1024 * 1024)
         val usedMb = totalMb - freeMb
-        Log.i("PLAYER_MEM", "stage=$stage usedMb=$usedMb totalMb=$totalMb freeMb=$freeMb maxMb=$maxMb url=$lastRequestedPlaybackUrl")
+        logDebug("PLAYER_MEM", "stage=$stage usedMb=$usedMb totalMb=$totalMb freeMb=$freeMb maxMb=$maxMb url=$lastRequestedPlaybackUrl")
     }
 
 
@@ -3331,3 +3347,11 @@ class MainActivity : AppCompatActivity() {
         val btnWatch: TextView
     )
 }
+    private fun logDebug(tag: String, message: String, tr: Throwable? = null) {
+        Log.i(tag, message, tr)
+        runCatching {
+            val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
+            val line = "$ts [$tag] $message\n"
+            openFileOutput("player_debug.log", Context.MODE_APPEND).use { it.write(line.toByteArray()) }
+        }
+    }
