@@ -260,7 +260,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val PREF_PLAYLISTS = "playlist_profiles"
         private const val PREF_SELECTED_PLAYLIST = "selected_playlist"
-        private const val PREF_SELECTED_EPG = "selected_epg"
+       private const val PREF_SELECTED_EPG = "selected_epg"
         private const val PREF_LAST_CHANNEL = "last_channel"
         private const val PREF_EPG_CACHE = "epg_cache"
         private const val PREF_EPG_STATUS = "epg_status"
