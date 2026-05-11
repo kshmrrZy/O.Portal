@@ -686,15 +686,17 @@ class MainActivity : AppCompatActivity() {
         val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6))
         val token = (prefs.getString(PREF_USER_TOKEN, "") ?: "").trim()
         val thirdParty = getThirdPartyPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
-        val profiles = if (token.isNotBlank()) listOf(
-            PlaylistProfile("Избранные", "url", "https://o.avff.ru/my/$token.m3u", true),
-            PlaylistProfile("Wink", "url", "https://o.avff.ru/list/wink.m3u8?token=$token", true),
-            PlaylistProfile("iLook", "url", "https://o.avff.ru/list/ilook.m3u8?token=$token", true),
-            PlaylistProfile("Сервис В", "url", "https://o.avff.ru/list/servicev.m3u8?token=$token", true),
-            PlaylistProfile("Lime TV", "url", "https://o.avff.ru/list/limetv.m3u8?token=$token", true),
-            PlaylistProfile("Only4", "url", "https://o.avff.ru/list/only4.m3u8?token=$token", true)
-        ) + (if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else emptyList())
-        else if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
+        val profiles = if (token.isNotBlank()) {
+            val base = listOf(
+                PlaylistProfile("Избранные", "url", "https://o.avff.ru/my/$token.m3u", true),
+                PlaylistProfile("Wink", "url", "https://o.avff.ru/list/wink.m3u8?token=$token", true),
+                PlaylistProfile("iLook", "url", "https://o.avff.ru/list/ilook.m3u8?token=$token", true),
+                PlaylistProfile("Сервис В", "url", "https://o.avff.ru/list/servicev.m3u8?token=$token", true),
+                PlaylistProfile("Lime TV", "url", "https://o.avff.ru/list/limetv.m3u8?token=$token", true),
+                PlaylistProfile("Only4", "url", "https://o.avff.ru/list/only4.m3u8?token=$token", true)
+            )
+            if (thirdParty.isNotEmpty()) base.take(5) + listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else base
+        } else if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
         val shownProfiles = profiles.take(6)
         if (token.isNotBlank()) savePlaylistProfiles((profiles.filter { it.type != "group" } + thirdParty).distinctBy { it.name })
         tiles.forEachIndexed { i, tv ->

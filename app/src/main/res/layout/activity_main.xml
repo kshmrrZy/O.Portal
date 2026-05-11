@@ -407,7 +407,8 @@
             android:textColor="#FFFFFF"
             android:textSize="12sp"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
+            android:layout_marginTop="4dp" />
 
         <ScrollView
             android:id="@+id/homeSettingsScreen"
