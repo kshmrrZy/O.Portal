@@ -380,7 +380,8 @@ class MainActivity : AppCompatActivity() {
         val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
         loadPlaylist(showErrors = true, autoPlay = shouldOpenLastChannelOnStart && !isAuthorizedUser)
         if (!shouldOpenLastChannelOnStart) {
-            if (isAuthorizedUser) showPlaylistPageOnHome() else showStartPage()
+            val hasThirdParty = getThirdPartyPlaylistProfiles().isNotEmpty()
+            if (isAuthorizedUser || hasThirdParty) showPlaylistPageOnHome() else showStartPage()
         }
     }
 
@@ -643,6 +644,7 @@ class MainActivity : AppCompatActivity() {
         homePlaylistTilesPanel.visibility = View.VISIBLE
         val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6))
         val token = (prefs.getString(PREF_USER_TOKEN, "") ?: "").trim()
+        val thirdParty = getThirdPartyPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
         val profiles = if (token.isNotBlank()) listOf(
             PlaylistProfile("Wink", "url", "https://o.avff.ru/list/wink.m3u8?token=$token", true),
             PlaylistProfile("iLook", "url", "https://o.avff.ru/list/ilook.m3u8?token=$token", true),
@@ -650,7 +652,7 @@ class MainActivity : AppCompatActivity() {
             PlaylistProfile("Lime TV", "url", "https://o.avff.ru/list/limetv.m3u8?token=$token", true),
             PlaylistProfile("Only4", "url", "https://o.avff.ru/list/only4.m3u8?token=$token", true),
             PlaylistProfile("Избранные", "url", "https://o.avff.ru/my/$token.m3u", true)
-        ) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
+        ) else if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
         if (token.isNotBlank()) savePlaylistProfiles(profiles)
         tiles.forEachIndexed { i, tv ->
             val p = profiles.getOrNull(i)
@@ -661,10 +663,25 @@ class MainActivity : AppCompatActivity() {
                 tv.visibility = View.VISIBLE
                 tv.text = p.name
                 tv.setOnClickListener {
-                    setSelectedPlaylistName(p.name)
-                    homePlaylistTilesPanel.visibility = View.GONE
-                    hideStartPage()
-                    loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
+                    if (p.type == "group" && p.value == "third_party") {
+                        val list = thirdParty
+                        if (list.isNotEmpty()) {
+                            val sp = Spinner(this)
+                            sp.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, list.map { it.name })
+                            AlertDialog.Builder(this).setTitle("Плейлисты").setView(sp).setPositiveButton("Открыть") { _, _ ->
+                                val pick = list.getOrNull(sp.selectedItemPosition) ?: return@setPositiveButton
+                                setSelectedPlaylistName(pick.name)
+                                homePlaylistTilesPanel.visibility = View.GONE
+                                hideStartPage()
+                                loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
+                            }.setNegativeButton("Отмена", null).show()
+                        }
+                    } else {
+                        setSelectedPlaylistName(p.name)
+                        homePlaylistTilesPanel.visibility = View.GONE
+                        hideStartPage()
+                        loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
+                    }
                 }
             }
         }
