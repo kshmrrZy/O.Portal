@@ -108,7 +108,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-            android:layout_marginStart="5dp"
+            android:layout_marginStart="0dp"
                 android:background="@drawable/bg_settings_row"
                 android:gravity="center"
                 android:paddingHorizontal="14dp"
@@ -417,25 +417,25 @@
             android:layout_height="0dp"
             android:visibility="gone"
             android:layout_marginTop="20dp"
-            android:layout_marginStart="5dp"
+            android:layout_marginStart="0dp"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
             app:layout_constraintBottom_toBottomOf="parent">
             <androidx.constraintlayout.widget.ConstraintLayout android:layout_width="match_parent" android:layout_height="wrap_content">
-                <TextView android:id="@+id/tvTile1" style="@style/AppGolosText" android:layout_width="188dp" android:layout_height="86dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile2" style="@style/AppGolosText" android:layout_width="188dp" android:layout_height="86dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile3" style="@style/AppGolosText" android:layout_width="188dp" android:layout_height="86dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile4" style="@style/AppGolosText" android:layout_width="188dp" android:layout_height="86dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile5" style="@style/AppGolosText" android:layout_width="188dp" android:layout_height="86dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile6" style="@style/AppGolosText" android:layout_width="188dp" android:layout_height="86dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
+                <TextView android:id="@+id/tvTile1" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
+                <TextView android:id="@+id/tvTile2" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
+                <TextView android:id="@+id/tvTile3" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
+                <TextView android:id="@+id/tvTile4" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
+                <TextView android:id="@+id/tvTile5" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
+                <TextView android:id="@+id/tvTile6" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
                 <androidx.constraintlayout.helper.widget.Flow
                     android:id="@+id/playlistTilesFlow"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     app:constraint_referenced_ids="tvTile1,tvTile2,tvTile3,tvTile4,tvTile5,tvTile6"
                     app:flow_horizontalGap="15dp"
-                    app:flow_verticalGap="0dp"
+                    app:flow_verticalGap="5dp"
                     app:flow_wrapMode="aligned"
                     app:flow_horizontalBias="0"
                     app:layout_constraintStart_toStartOf="parent"
@@ -496,7 +496,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
-            android:layout_marginStart="5dp"
+            android:layout_marginStart="0dp"
             android:text="Выполняем обновление, сейчас всё будет!"
             android:textColor="#FFFFFF"
             android:textSize="16sp" />
