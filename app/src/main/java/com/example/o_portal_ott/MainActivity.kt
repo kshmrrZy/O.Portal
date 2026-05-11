@@ -44,7 +44,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
-import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.GestureDetectorCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -394,8 +393,8 @@ class MainActivity : AppCompatActivity() {
         tvHomeSystemTime = findViewById(R.id.tvHomeSystemTime)
         tvHomeAppTitle = findViewById(R.id.tvHomeAppTitle)
         tvHomeAppTitle.text = SpannableString("O.Portal").apply {
-            val extra = ResourcesCompat.getFont(this@MainActivity, R.font.golostext_extrabold)
-            if (extra != null) setSpan(TypefaceSpan(extra), 2, length, 0) else setSpan(StyleSpan(Typeface.BOLD), 2, length, 0)
+            setSpan(StyleSpan(Typeface.BOLD), 2, length, 0)
+            tvHomeAppTitle.typeface = Typeface.create(tvHomeAppTitle.typeface, 800, false)
         }
         tvHomeStartTitle = findViewById(R.id.tvHomeStartTitle)
         tvHomeStartSubtitle = findViewById(R.id.tvHomeStartSubtitle)
