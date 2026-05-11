@@ -2556,7 +2556,7 @@ class MainActivity : AppCompatActivity() {
             .setMediaCodecSelector(codecSelector)
 
         val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory)
-
+        val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory)
         trackSelector = DefaultTrackSelector(this).apply {
             setParameters(
                 buildUponParameters()
@@ -2600,6 +2600,7 @@ class MainActivity : AppCompatActivity() {
                             else -> "UNKNOWN($playbackState)"
                         }
                         Log.i("PLAYER_STATE", "state=$state isLoading=${player.isLoading} playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} suppression=${player.playbackSuppressionReason} playerError=${player.playerError?.message} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl")
+                        Log.i("PLAYER_STATE", "state=$state isLoading=${player.isLoading} playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} suppression=${player.playbackSuppressionReason} playerError=${player.playerError?.message} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl")
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
@@ -2642,6 +2643,7 @@ class MainActivity : AppCompatActivity() {
                     ) {
                         Log.e("PLAYER_NET", "onLoadError type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} canceled=$wasCanceled headers=${loadEventInfo.responseHeaders} error=${error.message} url=$lastRequestedPlaybackUrl", error)
                     }
+
 
                     override fun onDroppedVideoFrames(
                         eventTime: AnalyticsListener.EventTime,
