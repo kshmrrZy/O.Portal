@@ -637,6 +637,32 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+
+    private fun showThirdPartyTilesOnHome(thirdParty: List<PlaylistProfile>) {
+        showStartPage()
+        tvHomeStartTitle.visibility = View.GONE
+        tvHomeStartSubtitle.visibility = View.GONE
+        homePlaylistTilesPanel.visibility = View.VISIBLE
+        val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6))
+        val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }.take(6)
+        tiles.forEachIndexed { i, tv ->
+            val p = list.getOrNull(i)
+            if (p == null) {
+                tv.visibility = View.INVISIBLE
+                tv.setOnClickListener(null)
+            } else {
+                tv.visibility = View.VISIBLE
+                tv.text = p.name
+                tv.setOnClickListener {
+                    setSelectedPlaylistName(p.name)
+                    homePlaylistTilesPanel.visibility = View.GONE
+                    hideStartPage()
+                    loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
+                }
+            }
+        }
+    }
+
     private fun showPlaylistPageOnHome() {
         showStartPage()
         tvHomeStartTitle.visibility = View.GONE
@@ -664,18 +690,7 @@ class MainActivity : AppCompatActivity() {
                 tv.text = p.name
                 tv.setOnClickListener {
                     if (p.type == "group" && p.value == "third_party") {
-                        val list = thirdParty
-                        if (list.isNotEmpty()) {
-                            val sp = Spinner(this)
-                            sp.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, list.map { it.name })
-                            AlertDialog.Builder(this).setTitle("Плейлисты").setView(sp).setPositiveButton("Открыть") { _, _ ->
-                                val pick = list.getOrNull(sp.selectedItemPosition) ?: return@setPositiveButton
-                                setSelectedPlaylistName(pick.name)
-                                homePlaylistTilesPanel.visibility = View.GONE
-                                hideStartPage()
-                                loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
-                            }.setNegativeButton("Отмена", null).show()
-                        }
+                        showThirdPartyTilesOnHome(thirdParty)
                     } else {
                         setSelectedPlaylistName(p.name)
                         homePlaylistTilesPanel.visibility = View.GONE
