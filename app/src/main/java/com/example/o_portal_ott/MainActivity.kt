@@ -44,7 +44,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
-import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.GestureDetectorCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -1380,6 +1379,12 @@ class MainActivity : AppCompatActivity() {
         isSettingsModalVisible = false
         homeSettingsScreen.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = false)
+        playerSettingsOverlay.visibility = View.GONE
+        if (settingsOpenedFromPlayer) {
+            homePanel.visibility = View.GONE
+            showUI()
+            return
+        }
         val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
         val hasThirdParty = getThirdPartyPlaylistProfiles().isNotEmpty()
         if (isAuthorizedUser || hasThirdParty) {
@@ -1387,16 +1392,11 @@ class MainActivity : AppCompatActivity() {
         } else {
             tvHomeStartTitle.visibility = View.VISIBLE
             tvHomeStartSubtitle.visibility = View.VISIBLE
-        }
-        playerSettingsOverlay.visibility = View.GONE
-        homePanel.setBackgroundResource(R.drawable.bg_home_screen)
-        tvHomeAppTitle.visibility = View.VISIBLE
-        tvHomeSystemTime.visibility = View.VISIBLE
-        ivHomeSettings.visibility = View.VISIBLE
-        ivHomePower.visibility = View.VISIBLE
-        if (settingsOpenedFromPlayer && channels.isNotEmpty() && !isAuthorizedUser) {
-            homePanel.visibility = View.GONE
-            showUI()
+            homePanel.setBackgroundResource(R.drawable.bg_home_screen)
+            tvHomeAppTitle.visibility = View.VISIBLE
+            tvHomeSystemTime.visibility = View.VISIBLE
+            ivHomeSettings.visibility = View.VISIBLE
+            ivHomePower.visibility = View.VISIBLE
         }
     }
 
