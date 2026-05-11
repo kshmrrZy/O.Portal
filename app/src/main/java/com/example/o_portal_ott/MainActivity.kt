@@ -393,6 +393,7 @@ class MainActivity : AppCompatActivity() {
         tvSystemTime = findViewById(R.id.tvSystemTime)
         tvHomeSystemTime = findViewById(R.id.tvHomeSystemTime)
         tvHomeAppTitle = findViewById(R.id.tvHomeAppTitle)
+        tvHomeAppTitle.text = SpannableString("O.Portal").apply { setSpan(StyleSpan(Typeface.BOLD), 2, length, 0) }
         tvHomeStartTitle = findViewById(R.id.tvHomeStartTitle)
         tvHomeStartSubtitle = findViewById(R.id.tvHomeStartSubtitle)
         homePlaylistTilesPanel = findViewById(R.id.homePlaylistTilesPanel)
@@ -653,6 +654,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 tv.visibility = View.VISIBLE
                 tv.text = p.name
+                tv.setTypeface(tv.typeface, Typeface.BOLD)
                 tv.setOnClickListener {
                     setSelectedPlaylistName(p.name)
                     homePlaylistTilesPanel.visibility = View.GONE
@@ -689,6 +691,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 tv.visibility = View.VISIBLE
                 tv.text = p.name
+                tv.setTypeface(tv.typeface, Typeface.BOLD)
                 tv.setOnClickListener {
                     if (p.type == "group" && p.value == "third_party") {
                         showThirdPartyTilesOnHome(thirdParty)
@@ -1345,10 +1348,6 @@ class MainActivity : AppCompatActivity() {
         if (cleanToken.isBlank()) return
         val existing = getPlaylistProfiles().toMutableList()
         val thirdParty = existing.filter { it.name !in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные") }
-        if (thirdParty.isNotEmpty()) {
-            savePlaylistProfiles(thirdParty.distinctBy { it.name })
-            return
-        }
         val portal = listOf(
             PlaylistProfile("Wink", "url", "https://o.avff.ru/list/wink.m3u8?token=$cleanToken", true),
             PlaylistProfile("iLook", "url", "https://o.avff.ru/list/ilook.m3u8?token=$cleanToken", true),
@@ -1357,7 +1356,7 @@ class MainActivity : AppCompatActivity() {
             PlaylistProfile("Only4", "url", "https://o.avff.ru/list/only4.m3u8?token=$cleanToken", true),
             PlaylistProfile("Избранные", "url", "https://o.avff.ru/my/$cleanToken.m3u", true)
         )
-        savePlaylistProfiles((portal).distinctBy { it.name })
+        savePlaylistProfiles((portal + thirdParty).distinctBy { it.name })
     }
 
     private fun hideSettingsScreen() {
