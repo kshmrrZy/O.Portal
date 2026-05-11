@@ -61,6 +61,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.DecoderCounters
 import androidx.media3.ui.PlayerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.model.GlideUrl
@@ -2449,6 +2450,9 @@ class MainActivity : AppCompatActivity() {
                 Log.i("PLAYER_HLS", "variantLines=${lines.filter { it.contains("#EXT-X-STREAM-INF") }.take(8)}")
                 Log.i("PLAYER_HLS", "segmentLines=${lines.filter { it.isNotBlank() && !it.startsWith("#") }.take(8)}")
                 Log.i("PLAYER_HLS", "hasMap=${lines.any { it.startsWith("#EXT-X-MAP") }} hasKey=${lines.any { it.startsWith("#EXT-X-KEY") }} targetDuration=${lines.firstOrNull { it.startsWith("#EXT-X-TARGETDURATION") }} mediaSequence=${lines.firstOrNull { it.startsWith("#EXT-X-MEDIA-SEQUENCE") }}")
+                if (lines.none { it.contains("#EXT-X-STREAM-INF") }) {
+                    Log.w("PLAYER_HLS", "single-variant TS playlist detected; emulator decoder may struggle with 1080p AVC High profile streams")
+                }
             }.onFailure {
                 Log.e("PLAYER_HLS", "manifest preview failed url=$url error=${it.message}", it)
             }
@@ -2645,6 +2649,15 @@ class MainActivity : AppCompatActivity() {
                 playerEventListener = listener
 
                 val analyticsListener = object : AnalyticsListener {
+                    private fun logDecoderCounters(stage: String, counters: DecoderCounters?) {
+                        counters ?: return
+                        counters.ensureUpdated()
+                        Log.i(
+                            "PLAYER_DECODER",
+                            "stage=$stage renderedOutputBufferCount=${counters.renderedOutputBufferCount} skippedOutputBufferCount=${counters.skippedOutputBufferCount} droppedBufferCount=${counters.droppedBufferCount} droppedToKeyframeCount=${counters.droppedToKeyframeCount} maxConsecutiveDroppedBufferCount=${counters.maxConsecutiveDroppedBufferCount} url=$lastRequestedPlaybackUrl"
+                        )
+                    }
+
                     override fun onLoadStarted(
                         eventTime: AnalyticsListener.EventTime,
                         loadEventInfo: LoadEventInfo,
@@ -2686,6 +2699,14 @@ class MainActivity : AppCompatActivity() {
                         initializationDurationMs: Long
                     ) {
                         Log.i("PLAYER_STATE", "videoDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs url=$lastRequestedPlaybackUrl")
+                    }
+
+                    override fun onVideoEnabled(eventTime: AnalyticsListener.EventTime, decoderCounters: DecoderCounters) {
+                        logDecoderCounters("video_enabled", decoderCounters)
+                    }
+
+                    override fun onVideoDisabled(eventTime: AnalyticsListener.EventTime, decoderCounters: DecoderCounters) {
+                        logDecoderCounters("video_disabled", decoderCounters)
                     }
                 }
                 player.addAnalyticsListener(analyticsListener)
