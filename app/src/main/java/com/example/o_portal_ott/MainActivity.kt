@@ -647,6 +647,8 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         homePlaylistTilesPanel.visibility = View.VISIBLE
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории > Плейлисты")
+        ivHomeSettings.setOnClickListener { showPlaylistPageOnHome() }
         val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6))
         val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }.take(6)
         tiles.forEachIndexed { i, tv ->
@@ -673,6 +675,8 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         homePlaylistTilesPanel.visibility = View.VISIBLE
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории")
+        ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
         val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6))
         val token = (prefs.getString(PREF_USER_TOKEN, "") ?: "").trim()
         val thirdParty = getThirdPartyPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
@@ -699,6 +703,7 @@ class MainActivity : AppCompatActivity() {
                     if (p.type == "group" && p.value == "third_party") {
                         showThirdPartyTilesOnHome(thirdParty)
                     } else {
+                        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории > ${p.name}")
                         setSelectedPlaylistName(p.name)
                         homePlaylistTilesPanel.visibility = View.GONE
                         hideStartPage()
