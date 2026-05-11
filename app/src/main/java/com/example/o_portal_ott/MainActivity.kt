@@ -44,6 +44,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
+import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.GestureDetectorCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
