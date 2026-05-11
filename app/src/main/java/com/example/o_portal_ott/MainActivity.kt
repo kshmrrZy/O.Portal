@@ -44,10 +44,10 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
-import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.GestureDetectorCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -56,6 +56,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
@@ -117,8 +118,6 @@ class MainActivity : AppCompatActivity() {
     private var lastPlaybackPositionMs = -1L
     private var lastProgressWallClockMs = 0L
     private var bufferingSinceMs = 0L
-    private var startupWaitSinceMs = 0L
-    private var allowNonIdrKeyframes = false
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -196,16 +195,10 @@ class MainActivity : AppCompatActivity() {
     private var lastRequestedPlaybackUrl: String = ""
     private var startupRecoveryAttempts = 0
     private val maxStartupRecoveryAttempts = 3
-    private val startupFrameTimeoutRunnable: Runnable = Runnable {
-        if (firstFrameRendered) return@Runnable
-        val player = mediaPlayer
-        val now = System.currentTimeMillis()
-        if (startupWaitSinceMs == 0L) startupWaitSinceMs = now
-        if (player != null && (player.playbackState == androidx.media3.common.Player.STATE_BUFFERING || player.playbackState == androidx.media3.common.Player.STATE_READY) && now - startupWaitSinceMs < 45_000L) {
-            handler.postDelayed(startupFrameTimeoutRunnable, 4000L)
-            return@Runnable
+    private val startupSlowStreamRunnable: Runnable = Runnable {
+        if (!firstFrameRendered) {
+            showCenterError("Поток долго загружается", 3000L)
         }
-        showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, "Не удалось дождаться корректного ключевого кадра видео")
     }
 
     private val playbackFreezeWatchdogRunnable: Runnable = Runnable {
@@ -548,7 +541,7 @@ class MainActivity : AppCompatActivity() {
         btnPlayPause.setOnClickListener {
             if (isPlaybackPaused) {
                 mediaPlayer?.play()
-                handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
+                handler.postDelayed(startupSlowStreamRunnable, 45_000L)
                 isPlaybackPaused = false
                 btnPlayPause.setImageResource(R.drawable.ic_pause)
             } else {
@@ -2318,8 +2311,6 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             homePanel.visibility = View.GONE
             val shouldUseSoftware = !preferGpuDecoding
-            // Start in strict IDR mode to avoid visual artifacts (macroblocking) on some TS streams.
-            // Non-IDR parsing is enabled only by startup fallback when no first frame appears.
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
@@ -2330,7 +2321,7 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.setMediaItem(buildMediaItem(archiveUrl))
             mediaPlayer?.prepare()
             mediaPlayer?.play()
-            handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
+            handler.postDelayed(startupSlowStreamRunnable, 45_000L)
             lastPlaybackPositionMs = -1L
             lastProgressWallClockMs = System.currentTimeMillis()
             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
@@ -2354,8 +2345,6 @@ class MainActivity : AppCompatActivity() {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
             homePanel.visibility = View.GONE
             val shouldUseSoftware = !preferGpuDecoding
-            // Start in strict IDR mode to avoid visual artifacts (macroblocking) on some TS streams.
-            // Non-IDR parsing is enabled only by startup fallback when no first frame appears.
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
@@ -2364,18 +2353,17 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = ch.url
             firstFrameRendered = false
-            handler.removeCallbacks(startupFrameTimeoutRunnable)
+            handler.removeCallbacks(startupSlowStreamRunnable)
             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
             retriedWithoutAudio = false
             retriedWithAlternateDecoder = false
-            startupWaitSinceMs = 0L
             enableAudioTrack()
             applyUnlimitedVideoConstraints()
 
             mediaPlayer?.setMediaItem(buildMediaItem(ch.url))
             mediaPlayer?.prepare()
             mediaPlayer?.play()
-            handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
+            handler.postDelayed(startupSlowStreamRunnable, 45_000L)
             isPlaybackPaused = false
             isArchivePlayback = false
             currentArchiveProgram = null
@@ -2398,7 +2386,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildMediaItem(url: String): MediaItem {
         val uri = Uri.parse(url)
-        val mime = if (url.contains(".m3u8", ignoreCase = true) || url.contains(".m3u", ignoreCase = true)) "application/x-mpegURL" else null
+        val lowerUrl = url.lowercase(Locale.ROOT)
+        val mime = when {
+            lowerUrl.contains(".m3u8") -> MimeTypes.APPLICATION_M3U8
+            lowerUrl.contains(".ts") || lowerUrl.contains("mpegts") -> MimeTypes.VIDEO_MP2T
+            else -> null
+        }
         val builder = MediaItem.Builder()
             .setUri(uri)
             .setMimeType(mime)
@@ -2566,18 +2559,30 @@ class MainActivity : AppCompatActivity() {
                         firstFrameRendered = true
                         lastPlaybackPositionMs = player.currentPosition
                         lastProgressWallClockMs = System.currentTimeMillis()
-                        handler.removeCallbacks(startupFrameTimeoutRunnable)
+                        handler.removeCallbacks(startupSlowStreamRunnable)
                         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-                        startupWaitSinceMs = 0L
+                        Log.i("PLAYER", "onRenderedFirstFrame url=$lastRequestedPlaybackUrl")
                     }
 
                     override fun onTracksChanged(tracks: Tracks) {
                         logSelectedPlaybackFormats(tracks)
                     }
 
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        val state = when (playbackState) {
+                            androidx.media3.common.Player.STATE_IDLE -> "IDLE"
+                            androidx.media3.common.Player.STATE_BUFFERING -> "BUFFERING"
+                            androidx.media3.common.Player.STATE_READY -> "READY"
+                            androidx.media3.common.Player.STATE_ENDED -> "ENDED"
+                            else -> "UNKNOWN($playbackState)"
+                        }
+                        Log.i("PLAYER_STATE", "state=$state playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl")
+                    }
+
                     override fun onPlayerError(error: PlaybackException) {
+                        Log.e("PLAYER_STATE", "onPlayerError url=$lastRequestedPlaybackUrl message=${error.message}", error)
                         handler.post {
-                            handler.removeCallbacks(startupFrameTimeoutRunnable)
+                            handler.removeCallbacks(startupSlowStreamRunnable)
                             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                             if (shouldRetryWithoutAudio(error)) {
                                 showCenterError("Аудио MPEG не поддерживается устройством, продолжаем без звука", 2500L)
@@ -2586,6 +2591,24 @@ class MainActivity : AppCompatActivity() {
                                 showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, error.message ?: "PlaybackException")
                             }
                         }
+                    }
+                })
+                player.addAnalyticsListener(object : AnalyticsListener {
+                    override fun onDroppedVideoFrames(
+                        eventTime: AnalyticsListener.EventTime,
+                        droppedFrames: Int,
+                        elapsedMs: Long
+                    ) {
+                        Log.w("PLAYER_STATE", "droppedFrames=$droppedFrames elapsedMs=$elapsedMs url=$lastRequestedPlaybackUrl")
+                    }
+
+                    override fun onVideoDecoderInitialized(
+                        eventTime: AnalyticsListener.EventTime,
+                        decoderName: String,
+                        initializedTimestampMs: Long,
+                        initializationDurationMs: Long
+                    ) {
+                        Log.i("PLAYER_STATE", "videoDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs url=$lastRequestedPlaybackUrl")
                     }
                 })
             }
@@ -2630,10 +2653,9 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.prepare()
         mediaPlayer?.playWhenReady = true
         firstFrameRendered = false
-        startupWaitSinceMs = 0L
-        handler.removeCallbacks(startupFrameTimeoutRunnable)
+        handler.removeCallbacks(startupSlowStreamRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-        handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
+        handler.postDelayed(startupSlowStreamRunnable, 45_000L)
     }
 
     private fun disableAudioTrack() {
@@ -2681,10 +2703,9 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.prepare()
         mediaPlayer?.playWhenReady = true
         firstFrameRendered = false
-        startupWaitSinceMs = 0L
-        handler.removeCallbacks(startupFrameTimeoutRunnable)
+        handler.removeCallbacks(startupSlowStreamRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-        handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
+        handler.postDelayed(startupSlowStreamRunnable, 45_000L)
         lastPlaybackPositionMs = -1L
         lastProgressWallClockMs = System.currentTimeMillis()
         handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
@@ -2837,7 +2858,7 @@ class MainActivity : AppCompatActivity() {
         if (versionChanged || hasIncompleteEpgProgress) ensureEpgLoadedLazy()
         if (mediaPlayer != null && isPlaybackPaused) {
             mediaPlayer?.play()
-            handler.postDelayed(startupFrameTimeoutRunnable, 8000L)
+            handler.postDelayed(startupSlowStreamRunnable, 45_000L)
             isPlaybackPaused = false
             btnPlayPause.setImageResource(R.drawable.ic_pause)
         }
@@ -2900,7 +2921,7 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.release()
         mediaPlayer = null
         trackSelector = null
-        handler.removeCallbacks(startupFrameTimeoutRunnable)
+        handler.removeCallbacks(startupSlowStreamRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
 
     }
