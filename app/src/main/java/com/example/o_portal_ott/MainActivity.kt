@@ -54,6 +54,11 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+<<<<<<< codex/fix-visibility-of-text-b8m97a
+=======
+import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
+import androidx.media3.exoplayer.hls.HlsMediaSource
+>>>>>>> main
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -2555,7 +2560,15 @@ class MainActivity : AppCompatActivity() {
             .setEnableDecoderFallback(true)
             .setMediaCodecSelector(codecSelector)
 
+<<<<<<< codex/fix-visibility-of-text-b8m97a
         val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory)
+=======
+        val tsFlags = DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
+
+        val hlsMediaSourceFactory = HlsMediaSource.Factory(httpFactory)
+            .setAllowChunklessPreparation(false)
+            .setExtractorFactory(DefaultHlsExtractorFactory(tsFlags, true))
+>>>>>>> main
 
         trackSelector = DefaultTrackSelector(this).apply {
             setParameters(
@@ -2599,7 +2612,11 @@ class MainActivity : AppCompatActivity() {
                             androidx.media3.common.Player.STATE_ENDED -> "ENDED"
                             else -> "UNKNOWN($playbackState)"
                         }
+<<<<<<< codex/fix-visibility-of-text-b8m97a
                         Log.i("PLAYER_STATE", "state=$state isLoading=${player.isLoading} playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} suppression=${player.playbackSuppressionReason} playerError=${player.playerError?.message} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl")
+=======
+                        Log.i("PLAYER_STATE", "state=$state playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl")
+>>>>>>> main
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
@@ -2617,6 +2634,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 })
                 player.addAnalyticsListener(object : AnalyticsListener {
+<<<<<<< codex/fix-visibility-of-text-b8m97a
                     override fun onLoadStarted(
                         eventTime: AnalyticsListener.EventTime,
                         loadEventInfo: LoadEventInfo,
@@ -2643,6 +2661,8 @@ class MainActivity : AppCompatActivity() {
                         Log.e("PLAYER_NET", "onLoadError type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} canceled=$wasCanceled headers=${loadEventInfo.responseHeaders} error=${error.message} url=$lastRequestedPlaybackUrl", error)
                     }
 
+=======
+>>>>>>> main
                     override fun onDroppedVideoFrames(
                         eventTime: AnalyticsListener.EventTime,
                         droppedFrames: Int,
