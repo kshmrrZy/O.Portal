@@ -44,7 +44,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
-import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.GestureDetectorCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -135,6 +134,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvHomeStartTitle: TextView
     private lateinit var tvHomeStartSubtitle: TextView
     private lateinit var homePlaylistTilesPanel: View
+    private lateinit var tvHomeCategoryBack: TextView
     private lateinit var ivLogo: ImageView
     private lateinit var btnLock: ImageButton
     private lateinit var btnSettings: ImageButton
@@ -400,6 +400,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartTitle = findViewById(R.id.tvHomeStartTitle)
         tvHomeStartSubtitle = findViewById(R.id.tvHomeStartSubtitle)
         homePlaylistTilesPanel = findViewById(R.id.homePlaylistTilesPanel)
+        tvHomeCategoryBack = findViewById(R.id.tvHomeCategoryBack)
         ivLogo = findViewById(R.id.ivChannelLogo)
         btnLock = findViewById(R.id.btnLock)
         btnSettings = findViewById(R.id.btnSettings)
@@ -635,6 +636,7 @@ class MainActivity : AppCompatActivity() {
     private fun showStartPage() {
         homePanel.visibility = View.VISIBLE
         homePlaylistTilesPanel.visibility = View.GONE
+        tvHomeCategoryBack.visibility = View.GONE
         homePanel.post { applyHomeScreenScale(force = true) }
         topInfoPanel.visibility = View.GONE
         controlsPanel.visibility = View.GONE
@@ -647,8 +649,11 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         homePlaylistTilesPanel.visibility = View.VISIBLE
-        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории > Плейлисты")
-        ivHomeSettings.setOnClickListener { showPlaylistPageOnHome() }
+        tvHomeCategoryBack.visibility = View.GONE
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории (Плейлисты)")
+        tvHomeCategoryBack.visibility = View.VISIBLE
+        tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
+        ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
         val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6))
         val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }.take(6)
         tiles.forEachIndexed { i, tv ->
@@ -675,19 +680,20 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         homePlaylistTilesPanel.visibility = View.VISIBLE
-        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории")
+        applyHomeAppTitleStyle(settingsMode = false)
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
         val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6))
         val token = (prefs.getString(PREF_USER_TOKEN, "") ?: "").trim()
         val thirdParty = getThirdPartyPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
-        val profiles = if (token.isNotBlank()) (if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else emptyList()) + listOf(
+        val profiles = if (token.isNotBlank()) listOf(
+            PlaylistProfile("Избранные", "url", "https://o.avff.ru/my/$token.m3u", true),
             PlaylistProfile("Wink", "url", "https://o.avff.ru/list/wink.m3u8?token=$token", true),
             PlaylistProfile("iLook", "url", "https://o.avff.ru/list/ilook.m3u8?token=$token", true),
             PlaylistProfile("Сервис В", "url", "https://o.avff.ru/list/servicev.m3u8?token=$token", true),
             PlaylistProfile("Lime TV", "url", "https://o.avff.ru/list/limetv.m3u8?token=$token", true),
-            PlaylistProfile("Only4", "url", "https://o.avff.ru/list/only4.m3u8?token=$token", true),
-            PlaylistProfile("Избранные", "url", "https://o.avff.ru/my/$token.m3u", true)
-        ) else if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
+            PlaylistProfile("Only4", "url", "https://o.avff.ru/list/only4.m3u8?token=$token", true)
+        ) + (if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else emptyList())
+        else if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
         val shownProfiles = profiles.take(6)
         if (token.isNotBlank()) savePlaylistProfiles((profiles.filter { it.type != "group" } + thirdParty).distinctBy { it.name })
         tiles.forEachIndexed { i, tv ->
@@ -703,7 +709,7 @@ class MainActivity : AppCompatActivity() {
                     if (p.type == "group" && p.value == "third_party") {
                         showThirdPartyTilesOnHome(thirdParty)
                     } else {
-                        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории > ${p.name}")
+                        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории (${p.name})")
                         setSelectedPlaylistName(p.name)
                         homePlaylistTilesPanel.visibility = View.GONE
                         hideStartPage()
