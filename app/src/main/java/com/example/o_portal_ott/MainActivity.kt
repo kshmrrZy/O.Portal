@@ -196,7 +196,8 @@ class MainActivity : AppCompatActivity() {
     private var currentArchiveProgram: Program? = null
     private var timelineUserSeeking = false
     private var shouldReloadStreamOnStart = false
-    @Volatile private var epgFetchInProgress = false
+    @Volatile
+    private var epgFetchInProgress = false
     private var archiveStreamStartMs: Long = 0L
     private var lastRequestedPlaybackUrl: String = ""
     private var startupRecoveryAttempts = 0
@@ -256,15 +257,21 @@ class MainActivity : AppCompatActivity() {
         playChannel(forcePlay = true)
     }
 
-    private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    private val userAgent =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     private val prefs by lazy { getSharedPreferences("oportal_settings", Context.MODE_PRIVATE) }
-    private val golosTypeface: Typeface? by lazy { ResourcesCompat.getFont(this, R.font.golos_text) }
+    private val golosTypeface: Typeface? by lazy {
+        ResourcesCompat.getFont(
+            this,
+            R.font.golos_text
+        )
+    }
 
     companion object {
         private const val USE_FFMPEG_AUDIO_FOR_MPEG_L2 = true
         private const val PREF_PLAYLISTS = "playlist_profiles"
         private const val PREF_SELECTED_PLAYLIST = "selected_playlist"
-       private const val PREF_SELECTED_EPG = "selected_epg"
+        private const val PREF_SELECTED_EPG = "selected_epg"
         private const val PREF_LAST_CHANNEL = "last_channel"
         private const val PREF_EPG_CACHE = "epg_cache"
         private const val PREF_EPG_STATUS = "epg_status"
@@ -371,7 +378,10 @@ class MainActivity : AppCompatActivity() {
         startEpgTicker()
         applyLockButtonVisibility()
         val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
-        loadPlaylist(showErrors = true, autoPlay = shouldOpenLastChannelOnStart && !isAuthorizedUser)
+        loadPlaylist(
+            showErrors = true,
+            autoPlay = shouldOpenLastChannelOnStart && !isAuthorizedUser
+        )
         if (!shouldOpenLastChannelOnStart) {
             val hasThirdParty = getThirdPartyPlaylistProfiles().isNotEmpty()
             if (isAuthorizedUser || hasThirdParty) showPlaylistPageOnHome() else showStartPage()
@@ -427,7 +437,10 @@ class MainActivity : AppCompatActivity() {
         homePanel.post { applyHomeScreenScale(force = true) }
     }
 
-    private fun applyHomeAppTitleStyle(settingsMode: Boolean = false, settingsTitle: String = "Настройки") {
+    private fun applyHomeAppTitleStyle(
+        settingsMode: Boolean = false,
+        settingsTitle: String = "Настройки"
+    ) {
         val rawTitle = if (settingsMode) "O.Portal > $settingsTitle" else "O.Portal"
         val title = SpannableString(rawTitle)
         golosTypeface?.let { font ->
@@ -441,8 +454,18 @@ class MainActivity : AppCompatActivity() {
             tvHomeSystemTime.typeface = Typeface.create(font, Typeface.BOLD)
         } ?: title.setSpan(StyleSpan(Typeface.BOLD), 2, 8, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         if (settingsMode) {
-            title.setSpan(TypefaceSpan(Typeface.create(golosTypeface, Typeface.BOLD)), 11, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            title.setSpan(RelativeSizeSpan(0.75f), 11, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            title.setSpan(
+                TypefaceSpan(Typeface.create(golosTypeface, Typeface.BOLD)),
+                11,
+                title.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            title.setSpan(
+                RelativeSizeSpan(0.75f),
+                11,
+                title.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
         }
         tvHomeAppTitle.text = title
     }
@@ -495,8 +518,10 @@ class MainActivity : AppCompatActivity() {
         params.leftMargin = leftMargin
         params.marginStart = leftMargin
         params.topMargin = (baseTop * heightScale).toInt()
-        params.width = baseWidth?.let { (it * widthScale).toInt().coerceAtLeast(1) } ?: ViewGroup.LayoutParams.WRAP_CONTENT
-        params.height = baseHeight?.let { (it * heightScale).toInt().coerceAtLeast(1) } ?: ViewGroup.LayoutParams.WRAP_CONTENT
+        params.width = baseWidth?.let { (it * widthScale).toInt().coerceAtLeast(1) }
+            ?: ViewGroup.LayoutParams.WRAP_CONTENT
+        params.height = baseHeight?.let { (it * heightScale).toInt().coerceAtLeast(1) }
+            ?: ViewGroup.LayoutParams.WRAP_CONTENT
         view.layoutParams = params
     }
 
@@ -518,7 +543,10 @@ class MainActivity : AppCompatActivity() {
 
         btnLiveReload.setOnClickListener {
             if (System.currentTimeMillis() >= suppressReloadOverlayUntilMs) {
-                showReloadingStatus(title = "Выполняется обновление трансляции! Ожидайте...", subtitle = "")
+                showReloadingStatus(
+                    title = "Выполняется обновление трансляции! Ожидайте...",
+                    subtitle = ""
+                )
             }
             playChannel(forcePlay = true)
             handler.postDelayed({
@@ -531,6 +559,7 @@ class MainActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {
                 timelineUserSeeking = true
             }
+
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 val progress = seekBar?.progress ?: 0
                 if (isArchivePlayback) {
@@ -539,9 +568,11 @@ class MainActivity : AppCompatActivity() {
                     seekArchiveTo(target)
                 } else {
                     val ch = channels.getOrNull(currentChannelIndex)
-                    val cur = ch?.let { getProgramsForDisplay(it).find { pr -> System.currentTimeMillis() in pr.start until pr.stop } }
+                    val cur =
+                        ch?.let { getProgramsForDisplay(it).find { pr -> System.currentTimeMillis() in pr.start until pr.stop } }
                     if (ch != null && cur != null && isArchiveAvailable(ch, cur)) {
-                        val target = cur.start + ((cur.stop - cur.start) * (progress / 1000f)).toLong()
+                        val target =
+                            cur.start + ((cur.stop - cur.start) * (progress / 1000f)).toLong()
                         playArchiveProgram(ch, cur)
                         handler.postDelayed({ seekArchiveTo(target) }, 450L)
                     }
@@ -570,7 +601,8 @@ class MainActivity : AppCompatActivity() {
         btnLock.setOnClickListener {
             isLocked = !isLocked
             btnLock.setImageResource(if (isLocked) R.drawable.ic_lock_closed else R.drawable.ic_lock_open)
-            tvEpg.text = if (isLocked) "Управление свайпами заблокировано." else "Управление свайпами разблокировано."
+            tvEpg.text =
+                if (isLocked) "Управление свайпами заблокировано." else "Управление свайпами разблокировано."
             handler.removeCallbacks(restoreEpgRunnable)
             handler.postDelayed(restoreEpgRunnable, 2000)
             showUI()
@@ -595,7 +627,8 @@ class MainActivity : AppCompatActivity() {
 
                 if (abs(dy) > abs(dx)) {
                     if (channels.isNotEmpty()) {
-                        currentChannelIndex = (currentChannelIndex + if (dy < 0) 1 else -1 + channels.size) % channels.size
+                        currentChannelIndex =
+                            (currentChannelIndex + if (dy < 0) 1 else -1 + channels.size) % channels.size
                         playChannel()
                     }
                     return true
@@ -636,7 +669,6 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-
     private fun showThirdPartyTilesOnHome(thirdParty: List<PlaylistProfile>) {
         showStartPage()
         tvHomeStartTitle.visibility = View.GONE
@@ -647,7 +679,15 @@ class MainActivity : AppCompatActivity() {
         tvHomeCategoryBack.visibility = View.VISIBLE
         tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
-        val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6), findViewById(R.id.tvTile7))
+        val tiles = listOf<TextView>(
+            findViewById(R.id.tvTile1),
+            findViewById(R.id.tvTile2),
+            findViewById(R.id.tvTile3),
+            findViewById(R.id.tvTile4),
+            findViewById(R.id.tvTile5),
+            findViewById(R.id.tvTile6),
+            findViewById(R.id.tvTile7)
+        )
         val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }.take(7)
         tiles.forEachIndexed { i, tv ->
             val p = list.getOrNull(i)
@@ -675,20 +715,68 @@ class MainActivity : AppCompatActivity() {
         homePlaylistTilesPanel.visibility = View.VISIBLE
         applyHomeAppTitleStyle(settingsMode = false)
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
-        val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6), findViewById(R.id.tvTile7))
+        val tiles = listOf<TextView>(
+            findViewById(R.id.tvTile1),
+            findViewById(R.id.tvTile2),
+            findViewById(R.id.tvTile3),
+            findViewById(R.id.tvTile4),
+            findViewById(R.id.tvTile5),
+            findViewById(R.id.tvTile6),
+            findViewById(R.id.tvTile7)
+        )
         val token = (prefs.getString(PREF_USER_TOKEN, "") ?: "").trim()
-        val thirdParty = getThirdPartyPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
+        val thirdParty =
+            getThirdPartyPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
         val profiles = if (token.isNotBlank()) {
             val base = listOf(
                 PlaylistProfile("Избранные", "url", "https://o.avff.ru/my/$token.m3u", true),
-                PlaylistProfile("Wink", "url", "https://o.avff.ru/list/wink.m3u8?token=$token", true),
-                PlaylistProfile("iLook", "url", "https://o.avff.ru/list/ilook.m3u8?token=$token", true),
-                PlaylistProfile("Сервис В", "url", "https://o.avff.ru/list/servicev.m3u8?token=$token", true),
-                PlaylistProfile("Lime TV", "url", "https://o.avff.ru/list/limetv.m3u8?token=$token", true),
-                PlaylistProfile("Only4", "url", "https://o.avff.ru/list/only4.m3u8?token=$token", true)
+                PlaylistProfile(
+                    "Wink",
+                    "url",
+                    "https://o.avff.ru/list/wink.m3u8?token=$token",
+                    true
+                ),
+                PlaylistProfile(
+                    "iLook",
+                    "url",
+                    "https://o.avff.ru/list/ilook.m3u8?token=$token",
+                    true
+                ),
+                PlaylistProfile(
+                    "Сервис В",
+                    "url",
+                    "https://o.avff.ru/list/servicev.m3u8?token=$token",
+                    true
+                ),
+                PlaylistProfile(
+                    "Lime TV",
+                    "url",
+                    "https://o.avff.ru/list/limetv.m3u8?token=$token",
+                    true
+                ),
+                PlaylistProfile(
+                    "Only4",
+                    "url",
+                    "https://o.avff.ru/list/only4.m3u8?token=$token",
+                    true
+                )
             )
-            if (thirdParty.isNotEmpty()) base + listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else base
-        } else if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
+            if (thirdParty.isNotEmpty()) base + listOf(
+                PlaylistProfile(
+                    "Плейлисты",
+                    "group",
+                    "third_party",
+                    true
+                )
+            ) else base
+        } else if (thirdParty.isNotEmpty()) listOf(
+            PlaylistProfile(
+                "Плейлисты",
+                "group",
+                "third_party",
+                true
+            )
+        ) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
         val shownProfiles = profiles.take(7)
         if (token.isNotBlank()) savePlaylistProfiles((profiles.filter { it.type != "group" } + thirdParty).distinctBy { it.name })
         tiles.forEachIndexed { i, tv ->
@@ -704,7 +792,10 @@ class MainActivity : AppCompatActivity() {
                     if (p.type == "group" && p.value == "third_party") {
                         showThirdPartyTilesOnHome(thirdParty)
                     } else {
-                        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории (${p.name})")
+                        applyHomeAppTitleStyle(
+                            settingsMode = true,
+                            settingsTitle = "Категории (${p.name})"
+                        )
                         setSelectedPlaylistName(p.name)
                         homePlaylistTilesPanel.visibility = View.GONE
                         hideStartPage()
@@ -808,9 +899,10 @@ class MainActivity : AppCompatActivity() {
             options.map { "$it минут" }
         )
 
-        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
-            .setView(view)
-            .create()
+        val dialog =
+            AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
+                .setView(view)
+                .create()
 
         btnApply.setOnClickListener {
             val idx = spinner.selectedItemPosition.coerceIn(options.indices)
@@ -861,9 +953,10 @@ class MainActivity : AppCompatActivity() {
             visibility = View.VISIBLE
         }
 
-        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
-            .setView(view)
-            .create()
+        val dialog =
+            AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
+                .setView(view)
+                .create()
 
         channelListDialog = dialog
 
@@ -900,7 +993,10 @@ class MainActivity : AppCompatActivity() {
                 holder.tvEpgItem.text = cur?.title ?: "Нет программы"
                 holder.tvEpgItem.isSelected = true
 
-                loadLogoWithGlide(channel.logoFromEpg ?: channel.logoFromPlaylist, holder.ivLogoItem)
+                loadLogoWithGlide(
+                    channel.logoFromEpg ?: channel.logoFromPlaylist,
+                    holder.ivLogoItem
+                )
 
                 val startChannel = View.OnClickListener {
                     currentChannelIndex = position
@@ -934,7 +1030,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun showCurrentChannelSchedule() {
         val ch = channels.getOrNull(currentChannelIndex) ?: return
-        val programs = getProgramsForDisplay(ch).distinctBy { Triple(it.title.trim(), it.start, it.stop) }.sortedBy { it.start }
+        val programs =
+            getProgramsForDisplay(ch).distinctBy { Triple(it.title.trim(), it.start, it.stop) }
+                .sortedBy { it.start }
 
         val byDate = programs.groupBy {
             SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(it.start))
@@ -961,13 +1059,18 @@ class MainActivity : AppCompatActivity() {
             val now = System.currentTimeMillis()
             lvSchedule.adapter = object : ArrayAdapter<Program>(this, 0, items) {
                 override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                    val row = convertView ?: layoutInflater.inflate(R.layout.item_schedule_program, parent, false)
+                    val row = convertView ?: layoutInflater.inflate(
+                        R.layout.item_schedule_program,
+                        parent,
+                        false
+                    )
                     val item = getItem(position) ?: return row
                     val tvTime = row.findViewById<TextView>(R.id.tvProgramTime)
                     val tvTitle = row.findViewById<TextView>(R.id.tvProgramTitle)
                     val tvBadge = row.findViewById<TextView>(R.id.tvNowOnAirBadge)
                     val tvArchiveBadge = row.findViewById<TextView>(R.id.tvArchiveBadge)
-                    tvTime.text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(item.start))
+                    tvTime.text =
+                        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(item.start))
                     tvTitle.text = item.title
                     val isNow = now in item.start until item.stop
                     val archiveAvailable = isArchiveAvailable(ch, item)
@@ -976,7 +1079,11 @@ class MainActivity : AppCompatActivity() {
                     row.alpha = if (isNow) 1f else 0.95f
                     row.setOnClickListener {
                         if (!archiveAvailable) {
-                            Toast.makeText(this@MainActivity, "Архив недоступен для этой передачи", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Архив недоступен для этой передачи",
+                                Toast.LENGTH_SHORT
+                            ).show()
                             return@setOnClickListener
                         }
                         playArchiveProgram(ch, item)
@@ -987,7 +1094,13 @@ class MainActivity : AppCompatActivity() {
             }
 
             val currentIdx = items.indexOfFirst { now in it.start until it.stop }
-            if (currentIdx >= 0) lvSchedule.post { lvSchedule.setSelection(currentIdx.coerceAtLeast(0)) }
+            if (currentIdx >= 0) lvSchedule.post {
+                lvSchedule.setSelection(
+                    currentIdx.coerceAtLeast(
+                        0
+                    )
+                )
+            }
         }
 
         dateKeys.forEach { dateKey ->
@@ -1021,7 +1134,10 @@ class MainActivity : AppCompatActivity() {
             dateContainer.post {
                 val selectedChip = dateContainer.getChildAt(selectedIdx)
                 if (selectedChip != null) {
-                    val scrollX = (selectedChip.left - (hsvDates.width - selectedChip.width) / 2).coerceAtLeast(0)
+                    val scrollX =
+                        (selectedChip.left - (hsvDates.width - selectedChip.width) / 2).coerceAtLeast(
+                            0
+                        )
                     hsvDates.smoothScrollTo(scrollX, 0)
                 }
             }
@@ -1030,9 +1146,10 @@ class MainActivity : AppCompatActivity() {
         renderSchedule(selectedDate)
 
         scheduleDialog?.dismiss()
-        scheduleDialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
-            .setView(view)
-            .create()
+        scheduleDialog =
+            AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
+                .setView(view)
+                .create()
 
         scheduleDialog?.show()
         val dm = resources.displayMetrics
@@ -1051,7 +1168,7 @@ class MainActivity : AppCompatActivity() {
             playerSettingsOverlay.visibility = View.GONE
             hideUI()
             timerWarningPanel.visibility = View.GONE
-        prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, 0).apply()
+            prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, 0).apply()
             homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             tvHomeAppTitle.visibility = View.GONE
             tvHomeSystemTime.visibility = View.GONE
@@ -1066,8 +1183,10 @@ class MainActivity : AppCompatActivity() {
                 lp.marginStart = dpToPx(19)
                 lp.marginEnd = dpToPx(19)
                 lp.bottomMargin = dpToPx(20)
-                lp.width = (resources.displayMetrics.widthPixels - dpToPx(38)).coerceAtMost(dpToPx(1242))
-                lp.height = (resources.displayMetrics.heightPixels - dpToPx(40)).coerceAtMost(dpToPx(680))
+                lp.width =
+                    (resources.displayMetrics.widthPixels - dpToPx(38)).coerceAtMost(dpToPx(1242))
+                lp.height =
+                    (resources.displayMetrics.heightPixels - dpToPx(40)).coerceAtMost(dpToPx(680))
                 homeSettingsScreen.layoutParams = lp
             }
             homePanel.setBackgroundColor(Color.TRANSPARENT)
@@ -1090,7 +1209,7 @@ class MainActivity : AppCompatActivity() {
             }
             homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             homeSettingsScreen.setBackgroundColor(Color.TRANSPARENT)
-            homeSettingsScreen.setPadding(0,0,0,0)
+            homeSettingsScreen.setPadding(0, 0, 0, 0)
             restoreDefaultSettingsRows()
         }
         homePanel.visibility = View.VISIBLE
@@ -1113,7 +1232,15 @@ class MainActivity : AppCompatActivity() {
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
         val btnExportDebugLog = findViewById<View>(R.id.btnExportDebugLog)
-        val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings, btnExportDebugLog)
+        val settingsRows = listOf(
+            btnPlaylistSettings,
+            btnEpgSelect,
+            sleepRow,
+            findViewById<View>(R.id.itemStartMode),
+            btnAdvancedSettings,
+            btnUserSettings,
+            btnExportDebugLog
+        )
 
         tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
         tvSettingsBack.translationY = -10f
@@ -1135,23 +1262,28 @@ class MainActivity : AppCompatActivity() {
         btnPlaylistSettings.setOnClickListener { openPlaylistSettingsScreen() }
         btnEpgSelect.setOnClickListener { openEpgSettingsScreen() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
-        var sleepIndex = sleepOptions.indexOf(prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)).takeIf { it >= 0 } ?: 0
+        var sleepIndex =
+            sleepOptions.indexOf(prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)).takeIf { it >= 0 } ?: 0
         var pendingSleepApply: Runnable? = null
         var sleepTitleResetRunnable: Runnable? = null
         fun updateSleepValueText() {
             val selected = sleepOptions[sleepIndex]
             tvSleepTimerValue.text = if (selected == 0) "выключено" else "$selected мин"
         }
+
         fun refreshSleepTitle() {
             val selected = prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)
-            tvSleepTimerTitle.text = if (selected > 0) "Таймер запущен на $selected минут" else "Таймер сна"
+            tvSleepTimerTitle.text =
+                if (selected > 0) "Таймер запущен на $selected минут" else "Таймер сна"
         }
+
         fun showSleepTitleTemporary(message: String) {
             sleepTitleResetRunnable?.let { handler.removeCallbacks(it) }
             tvSleepTimerTitle.text = message
             sleepTitleResetRunnable = Runnable { refreshSleepTitle() }
             handler.postDelayed(sleepTitleResetRunnable!!, 5000L)
         }
+
         fun applySleepSelection() {
             val selected = sleepOptions[sleepIndex]
             prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, selected).apply()
@@ -1165,18 +1297,20 @@ class MainActivity : AppCompatActivity() {
                 showSleepTitleTemporary("Таймер запущен на $selected минут")
             }
         }
+
         fun scheduleSleepApply() {
             pendingSleepApply?.let { handler.removeCallbacks(it) }
             pendingSleepApply = Runnable { applySleepSelection() }
             handler.postDelayed(pendingSleepApply!!, 7000L)
         }
+
         fun changeSleep() {
             sleepIndex = (sleepIndex + 1) % sleepOptions.size
             updateSleepValueText()
             scheduleSleepApply()
         }
         updateSleepValueText()
-            refreshSleepTitle()
+        refreshSleepTitle()
         btnSleepUp.setOnClickListener { changeSleep() }
         btnSleepDown.setOnClickListener { changeSleep() }
         sleepRow.isFocusable = true
@@ -1190,6 +1324,7 @@ class MainActivity : AppCompatActivity() {
                     changeSleep()
                     true
                 }
+
                 else -> false
             }
         }
@@ -1202,7 +1337,8 @@ class MainActivity : AppCompatActivity() {
             tvSettingsBack.setOnClickListener {
                 userSettingsPanel.visibility = View.GONE
                 settingsRows.forEach { it.visibility = View.VISIBLE }
-                tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
+                tvSettingsBack.visibility =
+                    if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
                 tvSettingsBack.translationY = -10f
                 tvSettingsBack.setOnClickListener { hideSettingsScreen() }
                 applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
@@ -1229,9 +1365,21 @@ class MainActivity : AppCompatActivity() {
         tvSettingsBack.visibility = View.VISIBLE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки плейлистов")
 
-        val names = listOf<EditText>(findViewById(R.id.etPlaylistName1), findViewById(R.id.etPlaylistName2), findViewById(R.id.etPlaylistName3))
-        val urls = listOf<EditText>(findViewById(R.id.etPlaylistUrl1), findViewById(R.id.etPlaylistUrl2), findViewById(R.id.etPlaylistUrl3))
-        val toggles = listOf<ImageView>(findViewById(R.id.ivPlaylistToggle1), findViewById(R.id.ivPlaylistToggle2), findViewById(R.id.ivPlaylistToggle3))
+        val names = listOf<EditText>(
+            findViewById(R.id.etPlaylistName1),
+            findViewById(R.id.etPlaylistName2),
+            findViewById(R.id.etPlaylistName3)
+        )
+        val urls = listOf<EditText>(
+            findViewById(R.id.etPlaylistUrl1),
+            findViewById(R.id.etPlaylistUrl2),
+            findViewById(R.id.etPlaylistUrl3)
+        )
+        val toggles = listOf<ImageView>(
+            findViewById(R.id.ivPlaylistToggle1),
+            findViewById(R.id.ivPlaylistToggle2),
+            findViewById(R.id.ivPlaylistToggle3)
+        )
         val states = MutableList(3) { false }
 
         fun bindData() {
@@ -1244,15 +1392,33 @@ class MainActivity : AppCompatActivity() {
                 toggles[i].setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft)
             }
         }
-        toggles.forEachIndexed { i, iv -> iv.setOnClickListener { states[i] = !states[i]; iv.setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft) } }
+        toggles.forEachIndexed { i, iv ->
+            iv.setOnClickListener {
+                states[i] =
+                    !states[i]; iv.setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft)
+            }
+        }
 
         findViewById<View>(R.id.btnSavePlaylistSettings).setOnClickListener {
-            val items = (0..2).map { i -> PlaylistProfile(names[i].text.toString().trim(), "url", urls[i].text.toString().trim(), states[i]) }
+            val items = (0..2).map { i ->
+                PlaylistProfile(
+                    names[i].text.toString().trim(),
+                    "url",
+                    urls[i].text.toString().trim(),
+                    states[i]
+                )
+            }
                 .filter { it.name.isNotBlank() && it.value.isNotBlank() }
             saveThirdPartyPlaylistProfiles(items)
             Toast.makeText(this, "Сторонние плейлисты сохранены", Toast.LENGTH_SHORT).show()
         }
-        findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener { loadPlaylist(forceReload = true, showErrors = true, autoPlay = false) }
+        findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener {
+            loadPlaylist(
+                forceReload = true,
+                showErrors = true,
+                autoPlay = false
+            )
+        }
 
         tvSettingsBack.setOnClickListener {
             playlistPanel.visibility = View.GONE
@@ -1270,7 +1436,14 @@ class MainActivity : AppCompatActivity() {
         val epgPanel = findViewById<View>(R.id.epgSettingsPanel)
         val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
         val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
-        val settingsRows = listOf(findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect), findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode), findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings))
+        val settingsRows = listOf(
+            findViewById<View>(R.id.btnPlaylistSettings),
+            findViewById<View>(R.id.btnEpgSelect),
+            findViewById<View>(R.id.btnSleepTimerSettings),
+            findViewById<View>(R.id.itemStartMode),
+            findViewById<View>(R.id.btnAdvancedSettings),
+            findViewById<View>(R.id.btnUserSettings)
+        )
         settingsRows.forEach { it.visibility = View.GONE }
         playlistPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
@@ -1278,22 +1451,39 @@ class MainActivity : AppCompatActivity() {
         tvSettingsBack.visibility = View.VISIBLE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки EPG")
 
-        val urls = listOf<EditText>(findViewById(R.id.etEpgUrl1), findViewById(R.id.etEpgUrl2), findViewById(R.id.etEpgUrl3))
-        val toggles = listOf<ImageView>(findViewById(R.id.ivEpgToggle1), findViewById(R.id.ivEpgToggle2), findViewById(R.id.ivEpgToggle3))
+        val urls = listOf<EditText>(
+            findViewById(R.id.etEpgUrl1),
+            findViewById(R.id.etEpgUrl2),
+            findViewById(R.id.etEpgUrl3)
+        )
+        val toggles = listOf<ImageView>(
+            findViewById(R.id.ivEpgToggle1),
+            findViewById(R.id.ivEpgToggle2),
+            findViewById(R.id.ivEpgToggle3)
+        )
         val states = MutableList(3) { false }
         val tbInterval = findViewById<ToggleButton>(R.id.tbEpgRefreshInterval)
-        val intervals = listOf(1,3,5,7)
-        var intervalIndex = intervals.indexOf(prefs.getInt(PREF_EPG_REFRESH_INTERVAL_DAYS, 1)).takeIf { it >= 0 } ?: 0
+        val intervals = listOf(1, 3, 5, 7)
+        var intervalIndex =
+            intervals.indexOf(prefs.getInt(PREF_EPG_REFRESH_INTERVAL_DAYS, 1)).takeIf { it >= 0 }
+                ?: 0
         var pendingApply: Runnable? = null
 
-        val current = getCustomEpgSources().ifEmpty { extractEpgSourcesFromPlaylist(currentPlaylistText) }.take(3)
+        val current =
+            getCustomEpgSources().ifEmpty { extractEpgSourcesFromPlaylist(currentPlaylistText) }
+                .take(3)
         val selected = getSelectedEpgSources()
         urls.forEachIndexed { i, et ->
             val value = current.getOrNull(i) ?: ""
             et.setText(value)
             states[i] = value.isNotBlank() && (selected.isEmpty() || selected.contains(value))
         }
-        toggles.forEachIndexed { i, v -> v.setOnClickListener { states[i] = !states[i]; v.setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft) } }
+        toggles.forEachIndexed { i, v ->
+            v.setOnClickListener {
+                states[i] =
+                    !states[i]; v.setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft)
+            }
+        }
 
         fun updateIntervalText() {
             val d = intervals[intervalIndex]
@@ -1306,9 +1496,13 @@ class MainActivity : AppCompatActivity() {
             tbInterval.textOff = tbInterval.textOn
             tbInterval.text = tbInterval.textOn
         }
+
         fun scheduleIntervalSave() {
             pendingApply?.let { handler.removeCallbacks(it) }
-            pendingApply = Runnable { prefs.edit().putInt(PREF_EPG_REFRESH_INTERVAL_DAYS, intervals[intervalIndex]).apply() }
+            pendingApply = Runnable {
+                prefs.edit().putInt(PREF_EPG_REFRESH_INTERVAL_DAYS, intervals[intervalIndex])
+                    .apply()
+            }
             handler.postDelayed(pendingApply!!, 7000L)
         }
         updateIntervalText()
@@ -1319,7 +1513,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<View>(R.id.btnSaveEpgSettings).setOnClickListener {
-            val links = urls.mapIndexedNotNull { i, et -> et.text.toString().trim().takeIf { it.isNotBlank() && states[i] } }.distinct()
+            val links = urls.mapIndexedNotNull { i, et ->
+                et.text.toString().trim().takeIf { it.isNotBlank() && states[i] }
+            }.distinct()
             saveCustomEpgSources(links)
             selectedEpgSources = links.toMutableSet()
             saveSelectedEpgSources(selectedEpgSources)
@@ -1346,10 +1542,33 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun getThirdPartyPlaylistProfiles(): List<PlaylistProfile> = getPlaylistProfiles().filter { it.name !in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные", "Пользователь", "По умолчанию") }
+    private fun getThirdPartyPlaylistProfiles(): List<PlaylistProfile> =
+        getPlaylistProfiles().filter {
+            it.name !in setOf(
+                "Wink",
+                "iLook",
+                "Сервис В",
+                "Lime TV",
+                "Only4",
+                "Избранные",
+                "Пользователь",
+                "По умолчанию"
+            )
+        }
 
     private fun saveThirdPartyPlaylistProfiles(thirdParty: List<PlaylistProfile>) {
-        val systemProfiles = getPlaylistProfiles().filter { it.name in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные", "Пользователь", "По умолчанию") }
+        val systemProfiles = getPlaylistProfiles().filter {
+            it.name in setOf(
+                "Wink",
+                "iLook",
+                "Сервис В",
+                "Lime TV",
+                "Only4",
+                "Избранные",
+                "Пользователь",
+                "По умолчанию"
+            )
+        }
         savePlaylistProfiles(systemProfiles + thirdParty.take(3))
     }
 
@@ -1358,13 +1577,47 @@ class MainActivity : AppCompatActivity() {
         val cleanToken = token.trim()
         if (cleanToken.isBlank()) return
         val existing = getPlaylistProfiles().toMutableList()
-        val thirdParty = existing.filter { it.name !in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные") }
+        val thirdParty = existing.filter {
+            it.name !in setOf(
+                "Wink",
+                "iLook",
+                "Сервис В",
+                "Lime TV",
+                "Only4",
+                "Избранные"
+            )
+        }
         val portal = listOf(
-            PlaylistProfile("Wink", "url", "https://o.avff.ru/list/wink.m3u8?token=$cleanToken", true),
-            PlaylistProfile("iLook", "url", "https://o.avff.ru/list/ilook.m3u8?token=$cleanToken", true),
-            PlaylistProfile("Сервис В", "url", "https://o.avff.ru/list/servicev.m3u8?token=$cleanToken", true),
-            PlaylistProfile("Lime TV", "url", "https://o.avff.ru/list/limetv.m3u8?token=$cleanToken", true),
-            PlaylistProfile("Only4", "url", "https://o.avff.ru/list/only4.m3u8?token=$cleanToken", true),
+            PlaylistProfile(
+                "Wink",
+                "url",
+                "https://o.avff.ru/list/wink.m3u8?token=$cleanToken",
+                true
+            ),
+            PlaylistProfile(
+                "iLook",
+                "url",
+                "https://o.avff.ru/list/ilook.m3u8?token=$cleanToken",
+                true
+            ),
+            PlaylistProfile(
+                "Сервис В",
+                "url",
+                "https://o.avff.ru/list/servicev.m3u8?token=$cleanToken",
+                true
+            ),
+            PlaylistProfile(
+                "Lime TV",
+                "url",
+                "https://o.avff.ru/list/limetv.m3u8?token=$cleanToken",
+                true
+            ),
+            PlaylistProfile(
+                "Only4",
+                "url",
+                "https://o.avff.ru/list/only4.m3u8?token=$cleanToken",
+                true
+            ),
             PlaylistProfile("Избранные", "url", "https://o.avff.ru/my/$cleanToken.m3u", true)
         )
         savePlaylistProfiles((portal + thirdParty).distinctBy { it.name })
@@ -1396,9 +1649,16 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-
     private fun restoreDefaultSettingsRows() {
-        val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings, R.id.btnExportDebugLog)
+        val rowIds = intArrayOf(
+            R.id.btnPlaylistSettings,
+            R.id.btnEpgSelect,
+            R.id.btnSleepTimerSettings,
+            R.id.itemStartMode,
+            R.id.btnAdvancedSettings,
+            R.id.btnUserSettings,
+            R.id.btnExportDebugLog
+        )
         rowIds.forEachIndexed { i, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
@@ -1426,7 +1686,8 @@ class MainActivity : AppCompatActivity() {
         val containerHeight = (homeSettingsScreen.layoutParams?.height ?: 0).takeIf { it > 0 }
             ?: (resources.displayMetrics.heightPixels - dpToPx(40))
         val contentHeight = rowIds.size * rowHeight + (rowIds.size - 1) * rowMargin
-        val centeredTopMargin = (((containerHeight - contentHeight) / 2) - dpToPx(13)).coerceAtLeast(0)
+        val centeredTopMargin =
+            (((containerHeight - contentHeight) / 2) - dpToPx(13)).coerceAtLeast(0)
 
         (backLabel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.marginStart = dpToPx(12)
@@ -1522,9 +1783,10 @@ class MainActivity : AppCompatActivity() {
         val cachedName = prefs.getString(PREF_USER_NAME, "") ?: ""
         if (cachedName.isNotBlank()) tvStatus.text = "Вы авторизованы как $cachedName"
 
-        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
-            .setView(view)
-            .create()
+        val dialog =
+            AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
+                .setView(view)
+                .create()
 
         fun applyAuthorizedProfile(name: String, token: String, playlist: String) {
             prefs.edit()
@@ -1559,7 +1821,10 @@ class MainActivity : AppCompatActivity() {
             btnApply.isEnabled = false
             thread {
                 try {
-                    val url = "https://o.avff.ru/api.php?module=app&login=${Uri.encode(login)}&token=${Uri.encode(token)}"
+                    val url =
+                        "https://o.avff.ru/api.php?module=app&login=${Uri.encode(login)}&token=${
+                            Uri.encode(token)
+                        }"
                     val responseText = URL(url).readText()
                     val json = JSONObject(responseText)
                     handler.post {
@@ -1623,8 +1888,18 @@ class MainActivity : AppCompatActivity() {
         tvAuthorizedPlaylistValue.text = prefs.getString(PREF_USER_PLAYLIST, "") ?: ""
         etToken.isEnabled = true
         btnChangeUser.setOnClickListener {
-            prefs.edit().remove(PREF_USER_NAME).remove(PREF_USER_TOKEN).remove(PREF_USER_LOGIN).remove(PREF_USER_PLAYLIST).apply()
-            val profiles = getPlaylistProfiles().filterNot { it.name in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные") }
+            prefs.edit().remove(PREF_USER_NAME).remove(PREF_USER_TOKEN).remove(PREF_USER_LOGIN)
+                .remove(PREF_USER_PLAYLIST).apply()
+            val profiles = getPlaylistProfiles().filterNot {
+                it.name in setOf(
+                    "Wink",
+                    "iLook",
+                    "Сервис В",
+                    "Lime TV",
+                    "Only4",
+                    "Избранные"
+                )
+            }
             savePlaylistProfiles(profiles)
             setSelectedPlaylistName(profiles.firstOrNull()?.name ?: "")
             currentPlaylistText = ""
@@ -1647,13 +1922,17 @@ class MainActivity : AppCompatActivity() {
             val login = etLogin.text.toString().trim()
             val token = etToken.text.toString().trim()
             if (login.isBlank() || token.isBlank()) {
-                AlertDialog.Builder(this).setMessage("Необходимо передать login и token.").setPositiveButton("ОК", null).show()
+                AlertDialog.Builder(this).setMessage("Необходимо передать login и token.")
+                    .setPositiveButton("ОК", null).show()
                 return@setOnClickListener
             }
             btnAuth.isEnabled = false
             thread {
                 runCatching {
-                    val url = "https://o.avff.ru/api.php?module=app&login=${Uri.encode(login)}&token=${Uri.encode(token)}"
+                    val url =
+                        "https://o.avff.ru/api.php?module=app&login=${Uri.encode(login)}&token=${
+                            Uri.encode(token)
+                        }"
                     JSONObject(URL(url).readText())
                 }.onSuccess { json ->
                     handler.post {
@@ -1661,7 +1940,9 @@ class MainActivity : AppCompatActivity() {
                         if (json.optString("valid") == "OK") {
                             val name = json.optString("name", login)
                             val playlist = json.optString("playlist", "")
-                            prefs.edit().putString(PREF_USER_LOGIN, login).putString(PREF_USER_TOKEN, token).putString(PREF_USER_NAME, name).putString(PREF_USER_PLAYLIST, playlist).apply()
+                            prefs.edit().putString(PREF_USER_LOGIN, login)
+                                .putString(PREF_USER_TOKEN, token).putString(PREF_USER_NAME, name)
+                                .putString(PREF_USER_PLAYLIST, playlist).apply()
                             val profiles = getPlaylistProfiles().toMutableList()
                             val idx = profiles.indexOfFirst { it.name == "Пользователь" }
                             val p = PlaylistProfile("Пользователь", "url", playlist, true)
@@ -1685,14 +1966,18 @@ class MainActivity : AppCompatActivity() {
                         btnAuth.isEnabled = true
                         val isNetworkError = e is UnknownHostException ||
                                 e is SocketTimeoutException ||
-                                e.message?.contains("Unable to resolve host", ignoreCase = true) == true ||
+                                e.message?.contains(
+                                    "Unable to resolve host",
+                                    ignoreCase = true
+                                ) == true ||
                                 e.message?.contains("timeout", ignoreCase = true) == true
                         val message = if (isNetworkError) {
                             "Ошибка сети. Проверьте подключение и повторите попытку."
                         } else {
                             "Неверный login или token."
                         }
-                        AlertDialog.Builder(this).setMessage(message).setPositiveButton("ОК", null).show()
+                        AlertDialog.Builder(this).setMessage(message).setPositiveButton("ОК", null)
+                            .show()
                     }
                 }
             }
@@ -1713,11 +1998,13 @@ class MainActivity : AppCompatActivity() {
         val btnClose = view.findViewById<TextView>(R.id.btnClosePlaylistDialog)
 
         var profiles = getPlaylistProfiles().toMutableList()
-        var selectedIndex = profiles.indexOfFirst { it.name == getSelectedPlaylistName() }.takeIf { it >= 0 } ?: 0
+        var selectedIndex =
+            profiles.indexOfFirst { it.name == getSelectedPlaylistName() }.takeIf { it >= 0 } ?: 0
 
         fun refreshSpinner() {
             val names = profiles.map { it.name }
-            spPlaylist.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, names)
+            spPlaylist.adapter =
+                ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, names)
             if (selectedIndex in profiles.indices) spPlaylist.setSelection(selectedIndex)
         }
 
@@ -1760,8 +2047,14 @@ class MainActivity : AppCompatActivity() {
         ivPlaylistEnabled.setOnClickListener { toggleCurrentProfileState() }
         ivSourceEnabled.setOnClickListener { toggleCurrentProfileState() }
 
-        spPlaylist.setOnItemSelectedListener(object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+        spPlaylist.setOnItemSelectedListener(object :
+            android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: android.widget.AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
                 selectedIndex = position
                 fillFields(position)
                 if (position in profiles.indices) {
@@ -1772,9 +2065,10 @@ class MainActivity : AppCompatActivity() {
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
         })
 
-        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
-            .setView(view)
-            .create()
+        val dialog =
+            AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
+                .setView(view)
+                .create()
 
         btnAddOrUpdate.setOnClickListener {
             val name = etPlaylistName.text.toString().trim()
@@ -1822,12 +2116,14 @@ class MainActivity : AppCompatActivity() {
                 indexProfile.name.equals(finalName, true)
             }.takeIf { it >= 0 && it != selectedIndex } ?: -1
             if (duplicate >= 0) {
-                Toast.makeText(this, "Профиль с таким названием уже существует", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Профиль с таким названием уже существует", Toast.LENGTH_SHORT)
+                    .show()
                 return@setOnClickListener
             }
 
             profiles[selectedIndex] = selected.copy(name = finalName, type = type, value = value)
-            selectedIndex = profiles.indexOfFirst { it.name == finalName }.takeIf { it >= 0 } ?: selectedIndex
+            selectedIndex =
+                profiles.indexOfFirst { it.name == finalName }.takeIf { it >= 0 } ?: selectedIndex
             savePlaylistProfiles(profiles)
             setSelectedPlaylistName(finalName)
             refreshSpinner()
@@ -1838,7 +2134,8 @@ class MainActivity : AppCompatActivity() {
 
         btnDelete.setOnClickListener {
             if (profiles.size <= 1) {
-                Toast.makeText(this, "Должен остаться хотя бы один профиль", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Должен остаться хотя бы один профиль", Toast.LENGTH_SHORT)
+                    .show()
                 return@setOnClickListener
             }
             if (selectedIndex in profiles.indices) {
@@ -1914,7 +2211,11 @@ class MainActivity : AppCompatActivity() {
                         availableEpgSources = links
                         selectedEpgSources = links.toMutableSet()
                         saveSelectedEpgSources(selectedEpgSources)
-                        Toast.makeText(this@MainActivity, "Ссылки EPG сохранены", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Ссылки EPG сохранены",
+                            Toast.LENGTH_SHORT
+                        ).show()
                         dialogRef?.dismiss()
                         showEpgSelectionDialog()
                     }
@@ -1932,15 +2233,21 @@ class MainActivity : AppCompatActivity() {
                 availableEpgSources = playlistEpgSources
                 selectedEpgSources = availableEpgSources.toMutableSet()
                 saveSelectedEpgSources(selectedEpgSources)
-                Toast.makeText(this@MainActivity, "Настройки EPG восстановлены", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "Настройки EPG восстановлены", Toast.LENGTH_SHORT)
+                    .show()
                 dialogRef?.dismiss()
                 showEpgSelectionDialog()
             }
         }
-        actionsRow.addView(btnEditLinks, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        actionsRow.addView(btnRestoreLinks, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-            marginStart = 10
-        })
+        actionsRow.addView(
+            btnEditLinks,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        actionsRow.addView(
+            btnRestoreLinks,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = 10
+            })
         container.addView(actionsRow)
 
         val rows = mutableMapOf<String, TextView>()
@@ -1971,9 +2278,10 @@ class MainActivity : AppCompatActivity() {
             container.addView(row)
         }
 
-        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
-            .setView(view)
-            .create()
+        val dialog =
+            AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
+                .setView(view)
+                .create()
         dialogRef = dialog
 
         btnApply.setOnClickListener {
@@ -1997,7 +2305,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadPlaylist(forceReload: Boolean = false, showErrors: Boolean = false, autoPlay: Boolean = true) {
+    private fun loadPlaylist(
+        forceReload: Boolean = false,
+        showErrors: Boolean = false,
+        autoPlay: Boolean = true
+    ) {
         thread {
             try {
                 val playlistUrl = resolveCurrentPlaylistUrl()
@@ -2035,7 +2347,8 @@ class MainActivity : AppCompatActivity() {
                         currentChannelIndex = currentChannelIndex.coerceIn(channels.indices)
                         playChannel(forcePlay = true)
                     } else {
-                        tvEpg.text = if (channels.isEmpty()) "Каналы не найдены в плейлисте" else "Выберите раздел на стартовой странице"
+                        tvEpg.text =
+                            if (channels.isEmpty()) "Каналы не найдены в плейлисте" else "Выберите раздел на стартовой странице"
                     }
 
                     if (forceReload) {
@@ -2063,20 +2376,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun fetchEpgSources(urls: List<String>, statusViews: Map<String, TextView> = emptyMap()) {
+    private fun fetchEpgSources(
+        urls: List<String>,
+        statusViews: Map<String, TextView> = emptyMap()
+    ) {
         if (epgFetchInProgress || urls.isEmpty()) return
         epgFetchInProgress = true
         thread {
             fun humanReadableEpgError(t: Throwable): String {
                 return when {
                     t is UnknownHostException -> "Нет доступа к сети или DNS недоступен"
-                    t.message?.contains("Unable to resolve host", ignoreCase = true) == true -> "Не удаётся определить адрес хоста"
-                    t.message?.contains("timeout", ignoreCase = true) == true -> "Превышено время ожидания сети"
+                    t.message?.contains(
+                        "Unable to resolve host",
+                        ignoreCase = true
+                    ) == true -> "Не удаётся определить адрес хоста"
+
+                    t.message?.contains(
+                        "timeout",
+                        ignoreCase = true
+                    ) == true -> "Превышено время ожидания сети"
+
                     t.message?.contains("too large", ignoreCase = true) == true ||
-                            t.message?.contains("safe limit", ignoreCase = true) == true -> "Файл EPG слишком большой"
+                            t.message?.contains(
+                                "safe limit",
+                                ignoreCase = true
+                            ) == true -> "Файл EPG слишком большой"
+
                     else -> t.message?.take(120) ?: t.javaClass.simpleName
                 }
             }
+
             fun applyEpgStatus(source: String, status: String) {
                 epgSourceStatus[source] = status
                 saveEpgStatusCache()
@@ -2105,9 +2434,17 @@ class MainActivity : AppCompatActivity() {
                         Log.w("EPG", "Ошибка обработки EPG кандидата: $candidateUrl", t)
                         lastError = humanReadableEpgError(t)
                         when (t) {
-                            is OutOfMemoryError -> applyEpgStatus(sourceUrl, "Файл EPG слишком большой")
-                            is IOException -> if (t.message?.contains("too large", ignoreCase = true) == true ||
-                                t.message?.contains("safe limit", ignoreCase = true) == true) {
+                            is OutOfMemoryError -> applyEpgStatus(
+                                sourceUrl,
+                                "Файл EPG слишком большой"
+                            )
+
+                            is IOException -> if (t.message?.contains(
+                                    "too large",
+                                    ignoreCase = true
+                                ) == true ||
+                                t.message?.contains("safe limit", ignoreCase = true) == true
+                            ) {
                                 applyEpgStatus(sourceUrl, "Файл EPG слишком большой")
                             }
                         }
@@ -2158,7 +2495,8 @@ class MainActivity : AppCompatActivity() {
 
         conn.inputStream.use { raw ->
             val compressedLimited = SizeLimitedInputStream(raw, MAX_EPG_COMPRESSED_BYTES)
-            val progressCompressed = ProgressInputStream(compressedLimited, compressedTotal, onDownload)
+            val progressCompressed =
+                ProgressInputStream(compressedLimited, compressedTotal, onDownload)
             val buffered = BufferedInputStream(progressCompressed)
             val pushback = PushbackInputStream(buffered, 2)
 
@@ -2256,14 +2594,26 @@ class MainActivity : AppCompatActivity() {
                         "icon" -> {
                             val src = parser.getAttributeValue(null, "src")
                             channels.filter {
-                                it.tvgId.equals(tempId, true) || it.tvgName.equals(tempId, true) || it.name.equals(tempId, true)
+                                it.tvgId.equals(tempId, true) || it.tvgName.equals(
+                                    tempId,
+                                    true
+                                ) || it.name.equals(tempId, true)
                             }.forEach { it.logoFromEpg = src }
                         }
 
                         "programme" -> {
-                            val chId = parser.getAttributeValue(null, "channel")?.lowercase()?.trim() ?: ""
-                            val start = try { sdf.parse(parser.getAttributeValue(null, "start"))?.time ?: 0L } catch (_: Exception) { 0L }
-                            val stop = try { sdf.parse(parser.getAttributeValue(null, "stop"))?.time ?: 0L } catch (_: Exception) { 0L }
+                            val chId =
+                                parser.getAttributeValue(null, "channel")?.lowercase()?.trim() ?: ""
+                            val start = try {
+                                sdf.parse(parser.getAttributeValue(null, "start"))?.time ?: 0L
+                            } catch (_: Exception) {
+                                0L
+                            }
+                            val stop = try {
+                                sdf.parse(parser.getAttributeValue(null, "stop"))?.time ?: 0L
+                            } catch (_: Exception) {
+                                0L
+                            }
                             var title = ""
                             while (!(parser.next() == XmlPullParser.END_TAG && parser.name == "programme")) {
                                 if (parser.eventType == XmlPullParser.START_TAG && parser.name == "title") {
@@ -2298,7 +2648,8 @@ class MainActivity : AppCompatActivity() {
         if (source.isBlank()) return null
         val startUnix = (program.start / 1000L).coerceAtLeast(0L)
         val nowUnix = System.currentTimeMillis() / 1000L
-        val endUnix = (program.stop / 1000L).coerceAtLeast((nowUnix + 6 * 60 * 60).coerceAtLeast(startUnix))
+        val endUnix =
+            (program.stop / 1000L).coerceAtLeast((nowUnix + 6 * 60 * 60).coerceAtLeast(startUnix))
         val duration = (endUnix - startUnix).coerceAtLeast(0L)
         // offset в секундах назад: текущее unix-время минус unix-время начала программы
         val offset = (nowUnix - startUnix).coerceAtLeast(0L)
@@ -2354,7 +2705,10 @@ class MainActivity : AppCompatActivity() {
             archiveStreamStartMs = program.start
             btnPlayPause.setImageResource(R.drawable.ic_pause)
             tvChannelName.text = "${currentChannelIndex + 1}. ${channel.name}"
-            val stamp = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(program.start))
+            val stamp = SimpleDateFormat(
+                "dd.MM.yyyy HH:mm",
+                Locale.getDefault()
+            ).format(Date(program.start))
             tvEpg.text = "Архив от $stamp - ${program.title}"
             showUI()
         }.onFailure { e ->
@@ -2404,7 +2758,10 @@ class MainActivity : AppCompatActivity() {
             showUI()
         }.onFailure { e ->
             Log.e("PLAYER", "Ошибка воспроизведения канала", e)
-            showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, e.message ?: e.javaClass.simpleName)
+            showPlaybackFailureAndReturn(
+                lastRequestedPlaybackUrl,
+                e.message ?: e.javaClass.simpleName
+            )
             showUI()
         }
     }
@@ -2449,15 +2806,44 @@ class MainActivity : AppCompatActivity() {
                 }
                 val code = conn.responseCode
                 val finalUrl = conn.url.toString()
-                val body = (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val body =
+                    (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()
+                        ?.use { it.readText() }.orEmpty()
                 val lines = body.lines()
-                logDebug("PLAYER_HLS", "manifest status=$code finalUrl=$finalUrl contentType=${conn.contentType} headers=${conn.headerFields}")
+                logDebug(
+                    "PLAYER_HLS",
+                    "manifest status=$code finalUrl=$finalUrl contentType=${conn.contentType} headers=${conn.headerFields}"
+                )
                 logDebug("PLAYER_HLS", "manifest head:\n${lines.take(20).joinToString("\n")}")
-                logDebug("PLAYER_HLS", "variantLines=${lines.filter { it.contains("#EXT-X-STREAM-INF") }.take(8)}")
-                logDebug("PLAYER_HLS", "segmentLines=${lines.filter { it.isNotBlank() && !it.startsWith("#") }.take(8)}")
-                logDebug("PLAYER_HLS", "hasMap=${lines.any { it.startsWith("#EXT-X-MAP") }} hasKey=${lines.any { it.startsWith("#EXT-X-KEY") }} targetDuration=${lines.firstOrNull { it.startsWith("#EXT-X-TARGETDURATION") }} mediaSequence=${lines.firstOrNull { it.startsWith("#EXT-X-MEDIA-SEQUENCE") }}")
+                logDebug(
+                    "PLAYER_HLS",
+                    "variantLines=${lines.filter { it.contains("#EXT-X-STREAM-INF") }.take(8)}"
+                )
+                logDebug(
+                    "PLAYER_HLS",
+                    "segmentLines=${
+                        lines.filter { it.isNotBlank() && !it.startsWith("#") }.take(8)
+                    }"
+                )
+                logDebug(
+                    "PLAYER_HLS",
+                    "hasMap=${lines.any { it.startsWith("#EXT-X-MAP") }} hasKey=${
+                        lines.any {
+                            it.startsWith("#EXT-X-KEY")
+                        }
+                    } targetDuration=${lines.firstOrNull { it.startsWith("#EXT-X-TARGETDURATION") }} mediaSequence=${
+                        lines.firstOrNull {
+                            it.startsWith(
+                                "#EXT-X-MEDIA-SEQUENCE"
+                            )
+                        }
+                    }"
+                )
                 if (lines.none { it.contains("#EXT-X-STREAM-INF") }) {
-                    logDebug("PLAYER_HLS", "single-variant TS playlist detected; device may struggle with 1080p AVC High profile streams")
+                    logDebug(
+                        "PLAYER_HLS",
+                        "single-variant TS playlist detected; device may struggle with 1080p AVC High profile streams"
+                    )
                 }
             }.onFailure {
                 logDebug("PLAYER_HLS", "manifest preview failed url=$url error=${it.message}", it)
@@ -2496,13 +2882,17 @@ class MainActivity : AppCompatActivity() {
             val channel = channels.getOrNull(currentChannelIndex)
             val playbackTime = archiveStreamStartMs + (mediaPlayer?.currentPosition ?: 0L)
             val program = if (channel != null && playbackTime > 0L) {
-                getProgramsForDisplay(channel).find { playbackTime in it.start until it.stop } ?: currentArchiveProgram
+                getProgramsForDisplay(channel).find { playbackTime in it.start until it.stop }
+                    ?: currentArchiveProgram
             } else {
                 currentArchiveProgram
             }
             currentArchiveProgram = program
             if (program != null) {
-                val stamp = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(program.start))
+                val stamp = SimpleDateFormat(
+                    "dd.MM.yyyy HH:mm",
+                    Locale.getDefault()
+                ).format(Date(program.start))
                 tvEpg.text = "Архив от $stamp - ${program.title}"
             } else {
                 tvEpg.text = "Архив"
@@ -2586,7 +2976,10 @@ class MainActivity : AppCompatActivity() {
         } else {
             DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
         }
-        logDebug("PLAYER_STATE", "ffmpeg_mode=${if (USE_FFMPEG_AUDIO_FOR_MPEG_L2) "PREFER" else "OFF"}")
+        logDebug(
+            "PLAYER_STATE",
+            "ffmpeg_mode=${if (USE_FFMPEG_AUDIO_FOR_MPEG_L2) "PREFER" else "OFF"}"
+        )
         val renderersFactory = DefaultRenderersFactory(this)
             .setExtensionRendererMode(extensionMode)
             .setEnableDecoderFallback(true)
@@ -2621,7 +3014,10 @@ class MainActivity : AppCompatActivity() {
                         lastProgressWallClockMs = System.currentTimeMillis()
                         handler.removeCallbacks(startupSlowStreamRunnable)
                         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-                        logDebug("PLAYER_STATE", "onRenderedFirstFrame url=$lastRequestedPlaybackUrl")
+                        logDebug(
+                            "PLAYER_STATE",
+                            "onRenderedFirstFrame url=$lastRequestedPlaybackUrl"
+                        )
                     }
 
                     override fun onTracksChanged(tracks: Tracks) {
@@ -2636,23 +3032,36 @@ class MainActivity : AppCompatActivity() {
                             androidx.media3.common.Player.STATE_ENDED -> "ENDED"
                             else -> "UNKNOWN($playbackState)"
                         }
-                        logDebug("PLAYER_STATE", "state=$state isLoading=${player.isLoading} playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} suppression=${player.playbackSuppressionReason} playerError=${player.playerError?.message} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl")
+                        logDebug(
+                            "PLAYER_STATE",
+                            "state=$state isLoading=${player.isLoading} playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} suppression=${player.playbackSuppressionReason} playerError=${player.playerError?.message} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl"
+                        )
                         if (playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
                             logMemoryStats("state_buffering")
                         }
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
-                        logDebug("PLAYER_STATE", "onPlayerError url=$lastRequestedPlaybackUrl message=${error.message}", error)
+                        logDebug(
+                            "PLAYER_STATE",
+                            "onPlayerError url=$lastRequestedPlaybackUrl message=${error.message}",
+                            error
+                        )
                         logMemoryStats("on_player_error")
                         handler.post {
                             handler.removeCallbacks(startupSlowStreamRunnable)
                             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                             if (shouldRetryWithoutAudio(error)) {
-                                showCenterError("Аудио MPEG не поддерживается устройством, продолжаем без звука", 2500L)
+                                showCenterError(
+                                    "Аудио MPEG не поддерживается устройством, продолжаем без звука",
+                                    2500L
+                                )
                                 retryCurrentStreamWithoutAudio()
                             } else {
-                                showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, error.message ?: "PlaybackException")
+                                showPlaybackFailureAndReturn(
+                                    lastRequestedPlaybackUrl,
+                                    error.message ?: "PlaybackException"
+                                )
                             }
                         }
                     }
@@ -2675,7 +3084,10 @@ class MainActivity : AppCompatActivity() {
                         loadEventInfo: LoadEventInfo,
                         mediaLoadData: MediaLoadData
                     ) {
-                        Log.i("PLAYER_NET", "onLoadStarted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} url=$lastRequestedPlaybackUrl")
+                        Log.i(
+                            "PLAYER_NET",
+                            "onLoadStarted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} url=$lastRequestedPlaybackUrl"
+                        )
                     }
 
                     override fun onLoadCompleted(
@@ -2683,7 +3095,10 @@ class MainActivity : AppCompatActivity() {
                         loadEventInfo: LoadEventInfo,
                         mediaLoadData: MediaLoadData
                     ) {
-                        Log.i("PLAYER_NET", "onLoadCompleted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} headers=${loadEventInfo.responseHeaders} url=$lastRequestedPlaybackUrl")
+                        Log.i(
+                            "PLAYER_NET",
+                            "onLoadCompleted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} headers=${loadEventInfo.responseHeaders} url=$lastRequestedPlaybackUrl"
+                        )
                     }
 
                     override fun onLoadError(
@@ -2693,7 +3108,11 @@ class MainActivity : AppCompatActivity() {
                         error: IOException,
                         wasCanceled: Boolean
                     ) {
-                        Log.e("PLAYER_NET", "onLoadError type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} canceled=$wasCanceled headers=${loadEventInfo.responseHeaders} error=${error.message} url=$lastRequestedPlaybackUrl", error)
+                        Log.e(
+                            "PLAYER_NET",
+                            "onLoadError type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} canceled=$wasCanceled headers=${loadEventInfo.responseHeaders} error=${error.message} url=$lastRequestedPlaybackUrl",
+                            error
+                        )
                     }
 
                     override fun onDroppedVideoFrames(
@@ -2701,7 +3120,10 @@ class MainActivity : AppCompatActivity() {
                         droppedFrames: Int,
                         elapsedMs: Long
                     ) {
-                        Log.w("PLAYER_STATE", "droppedFrames=$droppedFrames elapsedMs=$elapsedMs url=$lastRequestedPlaybackUrl")
+                        Log.w(
+                            "PLAYER_STATE",
+                            "droppedFrames=$droppedFrames elapsedMs=$elapsedMs url=$lastRequestedPlaybackUrl"
+                        )
                     }
 
                     override fun onVideoDecoderInitialized(
@@ -2710,7 +3132,10 @@ class MainActivity : AppCompatActivity() {
                         initializedTimestampMs: Long,
                         initializationDurationMs: Long
                     ) {
-                        logDebug("PLAYER_STATE", "videoDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs url=$lastRequestedPlaybackUrl")
+                        logDebug(
+                            "PLAYER_STATE",
+                            "videoDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs url=$lastRequestedPlaybackUrl"
+                        )
                     }
 
                     override fun onAudioDecoderInitialized(
@@ -2719,14 +3144,23 @@ class MainActivity : AppCompatActivity() {
                         initializedTimestampMs: Long,
                         initializationDurationMs: Long
                     ) {
-                        logDebug("PLAYER_STATE", "audioDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs url=$lastRequestedPlaybackUrl")
+                        logDebug(
+                            "PLAYER_STATE",
+                            "audioDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs url=$lastRequestedPlaybackUrl"
+                        )
                     }
 
-                    override fun onVideoEnabled(eventTime: AnalyticsListener.EventTime, decoderCounters: DecoderCounters) {
+                    override fun onVideoEnabled(
+                        eventTime: AnalyticsListener.EventTime,
+                        decoderCounters: DecoderCounters
+                    ) {
                         logDecoderCounters("video_enabled", decoderCounters)
                     }
 
-                    override fun onVideoDisabled(eventTime: AnalyticsListener.EventTime, decoderCounters: DecoderCounters) {
+                    override fun onVideoDisabled(
+                        eventTime: AnalyticsListener.EventTime,
+                        decoderCounters: DecoderCounters
+                    ) {
                         logDecoderCounters("video_disabled", decoderCounters)
                     }
                 }
@@ -2741,14 +3175,20 @@ class MainActivity : AppCompatActivity() {
         val totalMb = rt.totalMemory() / (1024 * 1024)
         val freeMb = rt.freeMemory() / (1024 * 1024)
         val usedMb = totalMb - freeMb
-        logDebug("PLAYER_MEM", "stage=$stage usedMb=$usedMb totalMb=$totalMb freeMb=$freeMb maxMb=$maxMb url=$lastRequestedPlaybackUrl")
+        logDebug(
+            "PLAYER_MEM",
+            "stage=$stage usedMb=$usedMb totalMb=$totalMb freeMb=$freeMb maxMb=$maxMb url=$lastRequestedPlaybackUrl"
+        )
     }
 
 
     private fun shouldRetryWithoutAudio(error: PlaybackException): Boolean {
         if (retriedWithoutAudio || lastRequestedPlaybackUrl.isBlank()) return false
-        val text = ((error.message ?: "") + " " + (error.cause?.message ?: "")).lowercase(Locale.ROOT)
-        return (text.contains("mpga") || text.contains("mpeg audio") || text.contains("mp2") || text.contains("mp3")) && text.contains("audio")
+        val text =
+            ((error.message ?: "") + " " + (error.cause?.message ?: "")).lowercase(Locale.ROOT)
+        return (text.contains("mpga") || text.contains("mpeg audio") || text.contains("mp2") || text.contains(
+            "mp3"
+        )) && text.contains("audio")
     }
 
     private fun logSelectedPlaybackFormats(tracks: Tracks) {
@@ -2901,6 +3341,7 @@ class MainActivity : AppCompatActivity() {
                     ivHomePower.alpha = if (homeActionIndex == 1) 1f else 0.6f
                     return true
                 }
+
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                     if (homeActionIndex == 0) ivHomeSettings.performClick() else ivHomePower.performClick()
                     return true
@@ -2949,7 +3390,9 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_LEFT -> {
-                if (homeSettingsScreen.visibility == View.VISIBLE) { hideSettingsScreen(); return true }
+                if (homeSettingsScreen.visibility == View.VISIBLE) {
+                    hideSettingsScreen(); return true
+                }
                 if (controlsPanel.visibility == View.VISIBLE && isArchivePlayback && sbTimeline.isEnabled) {
                     sbTimeline.progress = (sbTimeline.progress - 20).coerceAtLeast(0)
                     return true
@@ -2962,14 +3405,16 @@ class MainActivity : AppCompatActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
-    override fun onTouchEvent(e: MotionEvent): Boolean = mDetector.onTouchEvent(e) || super.onTouchEvent(e)
+    override fun onTouchEvent(e: MotionEvent): Boolean =
+        mDetector.onTouchEvent(e) || super.onTouchEvent(e)
 
     override fun onStart() {
         super.onStart()
         startEpgTicker()
         handler.post(timelineTickerRunnable)
         val packageInfo = packageManager.getPackageInfo(packageName, 0)
-        val currentVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) packageInfo.longVersionCode else packageInfo.versionCode.toLong()
+        val currentVersion =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) packageInfo.longVersionCode else packageInfo.versionCode.toLong()
         preferGpuDecoding = prefs.getBoolean(PREF_USE_GPU_DECODER, true)
         softwareDecoderMode = !preferGpuDecoding
 
@@ -2990,7 +3435,9 @@ class MainActivity : AppCompatActivity() {
             playChannel(forcePlay = true)
             shouldReloadStreamOnStart = false
         }
-        val hasIncompleteEpgProgress = epgSourceStatus.values.any { it.contains("Загрузка файла") || it.contains("Распаковка файла") || it.contains("Чтение файла") }
+        val hasIncompleteEpgProgress = epgSourceStatus.values.any {
+            it.contains("Загрузка файла") || it.contains("Распаковка файла") || it.contains("Чтение файла")
+        }
         if (versionChanged || hasIncompleteEpgProgress) ensureEpgLoadedLazy()
         if (mediaPlayer != null && isPlaybackPaused) {
             mediaPlayer?.play()
@@ -3018,9 +3465,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateTimelineUi() {
         val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
-        val p = if (isArchivePlayback) currentArchiveProgram else channels.getOrNull(currentChannelIndex)?.let { ch ->
-            getProgramsForDisplay(ch).find { System.currentTimeMillis() in it.start until it.stop }
-        }
+        val p =
+            if (isArchivePlayback) currentArchiveProgram else channels.getOrNull(currentChannelIndex)
+                ?.let { ch ->
+                    getProgramsForDisplay(ch).find { System.currentTimeMillis() in it.start until it.stop }
+                }
         if (p == null) {
             tvCurrentTime.text = "--:--"
             tvProgramEndTime.text = "--:--"
@@ -3030,8 +3479,11 @@ class MainActivity : AppCompatActivity() {
         tvCurrentTime.text = fmt.format(Date(p.start))
         tvProgramEndTime.text = fmt.format(Date(p.stop))
         if (!timelineUserSeeking) {
-            val currentMs = if (isArchivePlayback) archiveStreamStartMs + (mediaPlayer?.currentPosition ?: 0L) else System.currentTimeMillis()
-            val progress = (((currentMs - p.start).toDouble() / (p.stop - p.start).coerceAtLeast(1L).toDouble()) * 1000.0).toInt().coerceIn(0, 1000)
+            val currentMs =
+                if (isArchivePlayback) archiveStreamStartMs + (mediaPlayer?.currentPosition
+                    ?: 0L) else System.currentTimeMillis()
+            val progress = (((currentMs - p.start).toDouble() / (p.stop - p.start).coerceAtLeast(1L)
+                .toDouble()) * 1000.0).toInt().coerceIn(0, 1000)
             sbTimeline.progress = progress
         }
     }
@@ -3117,10 +3569,14 @@ class MainActivity : AppCompatActivity() {
     private fun buildEpgSourceFingerprint(sources: List<String>): String =
         sources.map { it.trim() }.filter { it.isNotBlank() }.sorted().joinToString("|")
 
-    private fun getEpgSourceFingerprint(): String = prefs.getString(PREF_EPG_SOURCES_FINGERPRINT, "") ?: ""
+    private fun getEpgSourceFingerprint(): String =
+        prefs.getString(PREF_EPG_SOURCES_FINGERPRINT, "") ?: ""
 
     private fun saveCurrentEpgSourceFingerprint() {
-        prefs.edit().putString(PREF_EPG_SOURCES_FINGERPRINT, buildEpgSourceFingerprint(selectedEpgSources.toList())).apply()
+        prefs.edit().putString(
+            PREF_EPG_SOURCES_FINGERPRINT,
+            buildEpgSourceFingerprint(selectedEpgSources.toList())
+        ).apply()
     }
 
     private fun trimEpgCacheToWeek() {
@@ -3134,6 +3590,7 @@ class MainActivity : AppCompatActivity() {
             epgData.entries.removeAll { it.value.isEmpty() }
         }
     }
+
     private fun nextDayAtThree(fromMillis: Long): Long {
         val cal = Calendar.getInstance().apply { timeInMillis = fromMillis }
         cal.set(Calendar.HOUR_OF_DAY, 3)
@@ -3208,7 +3665,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun getSelectedPlaylistName(): String = prefs.getString(PREF_SELECTED_PLAYLIST, "") ?: ""
+    private fun getSelectedPlaylistName(): String =
+        prefs.getString(PREF_SELECTED_PLAYLIST, "") ?: ""
 
     private fun setSelectedPlaylistName(name: String) {
         prefs.edit().putString(PREF_SELECTED_PLAYLIST, name).apply()
@@ -3351,6 +3809,7 @@ class MainActivity : AppCompatActivity() {
         val ivLogoItem: ImageView,
         val btnWatch: TextView
     )
+
     private fun logDebug(tag: String, message: String, tr: Throwable? = null) {
         Log.i(tag, message, tr)
         runCatching<Unit> {
@@ -3380,30 +3839,3 @@ class MainActivity : AppCompatActivity() {
         }
     }
 }
-    private fun logDebug(tag: String, message: String, tr: Throwable? = null) {
-        Log.i(tag, message, tr)
-        runCatching {
-            val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
-            val line = "$ts [$tag] $message\n"
-            openFileOutput("player_debug.log", Context.MODE_APPEND).use { it.write(line.toByteArray()) }
-        }
-    }
-
-    private fun exportDebugLogToDownloads() {
-        val src = File(filesDir, "player_debug.log")
-        if (!src.exists()) {
-            Toast.makeText(this, "Файл лога ещё не создан", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val dstDir = getExternalFilesDir("Download") ?: run {
-            Toast.makeText(this, "Не удалось открыть папку Download", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val dst = File(dstDir, "player_debug_${System.currentTimeMillis()}.log")
-        runCatching {
-            src.copyTo(dst, overwrite = true)
-            Toast.makeText(this, "Лог экспортирован: ${dst.absolutePath}", Toast.LENGTH_LONG).show()
-        }.onFailure {
-            Toast.makeText(this, "Ошибка экспорта: ${it.message}", Toast.LENGTH_LONG).show()
-        }
-    }
