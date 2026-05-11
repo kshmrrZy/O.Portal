@@ -72,6 +72,7 @@ import org.xmlpull.v1.XmlPullParser
 import java.io.BufferedInputStream
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.PushbackInputStream
@@ -1110,7 +1111,8 @@ class MainActivity : AppCompatActivity() {
         val btnSleepDown = findViewById<View>(R.id.btnSleepDown)
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
-        val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings)
+        val btnExportDebugLog = findViewById<View>(R.id.btnExportDebugLog)
+        val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings, btnExportDebugLog)
 
         tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
         tvSettingsBack.translationY = -10f
@@ -1208,6 +1210,7 @@ class MainActivity : AppCompatActivity() {
             bindInlineUserSettings(userSettingsPanel)
         }
         btnUserSettings.setOnClickListener { openUserSettingsScreen() }
+        btnExportDebugLog.setOnClickListener { exportDebugLogToDownloads() }
     }
 
     private fun openPlaylistSettingsScreen() {
@@ -1394,7 +1397,7 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun restoreDefaultSettingsRows() {
-        val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings)
+        val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings, R.id.btnExportDebugLog)
         rowIds.forEachIndexed { i, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
@@ -1416,7 +1419,8 @@ class MainActivity : AppCompatActivity() {
             R.id.btnSleepTimerSettings,
             R.id.itemStartMode,
             R.id.btnAdvancedSettings,
-            R.id.btnUserSettings
+            R.id.btnUserSettings,
+            R.id.btnExportDebugLog
         )
         val containerHeight = (homeSettingsScreen.layoutParams?.height ?: 0).takeIf { it > 0 }
             ?: (resources.displayMetrics.heightPixels - dpToPx(40))
@@ -3353,5 +3357,24 @@ class MainActivity : AppCompatActivity() {
             val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
             val line = "$ts [$tag] $message\n"
             openFileOutput("player_debug.log", Context.MODE_APPEND).use { it.write(line.toByteArray()) }
+        }
+    }
+
+    private fun exportDebugLogToDownloads() {
+        val src = File(filesDir, "player_debug.log")
+        if (!src.exists()) {
+            Toast.makeText(this, "Файл лога ещё не создан", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val dstDir = getExternalFilesDir("Download") ?: run {
+            Toast.makeText(this, "Не удалось открыть папку Download", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val dst = File(dstDir, "player_debug_${System.currentTimeMillis()}.log")
+        runCatching {
+            src.copyTo(dst, overwrite = true)
+            Toast.makeText(this, "Лог экспортирован: ${dst.absolutePath}", Toast.LENGTH_LONG).show()
+        }.onFailure {
+            Toast.makeText(this, "Ошибка экспорта: ${it.message}", Toast.LENGTH_LONG).show()
         }
     }
