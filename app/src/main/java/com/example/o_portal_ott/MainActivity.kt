@@ -201,34 +201,11 @@ class MainActivity : AppCompatActivity() {
         val player = mediaPlayer
         val now = System.currentTimeMillis()
         if (startupWaitSinceMs == 0L) startupWaitSinceMs = now
-        if (player != null && player.playbackState == androidx.media3.common.Player.STATE_BUFFERING && now - startupWaitSinceMs < 30_000L) {
+        if (player != null && (player.playbackState == androidx.media3.common.Player.STATE_BUFFERING || player.playbackState == androidx.media3.common.Player.STATE_READY) && now - startupWaitSinceMs < 45_000L) {
             handler.postDelayed(startupFrameTimeoutRunnable, 4000L)
             return@Runnable
         }
-        if (!retriedWithAlternateDecoder && lastRequestedPlaybackUrl.isNotBlank()) {
-            showCenterError("Нет видеокадра, пробуем другой декодер", 2500L)
-            retriedWithAlternateDecoder = true
-            switchDecoderModeAndRestart()
-            return@Runnable
-        } else if (!retriedWithoutAudio && lastRequestedPlaybackUrl.isNotBlank()) {
-            showCenterError("Нет видеокадра, пробуем запуск без аудио", 2200L)
-            retryCurrentStreamWithoutAudio()
-        } else if (!allowNonIdrKeyframes && lastRequestedPlaybackUrl.isNotBlank()) {
-            // Last-resort fallback for H.264 inside MPEG-TS: decoding from non-IDR frames may
-            // temporarily look blocky because reference frames are missing, so keep it after
-            // decoder/audio retries rather than enabling it first.
-            showCenterError("Нет IDR, последний fallback для TS", 2400L)
-            allowNonIdrKeyframes = true
-            restartCurrentStream(recreatePlayer = true)
-        } else {
-            startupRecoveryAttempts += 1
-            if (startupRecoveryAttempts > maxStartupRecoveryAttempts) {
-                showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, "Поток не поддерживается или нестабилен на устройстве")
-                return@Runnable
-            }
-            showCenterError("Нет видеокадра, перезапускаем поток", 2200L)
-            restartCurrentStream(recreatePlayer = false)
-        }
+        showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, "Не удалось дождаться корректного ключевого кадра видео")
     }
 
     private val playbackFreezeWatchdogRunnable: Runnable = Runnable {
@@ -2343,7 +2320,6 @@ class MainActivity : AppCompatActivity() {
             val shouldUseSoftware = !preferGpuDecoding
             // Start in strict IDR mode to avoid visual artifacts (macroblocking) on some TS streams.
             // Non-IDR parsing is enabled only by startup fallback when no first frame appears.
-            allowNonIdrKeyframes = false
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
@@ -2380,7 +2356,6 @@ class MainActivity : AppCompatActivity() {
             val shouldUseSoftware = !preferGpuDecoding
             // Start in strict IDR mode to avoid visual artifacts (macroblocking) on some TS streams.
             // Non-IDR parsing is enabled only by startup fallback when no first frame appears.
-            allowNonIdrKeyframes = false
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
@@ -2461,6 +2436,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPlaybackFailureAndReturn(url: String, error: String) {
         val message = "Ошибка воспроизведения\n$error\n"
+        mediaPlayer?.clearVideoSurface()
         showCenterError(message, 5000L)
         handler.removeCallbacks(returnToLiveRunnable)
         handler.postDelayed(returnToLiveRunnable, 3000L)
@@ -2559,12 +2535,7 @@ class MainActivity : AppCompatActivity() {
             .setEnableDecoderFallback(true)
             .setMediaCodecSelector(codecSelector)
 
-        val tsFlags = if (allowNonIdrKeyframes) {
-            DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS or
-                    DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES
-        } else {
-            DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
-        }
+        val tsFlags = DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
 
         val hlsMediaSourceFactory = HlsMediaSource.Factory(httpFactory)
             .setAllowChunklessPreparation(false)
