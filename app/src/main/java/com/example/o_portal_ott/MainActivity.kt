@@ -44,7 +44,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
-import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.GestureDetectorCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -194,6 +193,8 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var epgFetchInProgress = false
     private var archiveStreamStartMs: Long = 0L
     private var lastRequestedPlaybackUrl: String = ""
+    private var startupRecoveryAttempts = 0
+    private val maxStartupRecoveryAttempts = 3
     private val startupFrameTimeoutRunnable: Runnable = Runnable {
         if (firstFrameRendered) return@Runnable
         val player = mediaPlayer
@@ -219,6 +220,11 @@ class MainActivity : AppCompatActivity() {
             allowNonIdrKeyframes = true
             restartCurrentStream(recreatePlayer = true)
         } else {
+            startupRecoveryAttempts += 1
+            if (startupRecoveryAttempts > maxStartupRecoveryAttempts) {
+                showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, "Поток не поддерживается или нестабилен на устройстве")
+                return@Runnable
+            }
             showCenterError("Нет видеокадра, перезапускаем поток", 2200L)
             restartCurrentStream(recreatePlayer = false)
         }
@@ -2548,7 +2554,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val renderersFactory = DefaultRenderersFactory(this)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             .setEnableDecoderFallback(true)
             .setMediaCodecSelector(codecSelector)
 
@@ -2617,10 +2623,11 @@ class MainActivity : AppCompatActivity() {
     private fun shouldRetryWithoutAudio(error: PlaybackException): Boolean {
         if (retriedWithoutAudio || lastRequestedPlaybackUrl.isBlank()) return false
         val text = ((error.message ?: "") + " " + (error.cause?.message ?: "")).lowercase(Locale.ROOT)
-        return text.contains("audio") || text.contains("mpga") || text.contains("mpeg") || text.contains("decoder")
+        return (text.contains("mpga") || text.contains("mpeg audio") || text.contains("mp2") || text.contains("mp3")) && text.contains("audio")
     }
 
     private fun logSelectedPlaybackFormats(tracks: Tracks) {
+        Log.i("PLAYER_FORMAT", "trackGroups=${tracks.groups.size} url=$lastRequestedPlaybackUrl")
         for (group in tracks.groups) {
             if (!group.isSelected) continue
             for (i in 0 until group.length) {
@@ -2633,9 +2640,9 @@ class MainActivity : AppCompatActivity() {
                 }
                 Log.i(
                     "PLAYER_FORMAT",
-                    "$type codec=${format.codecs ?: format.sampleMimeType.orEmpty()} " +
-                            "mime=${format.sampleMimeType.orEmpty()} bitrate=${format.bitrate} " +
-                            "size=${format.width}x${format.height} url=$lastRequestedPlaybackUrl"
+                    "$type codec=${format.codecs ?: format.sampleMimeType.orEmpty()} sampleMime=${format.sampleMimeType.orEmpty()} " +
+                            "containerMime=${format.containerMimeType.orEmpty()} bitrate=${format.bitrate} " +
+                            "size=${format.width}x${format.height} lang=${format.language.orEmpty()} id=${format.id.orEmpty()} url=$lastRequestedPlaybackUrl"
                 )
             }
         }
