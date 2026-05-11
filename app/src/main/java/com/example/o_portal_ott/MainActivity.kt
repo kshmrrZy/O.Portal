@@ -671,7 +671,7 @@ class MainActivity : AppCompatActivity() {
         val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6))
         val token = (prefs.getString(PREF_USER_TOKEN, "") ?: "").trim()
         val thirdParty = getThirdPartyPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
-        val profiles = if (token.isNotBlank()) listOf(
+        val profiles = if (token.isNotBlank()) (if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else emptyList()) + listOf(
             PlaylistProfile("Wink", "url", "https://o.avff.ru/list/wink.m3u8?token=$token", true),
             PlaylistProfile("iLook", "url", "https://o.avff.ru/list/ilook.m3u8?token=$token", true),
             PlaylistProfile("Сервис В", "url", "https://o.avff.ru/list/servicev.m3u8?token=$token", true),
@@ -679,9 +679,10 @@ class MainActivity : AppCompatActivity() {
             PlaylistProfile("Only4", "url", "https://o.avff.ru/list/only4.m3u8?token=$token", true),
             PlaylistProfile("Избранные", "url", "https://o.avff.ru/my/$token.m3u", true)
         ) else if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
-        if (token.isNotBlank()) savePlaylistProfiles(profiles)
+        val shownProfiles = profiles.take(6)
+        if (token.isNotBlank()) savePlaylistProfiles((profiles.filter { it.type != "group" }))
         tiles.forEachIndexed { i, tv ->
-            val p = profiles.getOrNull(i)
+            val p = shownProfiles.getOrNull(i)
             if (p == null) {
                 tv.visibility = View.INVISIBLE
                 tv.setOnClickListener(null)
@@ -1237,7 +1238,7 @@ class MainActivity : AppCompatActivity() {
             saveThirdPartyPlaylistProfiles(items)
             Toast.makeText(this, "Сторонние плейлисты сохранены", Toast.LENGTH_SHORT).show()
         }
-        findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener { loadPlaylist(forceReload = true, showErrors = true) }
+        findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener { loadPlaylist(forceReload = true, showErrors = true, autoPlay = false) }
 
         tvSettingsBack.setOnClickListener {
             playlistPanel.visibility = View.GONE
@@ -1364,7 +1365,8 @@ class MainActivity : AppCompatActivity() {
         homeSettingsScreen.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = false)
         val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
-        if (isAuthorizedUser) {
+        val hasThirdParty = getThirdPartyPlaylistProfiles().isNotEmpty()
+        if (isAuthorizedUser || hasThirdParty) {
             showPlaylistPageOnHome()
         } else {
             tvHomeStartTitle.visibility = View.VISIBLE
