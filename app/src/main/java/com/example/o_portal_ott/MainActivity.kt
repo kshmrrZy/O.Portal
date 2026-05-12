@@ -202,6 +202,7 @@ class MainActivity : AppCompatActivity() {
     private var lastRequestedPlaybackUrl: String = ""
     private var startupRecoveryAttempts = 0
     private val maxStartupRecoveryAttempts = 3
+    private var startupPlaybackUrlLock: String? = null
     private val startupSlowStreamRunnable: Runnable = Runnable {
         if (!firstFrameRendered) {
             showCenterError("Поток долго загружается", 3000L)
@@ -218,6 +219,10 @@ class MainActivity : AppCompatActivity() {
 
     private val playbackFreezeWatchdogRunnable: Runnable = Runnable {
         val player = mediaPlayer ?: return@Runnable
+        if (!firstFrameRendered) {
+            handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
+            return@Runnable
+        }
         val now = System.currentTimeMillis()
         if (!player.isPlaying) {
             if (player.playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
@@ -378,10 +383,7 @@ class MainActivity : AppCompatActivity() {
         startEpgTicker()
         applyLockButtonVisibility()
         val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
-        loadPlaylist(
-            showErrors = true,
-            autoPlay = shouldOpenLastChannelOnStart && !isAuthorizedUser
-        )
+        loadPlaylist(showErrors = true, autoPlay = shouldOpenLastChannelOnStart && !isAuthorizedUser)
         if (!shouldOpenLastChannelOnStart) {
             val hasThirdParty = getThirdPartyPlaylistProfiles().isNotEmpty()
             if (isAuthorizedUser || hasThirdParty) showPlaylistPageOnHome() else showStartPage()
@@ -669,6 +671,7 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+
     private fun showThirdPartyTilesOnHome(thirdParty: List<PlaylistProfile>) {
         showStartPage()
         tvHomeStartTitle.visibility = View.GONE
@@ -679,15 +682,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeCategoryBack.visibility = View.VISIBLE
         tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
-        val tiles = listOf<TextView>(
-            findViewById(R.id.tvTile1),
-            findViewById(R.id.tvTile2),
-            findViewById(R.id.tvTile3),
-            findViewById(R.id.tvTile4),
-            findViewById(R.id.tvTile5),
-            findViewById(R.id.tvTile6),
-            findViewById(R.id.tvTile7)
-        )
+        val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6), findViewById(R.id.tvTile7))
         val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }.take(7)
         tiles.forEachIndexed { i, tv ->
             val p = list.getOrNull(i)
@@ -715,68 +710,20 @@ class MainActivity : AppCompatActivity() {
         homePlaylistTilesPanel.visibility = View.VISIBLE
         applyHomeAppTitleStyle(settingsMode = false)
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
-        val tiles = listOf<TextView>(
-            findViewById(R.id.tvTile1),
-            findViewById(R.id.tvTile2),
-            findViewById(R.id.tvTile3),
-            findViewById(R.id.tvTile4),
-            findViewById(R.id.tvTile5),
-            findViewById(R.id.tvTile6),
-            findViewById(R.id.tvTile7)
-        )
+        val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6), findViewById(R.id.tvTile7))
         val token = (prefs.getString(PREF_USER_TOKEN, "") ?: "").trim()
-        val thirdParty =
-            getThirdPartyPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
+        val thirdParty = getThirdPartyPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
         val profiles = if (token.isNotBlank()) {
             val base = listOf(
                 PlaylistProfile("Избранные", "url", "https://o.avff.ru/my/$token.m3u", true),
-                PlaylistProfile(
-                    "Wink",
-                    "url",
-                    "https://o.avff.ru/list/wink.m3u8?token=$token",
-                    true
-                ),
-                PlaylistProfile(
-                    "iLook",
-                    "url",
-                    "https://o.avff.ru/list/ilook.m3u8?token=$token",
-                    true
-                ),
-                PlaylistProfile(
-                    "Сервис В",
-                    "url",
-                    "https://o.avff.ru/list/servicev.m3u8?token=$token",
-                    true
-                ),
-                PlaylistProfile(
-                    "Lime TV",
-                    "url",
-                    "https://o.avff.ru/list/limetv.m3u8?token=$token",
-                    true
-                ),
-                PlaylistProfile(
-                    "Only4",
-                    "url",
-                    "https://o.avff.ru/list/only4.m3u8?token=$token",
-                    true
-                )
+                PlaylistProfile("Wink", "url", "https://o.avff.ru/list/wink.m3u8?token=$token", true),
+                PlaylistProfile("iLook", "url", "https://o.avff.ru/list/ilook.m3u8?token=$token", true),
+                PlaylistProfile("Сервис В", "url", "https://o.avff.ru/list/servicev.m3u8?token=$token", true),
+                PlaylistProfile("Lime TV", "url", "https://o.avff.ru/list/limetv.m3u8?token=$token", true),
+                PlaylistProfile("Only4", "url", "https://o.avff.ru/list/only4.m3u8?token=$token", true)
             )
-            if (thirdParty.isNotEmpty()) base + listOf(
-                PlaylistProfile(
-                    "Плейлисты",
-                    "group",
-                    "third_party",
-                    true
-                )
-            ) else base
-        } else if (thirdParty.isNotEmpty()) listOf(
-            PlaylistProfile(
-                "Плейлисты",
-                "group",
-                "third_party",
-                true
-            )
-        ) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
+            if (thirdParty.isNotEmpty()) base + listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else base
+        } else if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
         val shownProfiles = profiles.take(7)
         if (token.isNotBlank()) savePlaylistProfiles((profiles.filter { it.type != "group" } + thirdParty).distinctBy { it.name })
         tiles.forEachIndexed { i, tv ->
@@ -792,10 +739,7 @@ class MainActivity : AppCompatActivity() {
                     if (p.type == "group" && p.value == "third_party") {
                         showThirdPartyTilesOnHome(thirdParty)
                     } else {
-                        applyHomeAppTitleStyle(
-                            settingsMode = true,
-                            settingsTitle = "Категории (${p.name})"
-                        )
+                        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории (${p.name})")
                         setSelectedPlaylistName(p.name)
                         homePlaylistTilesPanel.visibility = View.GONE
                         hideStartPage()
@@ -1209,7 +1153,7 @@ class MainActivity : AppCompatActivity() {
             }
             homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             homeSettingsScreen.setBackgroundColor(Color.TRANSPARENT)
-            homeSettingsScreen.setPadding(0, 0, 0, 0)
+            homeSettingsScreen.setPadding(0,0,0,0)
             restoreDefaultSettingsRows()
         }
         homePanel.visibility = View.VISIBLE
@@ -1232,15 +1176,7 @@ class MainActivity : AppCompatActivity() {
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
         val btnExportDebugLog = findViewById<View>(R.id.btnExportDebugLog)
-        val settingsRows = listOf(
-            btnPlaylistSettings,
-            btnEpgSelect,
-            sleepRow,
-            findViewById<View>(R.id.itemStartMode),
-            btnAdvancedSettings,
-            btnUserSettings,
-            btnExportDebugLog
-        )
+        val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings, btnExportDebugLog)
 
         tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
         tvSettingsBack.translationY = -10f
@@ -1365,21 +1301,9 @@ class MainActivity : AppCompatActivity() {
         tvSettingsBack.visibility = View.VISIBLE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки плейлистов")
 
-        val names = listOf<EditText>(
-            findViewById(R.id.etPlaylistName1),
-            findViewById(R.id.etPlaylistName2),
-            findViewById(R.id.etPlaylistName3)
-        )
-        val urls = listOf<EditText>(
-            findViewById(R.id.etPlaylistUrl1),
-            findViewById(R.id.etPlaylistUrl2),
-            findViewById(R.id.etPlaylistUrl3)
-        )
-        val toggles = listOf<ImageView>(
-            findViewById(R.id.ivPlaylistToggle1),
-            findViewById(R.id.ivPlaylistToggle2),
-            findViewById(R.id.ivPlaylistToggle3)
-        )
+        val names = listOf<EditText>(findViewById(R.id.etPlaylistName1), findViewById(R.id.etPlaylistName2), findViewById(R.id.etPlaylistName3))
+        val urls = listOf<EditText>(findViewById(R.id.etPlaylistUrl1), findViewById(R.id.etPlaylistUrl2), findViewById(R.id.etPlaylistUrl3))
+        val toggles = listOf<ImageView>(findViewById(R.id.ivPlaylistToggle1), findViewById(R.id.ivPlaylistToggle2), findViewById(R.id.ivPlaylistToggle3))
         val states = MutableList(3) { false }
 
         fun bindData() {
@@ -1412,13 +1336,7 @@ class MainActivity : AppCompatActivity() {
             saveThirdPartyPlaylistProfiles(items)
             Toast.makeText(this, "Сторонние плейлисты сохранены", Toast.LENGTH_SHORT).show()
         }
-        findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener {
-            loadPlaylist(
-                forceReload = true,
-                showErrors = true,
-                autoPlay = false
-            )
-        }
+        findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener { loadPlaylist(forceReload = true, showErrors = true, autoPlay = false) }
 
         tvSettingsBack.setOnClickListener {
             playlistPanel.visibility = View.GONE
@@ -1436,14 +1354,7 @@ class MainActivity : AppCompatActivity() {
         val epgPanel = findViewById<View>(R.id.epgSettingsPanel)
         val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
         val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
-        val settingsRows = listOf(
-            findViewById<View>(R.id.btnPlaylistSettings),
-            findViewById<View>(R.id.btnEpgSelect),
-            findViewById<View>(R.id.btnSleepTimerSettings),
-            findViewById<View>(R.id.itemStartMode),
-            findViewById<View>(R.id.btnAdvancedSettings),
-            findViewById<View>(R.id.btnUserSettings)
-        )
+        val settingsRows = listOf(findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect), findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode), findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings))
         settingsRows.forEach { it.visibility = View.GONE }
         playlistPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
@@ -1451,39 +1362,22 @@ class MainActivity : AppCompatActivity() {
         tvSettingsBack.visibility = View.VISIBLE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки EPG")
 
-        val urls = listOf<EditText>(
-            findViewById(R.id.etEpgUrl1),
-            findViewById(R.id.etEpgUrl2),
-            findViewById(R.id.etEpgUrl3)
-        )
-        val toggles = listOf<ImageView>(
-            findViewById(R.id.ivEpgToggle1),
-            findViewById(R.id.ivEpgToggle2),
-            findViewById(R.id.ivEpgToggle3)
-        )
+        val urls = listOf<EditText>(findViewById(R.id.etEpgUrl1), findViewById(R.id.etEpgUrl2), findViewById(R.id.etEpgUrl3))
+        val toggles = listOf<ImageView>(findViewById(R.id.ivEpgToggle1), findViewById(R.id.ivEpgToggle2), findViewById(R.id.ivEpgToggle3))
         val states = MutableList(3) { false }
         val tbInterval = findViewById<ToggleButton>(R.id.tbEpgRefreshInterval)
-        val intervals = listOf(1, 3, 5, 7)
-        var intervalIndex =
-            intervals.indexOf(prefs.getInt(PREF_EPG_REFRESH_INTERVAL_DAYS, 1)).takeIf { it >= 0 }
-                ?: 0
+        val intervals = listOf(1,3,5,7)
+        var intervalIndex = intervals.indexOf(prefs.getInt(PREF_EPG_REFRESH_INTERVAL_DAYS, 1)).takeIf { it >= 0 } ?: 0
         var pendingApply: Runnable? = null
 
-        val current =
-            getCustomEpgSources().ifEmpty { extractEpgSourcesFromPlaylist(currentPlaylistText) }
-                .take(3)
+        val current = getCustomEpgSources().ifEmpty { extractEpgSourcesFromPlaylist(currentPlaylistText) }.take(3)
         val selected = getSelectedEpgSources()
         urls.forEachIndexed { i, et ->
             val value = current.getOrNull(i) ?: ""
             et.setText(value)
             states[i] = value.isNotBlank() && (selected.isEmpty() || selected.contains(value))
         }
-        toggles.forEachIndexed { i, v ->
-            v.setOnClickListener {
-                states[i] =
-                    !states[i]; v.setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft)
-            }
-        }
+        toggles.forEachIndexed { i, v -> v.setOnClickListener { states[i] = !states[i]; v.setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft) } }
 
         fun updateIntervalText() {
             val d = intervals[intervalIndex]
@@ -1496,13 +1390,9 @@ class MainActivity : AppCompatActivity() {
             tbInterval.textOff = tbInterval.textOn
             tbInterval.text = tbInterval.textOn
         }
-
         fun scheduleIntervalSave() {
             pendingApply?.let { handler.removeCallbacks(it) }
-            pendingApply = Runnable {
-                prefs.edit().putInt(PREF_EPG_REFRESH_INTERVAL_DAYS, intervals[intervalIndex])
-                    .apply()
-            }
+            pendingApply = Runnable { prefs.edit().putInt(PREF_EPG_REFRESH_INTERVAL_DAYS, intervals[intervalIndex]).apply() }
             handler.postDelayed(pendingApply!!, 7000L)
         }
         updateIntervalText()
@@ -1513,9 +1403,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<View>(R.id.btnSaveEpgSettings).setOnClickListener {
-            val links = urls.mapIndexedNotNull { i, et ->
-                et.text.toString().trim().takeIf { it.isNotBlank() && states[i] }
-            }.distinct()
+            val links = urls.mapIndexedNotNull { i, et -> et.text.toString().trim().takeIf { it.isNotBlank() && states[i] } }.distinct()
             saveCustomEpgSources(links)
             selectedEpgSources = links.toMutableSet()
             saveSelectedEpgSources(selectedEpgSources)
@@ -1542,33 +1430,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun getThirdPartyPlaylistProfiles(): List<PlaylistProfile> =
-        getPlaylistProfiles().filter {
-            it.name !in setOf(
-                "Wink",
-                "iLook",
-                "Сервис В",
-                "Lime TV",
-                "Only4",
-                "Избранные",
-                "Пользователь",
-                "По умолчанию"
-            )
-        }
+    private fun getThirdPartyPlaylistProfiles(): List<PlaylistProfile> = getPlaylistProfiles().filter { it.name !in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные", "Пользователь", "По умолчанию") }
 
     private fun saveThirdPartyPlaylistProfiles(thirdParty: List<PlaylistProfile>) {
-        val systemProfiles = getPlaylistProfiles().filter {
-            it.name in setOf(
-                "Wink",
-                "iLook",
-                "Сервис В",
-                "Lime TV",
-                "Only4",
-                "Избранные",
-                "Пользователь",
-                "По умолчанию"
-            )
-        }
+        val systemProfiles = getPlaylistProfiles().filter { it.name in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные", "Пользователь", "По умолчанию") }
         savePlaylistProfiles(systemProfiles + thirdParty.take(3))
     }
 
@@ -1577,47 +1442,13 @@ class MainActivity : AppCompatActivity() {
         val cleanToken = token.trim()
         if (cleanToken.isBlank()) return
         val existing = getPlaylistProfiles().toMutableList()
-        val thirdParty = existing.filter {
-            it.name !in setOf(
-                "Wink",
-                "iLook",
-                "Сервис В",
-                "Lime TV",
-                "Only4",
-                "Избранные"
-            )
-        }
+        val thirdParty = existing.filter { it.name !in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные") }
         val portal = listOf(
-            PlaylistProfile(
-                "Wink",
-                "url",
-                "https://o.avff.ru/list/wink.m3u8?token=$cleanToken",
-                true
-            ),
-            PlaylistProfile(
-                "iLook",
-                "url",
-                "https://o.avff.ru/list/ilook.m3u8?token=$cleanToken",
-                true
-            ),
-            PlaylistProfile(
-                "Сервис В",
-                "url",
-                "https://o.avff.ru/list/servicev.m3u8?token=$cleanToken",
-                true
-            ),
-            PlaylistProfile(
-                "Lime TV",
-                "url",
-                "https://o.avff.ru/list/limetv.m3u8?token=$cleanToken",
-                true
-            ),
-            PlaylistProfile(
-                "Only4",
-                "url",
-                "https://o.avff.ru/list/only4.m3u8?token=$cleanToken",
-                true
-            ),
+            PlaylistProfile("Wink", "url", "https://o.avff.ru/list/wink.m3u8?token=$cleanToken", true),
+            PlaylistProfile("iLook", "url", "https://o.avff.ru/list/ilook.m3u8?token=$cleanToken", true),
+            PlaylistProfile("Сервис В", "url", "https://o.avff.ru/list/servicev.m3u8?token=$cleanToken", true),
+            PlaylistProfile("Lime TV", "url", "https://o.avff.ru/list/limetv.m3u8?token=$cleanToken", true),
+            PlaylistProfile("Only4", "url", "https://o.avff.ru/list/only4.m3u8?token=$cleanToken", true),
             PlaylistProfile("Избранные", "url", "https://o.avff.ru/my/$cleanToken.m3u", true)
         )
         savePlaylistProfiles((portal + thirdParty).distinctBy { it.name })
@@ -1649,16 +1480,9 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+
     private fun restoreDefaultSettingsRows() {
-        val rowIds = intArrayOf(
-            R.id.btnPlaylistSettings,
-            R.id.btnEpgSelect,
-            R.id.btnSleepTimerSettings,
-            R.id.itemStartMode,
-            R.id.btnAdvancedSettings,
-            R.id.btnUserSettings,
-            R.id.btnExportDebugLog
-        )
+        val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings, R.id.btnExportDebugLog)
         rowIds.forEachIndexed { i, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
@@ -1888,18 +1712,8 @@ class MainActivity : AppCompatActivity() {
         tvAuthorizedPlaylistValue.text = prefs.getString(PREF_USER_PLAYLIST, "") ?: ""
         etToken.isEnabled = true
         btnChangeUser.setOnClickListener {
-            prefs.edit().remove(PREF_USER_NAME).remove(PREF_USER_TOKEN).remove(PREF_USER_LOGIN)
-                .remove(PREF_USER_PLAYLIST).apply()
-            val profiles = getPlaylistProfiles().filterNot {
-                it.name in setOf(
-                    "Wink",
-                    "iLook",
-                    "Сервис В",
-                    "Lime TV",
-                    "Only4",
-                    "Избранные"
-                )
-            }
+            prefs.edit().remove(PREF_USER_NAME).remove(PREF_USER_TOKEN).remove(PREF_USER_LOGIN).remove(PREF_USER_PLAYLIST).apply()
+            val profiles = getPlaylistProfiles().filterNot { it.name in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные") }
             savePlaylistProfiles(profiles)
             setSelectedPlaylistName(profiles.firstOrNull()?.name ?: "")
             currentPlaylistText = ""
@@ -2719,6 +2533,11 @@ class MainActivity : AppCompatActivity() {
     private fun playChannel(forcePlay: Boolean = false) {
         runCatching {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
+            val lockedUrl = startupPlaybackUrlLock
+            if (!lockedUrl.isNullOrBlank() && !firstFrameRendered && ch.url != lockedUrl) {
+                logDebug("PLAYER_STATE", "startup lock prevents channel switch from $lockedUrl to ${ch.url}")
+                return
+            }
             homePanel.visibility = View.GONE
             val shouldUseSoftware = !preferGpuDecoding
             if (softwareDecoderMode != shouldUseSoftware) {
@@ -2728,6 +2547,7 @@ class MainActivity : AppCompatActivity() {
             }
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = ch.url
+            startupPlaybackUrlLock = ch.url
             logHlsManifestPreview(ch.url)
             firstFrameRendered = false
             handler.removeCallbacks(startupSlowStreamRunnable)
@@ -2806,44 +2626,15 @@ class MainActivity : AppCompatActivity() {
                 }
                 val code = conn.responseCode
                 val finalUrl = conn.url.toString()
-                val body =
-                    (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()
-                        ?.use { it.readText() }.orEmpty()
+                val body = (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
                 val lines = body.lines()
-                logDebug(
-                    "PLAYER_HLS",
-                    "manifest status=$code finalUrl=$finalUrl contentType=${conn.contentType} headers=${conn.headerFields}"
-                )
+                logDebug("PLAYER_HLS", "manifest status=$code finalUrl=$finalUrl contentType=${conn.contentType} headers=${conn.headerFields}")
                 logDebug("PLAYER_HLS", "manifest head:\n${lines.take(20).joinToString("\n")}")
-                logDebug(
-                    "PLAYER_HLS",
-                    "variantLines=${lines.filter { it.contains("#EXT-X-STREAM-INF") }.take(8)}"
-                )
-                logDebug(
-                    "PLAYER_HLS",
-                    "segmentLines=${
-                        lines.filter { it.isNotBlank() && !it.startsWith("#") }.take(8)
-                    }"
-                )
-                logDebug(
-                    "PLAYER_HLS",
-                    "hasMap=${lines.any { it.startsWith("#EXT-X-MAP") }} hasKey=${
-                        lines.any {
-                            it.startsWith("#EXT-X-KEY")
-                        }
-                    } targetDuration=${lines.firstOrNull { it.startsWith("#EXT-X-TARGETDURATION") }} mediaSequence=${
-                        lines.firstOrNull {
-                            it.startsWith(
-                                "#EXT-X-MEDIA-SEQUENCE"
-                            )
-                        }
-                    }"
-                )
+                logDebug("PLAYER_HLS", "variantLines=${lines.filter { it.contains("#EXT-X-STREAM-INF") }.take(8)}")
+                logDebug("PLAYER_HLS", "segmentLines=${lines.filter { it.isNotBlank() && !it.startsWith("#") }.take(8)}")
+                logDebug("PLAYER_HLS", "hasMap=${lines.any { it.startsWith("#EXT-X-MAP") }} hasKey=${lines.any { it.startsWith("#EXT-X-KEY") }} targetDuration=${lines.firstOrNull { it.startsWith("#EXT-X-TARGETDURATION") }} mediaSequence=${lines.firstOrNull { it.startsWith("#EXT-X-MEDIA-SEQUENCE") }}")
                 if (lines.none { it.contains("#EXT-X-STREAM-INF") }) {
-                    logDebug(
-                        "PLAYER_HLS",
-                        "single-variant TS playlist detected; device may struggle with 1080p AVC High profile streams"
-                    )
+                    logDebug("PLAYER_HLS", "single-variant TS playlist detected; device may struggle with 1080p AVC High profile streams")
                 }
             }.onFailure {
                 logDebug("PLAYER_HLS", "manifest preview failed url=$url error=${it.message}", it)
@@ -2976,10 +2767,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
         }
-        logDebug(
-            "PLAYER_STATE",
-            "ffmpeg_mode=${if (USE_FFMPEG_AUDIO_FOR_MPEG_L2) "PREFER" else "OFF"}"
-        )
+        logDebug("PLAYER_STATE", "ffmpeg_mode=${if (USE_FFMPEG_AUDIO_FOR_MPEG_L2) "PREFER" else "OFF"}")
         val renderersFactory = DefaultRenderersFactory(this)
             .setExtensionRendererMode(extensionMode)
             .setEnableDecoderFallback(true)
@@ -3010,14 +2798,12 @@ class MainActivity : AppCompatActivity() {
                 val listener = object : androidx.media3.common.Player.Listener {
                     override fun onRenderedFirstFrame() {
                         firstFrameRendered = true
+                        startupPlaybackUrlLock = null
                         lastPlaybackPositionMs = player.currentPosition
                         lastProgressWallClockMs = System.currentTimeMillis()
                         handler.removeCallbacks(startupSlowStreamRunnable)
                         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-                        logDebug(
-                            "PLAYER_STATE",
-                            "onRenderedFirstFrame url=$lastRequestedPlaybackUrl"
-                        )
+                        logDebug("PLAYER_STATE", "onRenderedFirstFrame url=$lastRequestedPlaybackUrl")
                     }
 
                     override fun onTracksChanged(tracks: Tracks) {
@@ -3032,21 +2818,15 @@ class MainActivity : AppCompatActivity() {
                             androidx.media3.common.Player.STATE_ENDED -> "ENDED"
                             else -> "UNKNOWN($playbackState)"
                         }
-                        logDebug(
-                            "PLAYER_STATE",
-                            "state=$state isLoading=${player.isLoading} playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} suppression=${player.playbackSuppressionReason} playerError=${player.playerError?.message} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl"
-                        )
+                        logDebug("PLAYER_STATE", "state=$state isLoading=${player.isLoading} playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} suppression=${player.playbackSuppressionReason} playerError=${player.playerError?.message} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl")
                         if (playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
                             logMemoryStats("state_buffering")
                         }
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
-                        logDebug(
-                            "PLAYER_STATE",
-                            "onPlayerError url=$lastRequestedPlaybackUrl message=${error.message}",
-                            error
-                        )
+                        logDebug("PLAYER_STATE", "onPlayerError url=$lastRequestedPlaybackUrl message=${error.message}", error)
+                        startupPlaybackUrlLock = null
                         logMemoryStats("on_player_error")
                         handler.post {
                             handler.removeCallbacks(startupSlowStreamRunnable)
@@ -3084,10 +2864,7 @@ class MainActivity : AppCompatActivity() {
                         loadEventInfo: LoadEventInfo,
                         mediaLoadData: MediaLoadData
                     ) {
-                        Log.i(
-                            "PLAYER_NET",
-                            "onLoadStarted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} url=$lastRequestedPlaybackUrl"
-                        )
+                        Log.i("PLAYER_NET", "onLoadStarted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} url=$lastRequestedPlaybackUrl")
                     }
 
                     override fun onLoadCompleted(
@@ -3095,10 +2872,7 @@ class MainActivity : AppCompatActivity() {
                         loadEventInfo: LoadEventInfo,
                         mediaLoadData: MediaLoadData
                     ) {
-                        Log.i(
-                            "PLAYER_NET",
-                            "onLoadCompleted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} headers=${loadEventInfo.responseHeaders} url=$lastRequestedPlaybackUrl"
-                        )
+                        Log.i("PLAYER_NET", "onLoadCompleted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} headers=${loadEventInfo.responseHeaders} url=$lastRequestedPlaybackUrl")
                     }
 
                     override fun onLoadError(
@@ -3108,11 +2882,7 @@ class MainActivity : AppCompatActivity() {
                         error: IOException,
                         wasCanceled: Boolean
                     ) {
-                        Log.e(
-                            "PLAYER_NET",
-                            "onLoadError type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} canceled=$wasCanceled headers=${loadEventInfo.responseHeaders} error=${error.message} url=$lastRequestedPlaybackUrl",
-                            error
-                        )
+                        Log.e("PLAYER_NET", "onLoadError type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} canceled=$wasCanceled headers=${loadEventInfo.responseHeaders} error=${error.message} url=$lastRequestedPlaybackUrl", error)
                     }
 
                     override fun onDroppedVideoFrames(
@@ -3120,10 +2890,7 @@ class MainActivity : AppCompatActivity() {
                         droppedFrames: Int,
                         elapsedMs: Long
                     ) {
-                        Log.w(
-                            "PLAYER_STATE",
-                            "droppedFrames=$droppedFrames elapsedMs=$elapsedMs url=$lastRequestedPlaybackUrl"
-                        )
+                        Log.w("PLAYER_STATE", "droppedFrames=$droppedFrames elapsedMs=$elapsedMs url=$lastRequestedPlaybackUrl")
                     }
 
                     override fun onVideoDecoderInitialized(
@@ -3132,10 +2899,7 @@ class MainActivity : AppCompatActivity() {
                         initializedTimestampMs: Long,
                         initializationDurationMs: Long
                     ) {
-                        logDebug(
-                            "PLAYER_STATE",
-                            "videoDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs url=$lastRequestedPlaybackUrl"
-                        )
+                        logDebug("PLAYER_STATE", "videoDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs url=$lastRequestedPlaybackUrl")
                     }
 
                     override fun onAudioDecoderInitialized(
@@ -3144,23 +2908,14 @@ class MainActivity : AppCompatActivity() {
                         initializedTimestampMs: Long,
                         initializationDurationMs: Long
                     ) {
-                        logDebug(
-                            "PLAYER_STATE",
-                            "audioDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs url=$lastRequestedPlaybackUrl"
-                        )
+                        logDebug("PLAYER_STATE", "audioDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs url=$lastRequestedPlaybackUrl")
                     }
 
-                    override fun onVideoEnabled(
-                        eventTime: AnalyticsListener.EventTime,
-                        decoderCounters: DecoderCounters
-                    ) {
+                    override fun onVideoEnabled(eventTime: AnalyticsListener.EventTime, decoderCounters: DecoderCounters) {
                         logDecoderCounters("video_enabled", decoderCounters)
                     }
 
-                    override fun onVideoDisabled(
-                        eventTime: AnalyticsListener.EventTime,
-                        decoderCounters: DecoderCounters
-                    ) {
+                    override fun onVideoDisabled(eventTime: AnalyticsListener.EventTime, decoderCounters: DecoderCounters) {
                         logDecoderCounters("video_disabled", decoderCounters)
                     }
                 }
@@ -3175,20 +2930,14 @@ class MainActivity : AppCompatActivity() {
         val totalMb = rt.totalMemory() / (1024 * 1024)
         val freeMb = rt.freeMemory() / (1024 * 1024)
         val usedMb = totalMb - freeMb
-        logDebug(
-            "PLAYER_MEM",
-            "stage=$stage usedMb=$usedMb totalMb=$totalMb freeMb=$freeMb maxMb=$maxMb url=$lastRequestedPlaybackUrl"
-        )
+        logDebug("PLAYER_MEM", "stage=$stage usedMb=$usedMb totalMb=$totalMb freeMb=$freeMb maxMb=$maxMb url=$lastRequestedPlaybackUrl")
     }
 
 
     private fun shouldRetryWithoutAudio(error: PlaybackException): Boolean {
         if (retriedWithoutAudio || lastRequestedPlaybackUrl.isBlank()) return false
-        val text =
-            ((error.message ?: "") + " " + (error.cause?.message ?: "")).lowercase(Locale.ROOT)
-        return (text.contains("mpga") || text.contains("mpeg audio") || text.contains("mp2") || text.contains(
-            "mp3"
-        )) && text.contains("audio")
+        val text = ((error.message ?: "") + " " + (error.cause?.message ?: "")).lowercase(Locale.ROOT)
+        return (text.contains("mpga") || text.contains("mpeg audio") || text.contains("mp2") || text.contains("mp3")) && text.contains("audio")
     }
 
     private fun logSelectedPlaybackFormats(tracks: Tracks) {
@@ -3341,7 +3090,6 @@ class MainActivity : AppCompatActivity() {
                     ivHomePower.alpha = if (homeActionIndex == 1) 1f else 0.6f
                     return true
                 }
-
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                     if (homeActionIndex == 0) ivHomeSettings.performClick() else ivHomePower.performClick()
                     return true
@@ -3515,6 +3263,7 @@ class MainActivity : AppCompatActivity() {
             player.release()
         }
         mediaPlayer = null
+        startupPlaybackUrlLock = null
         playerEventListener = null
         playerAnalyticsListener = null
         trackSelector = null
@@ -3809,7 +3558,6 @@ class MainActivity : AppCompatActivity() {
         val ivLogoItem: ImageView,
         val btnWatch: TextView
     )
-
     private fun logDebug(tag: String, message: String, tr: Throwable? = null) {
         Log.i(tag, message, tr)
         runCatching<Unit> {
