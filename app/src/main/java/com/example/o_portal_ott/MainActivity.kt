@@ -2754,12 +2754,13 @@ class MainActivity : AppCompatActivity() {
         val loadControl = DefaultLoadControl.Builder()
             .setAllocator(allocator)
             .setBufferDurationsMs(
-                2_500,
-                6_000,
-                700,
-                1_200
+                7_000,
+                30_000,
+                1_500,
+                3_000
             )
-            .setTargetBufferBytes(4 * C.DEFAULT_BUFFER_SEGMENT_SIZE)
+            .setTargetBufferBytes(C.LENGTH_UNSET)
+            .setPrioritizeTimeOverSizeThresholds(true)
             .setBackBuffer(0, false)
             .build()
 
@@ -2824,24 +2825,6 @@ class MainActivity : AppCompatActivity() {
                             logDebug("PLAYER_STATE", "mpeg-l2 audio detected before first frame, switching to video-only fallback")
                             retryCurrentStreamWithoutAudio()
                         }
-                    }
-
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        val state = when (playbackState) {
-                            androidx.media3.common.Player.STATE_IDLE -> "IDLE"
-                            androidx.media3.common.Player.STATE_BUFFERING -> "BUFFERING"
-                            androidx.media3.common.Player.STATE_READY -> "READY"
-                            androidx.media3.common.Player.STATE_ENDED -> "ENDED"
-                            else -> "UNKNOWN($playbackState)"
-                        }
-                        logDebug("PLAYER_STATE", "state=$state isLoading=${player.isLoading} playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} suppression=${player.playbackSuppressionReason} playerError=${player.playerError?.message} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl")
-                        if (playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
-                            logMemoryStats("state_buffering")
-                        }
-                    }
-
-                    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-                        logDebug("PLAYER_STATE", "onPlayWhenReadyChanged playWhenReady=$playWhenReady reason=$reason url=$lastRequestedPlaybackUrl")
                     }
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
