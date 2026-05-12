@@ -203,6 +203,7 @@ class MainActivity : AppCompatActivity() {
     private var startupRecoveryAttempts = 0
     private val maxStartupRecoveryAttempts = 3
     private var startupPlaybackUrlLock: String? = null
+    private var videoOnlyMinimalMode = false
     private val startupSlowStreamRunnable: Runnable = Runnable {
         if (!firstFrameRendered) {
             showCenterError("Поток долго загружается", 3000L)
@@ -220,6 +221,10 @@ class MainActivity : AppCompatActivity() {
 
     private val playbackFreezeWatchdogRunnable: Runnable = Runnable {
         val player = mediaPlayer ?: return@Runnable
+        if (videoOnlyMinimalMode) {
+            handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
+            return@Runnable
+        }
         if (!firstFrameRendered) {
             handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
             return@Runnable
@@ -591,7 +596,7 @@ class MainActivity : AppCompatActivity() {
         btnPlayPause.setOnClickListener {
             if (isPlaybackPaused) {
                 mediaPlayer?.play()
-                handler.postDelayed(startupSlowStreamRunnable, 45_000L)
+                if (!videoOnlyMinimalMode) handler.postDelayed(startupSlowStreamRunnable, 45_000L)
                 isPlaybackPaused = false
                 btnPlayPause.setImageResource(R.drawable.ic_pause)
             } else {
@@ -2563,6 +2568,7 @@ class MainActivity : AppCompatActivity() {
             handler.removeCallbacks(startupSlowStreamRunnable)
             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
             retriedWithoutAudio = false
+            videoOnlyMinimalMode = false
             retriedWithAlternateDecoder = false
             enableAudioTrack()
             applyUnlimitedVideoConstraints()
@@ -2815,7 +2821,7 @@ class MainActivity : AppCompatActivity() {
                         lastProgressWallClockMs = System.currentTimeMillis()
                         handler.removeCallbacks(startupSlowStreamRunnable)
                         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-                        logDebug("PLAYER_STATE", "onRenderedFirstFrame url=$lastRequestedPlaybackUrl")
+                        logDebug("PLAYER_STATE", "onRenderedFirstFrame videoOnlyMode=$videoOnlyMinimalMode url=$lastRequestedPlaybackUrl")
                     }
 
                     override fun onTracksChanged(tracks: Tracks) {
@@ -3028,6 +3034,7 @@ class MainActivity : AppCompatActivity() {
         val url = lastRequestedPlaybackUrl
         if (url.isBlank()) return
         retriedWithoutAudio = true
+        videoOnlyMinimalMode = true
         disableAudioTrack()
         logAudioTrackState("retry_without_audio_params_applied")
         mediaPlayer?.stop()
