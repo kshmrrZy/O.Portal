@@ -2754,13 +2754,12 @@ class MainActivity : AppCompatActivity() {
         val loadControl = DefaultLoadControl.Builder()
             .setAllocator(allocator)
             .setBufferDurationsMs(
-                7_000,
-                30_000,
-                1_500,
-                3_000
+                2_500,
+                6_000,
+                700,
+                1_200
             )
-            .setTargetBufferBytes(C.LENGTH_UNSET)
-            .setPrioritizeTimeOverSizeThresholds(true)
+            .setTargetBufferBytes(4 * C.DEFAULT_BUFFER_SEGMENT_SIZE)
             .setBackBuffer(0, false)
             .build()
 
@@ -2821,6 +2820,9 @@ class MainActivity : AppCompatActivity() {
 
                     override fun onTracksChanged(tracks: Tracks) {
                         logSelectedPlaybackFormats(tracks)
+                        if (retriedWithoutAudio) {
+                            logAudioTrackState("post_fallback_tracks_changed")
+                        }
                         if (!firstFrameRendered && !retriedWithoutAudio && hasSelectedMpegL2Audio(tracks)) {
                             logDebug("PLAYER_STATE", "mpeg-l2 audio detected before first frame, switching to video-only fallback")
                             retryCurrentStreamWithoutAudio()
@@ -2984,7 +2986,15 @@ class MainActivity : AppCompatActivity() {
                 val format = group.getTrackFormat(i)
                 val sample = format.sampleMimeType?.lowercase(Locale.ROOT).orEmpty()
                 val codecs = format.codecs?.lowercase(Locale.ROOT).orEmpty()
-                if (sample.contains("mpeg-l2") || codecs.contains("mp2")) {
+                if (sample == "audio/mpeg" ||
+                    sample == "audio/mpeg-l1" ||
+                    sample == "audio/mpeg-l2" ||
+                    sample == "audio/mpeg-l3" ||
+                    codecs.contains("mp2") ||
+                    codecs.contains("mp3") ||
+                    codecs.contains("mpga") ||
+                    codecs.contains("mpeg")
+                ) {
                     return true
                 }
             }
@@ -3019,6 +3029,7 @@ class MainActivity : AppCompatActivity() {
         if (url.isBlank()) return
         retriedWithoutAudio = true
         disableAudioTrack()
+        logAudioTrackState("retry_without_audio_params_applied")
         mediaPlayer?.stop()
         mediaPlayer?.setMediaItem(buildMediaItem(url))
         mediaPlayer?.prepare()
@@ -3036,6 +3047,25 @@ class MainActivity : AppCompatActivity() {
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
                 ?: return
+        )
+    }
+
+    private fun logAudioTrackState(stage: String) {
+        val audioDisabled = trackSelector?.parameters?.getTrackTypeDisabled(C.TRACK_TYPE_AUDIO) ?: false
+        val selectedAudioTracks = mediaPlayer?.currentTracks?.groups
+            ?.filter { it.isSelected }
+            ?.sumOf { group ->
+                var count = 0
+                for (i in 0 until group.length) {
+                    if (!group.isTrackSelected(i)) continue
+                    val format = group.getTrackFormat(i)
+                    if (format.sampleMimeType?.startsWith("audio/") == true) count++
+                }
+                count
+            } ?: -1
+        logDebug(
+            "PLAYER_STATE",
+            "$stage audioDisabled=$audioDisabled selected audio tracks count=$selectedAudioTracks url=$lastRequestedPlaybackUrl"
         )
     }
 
