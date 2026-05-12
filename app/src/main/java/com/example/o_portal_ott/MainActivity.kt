@@ -2504,6 +2504,7 @@ class MainActivity : AppCompatActivity() {
             logHlsManifestPreview(archiveUrl)
             mediaPlayer?.setMediaItem(buildMediaItem(archiveUrl))
             mediaPlayer?.prepare()
+            mediaPlayer?.playWhenReady = true
             mediaPlayer?.play()
             logMemoryStats("play_archive_start")
             handler.removeCallbacks(memoryLogRunnable)
@@ -2559,6 +2560,7 @@ class MainActivity : AppCompatActivity() {
 
             mediaPlayer?.setMediaItem(buildMediaItem(ch.url))
             mediaPlayer?.prepare()
+            mediaPlayer?.playWhenReady = true
             mediaPlayer?.play()
             logMemoryStats("play_channel_start")
             handler.removeCallbacks(memoryLogRunnable)
@@ -2822,6 +2824,10 @@ class MainActivity : AppCompatActivity() {
                         if (playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
                             logMemoryStats("state_buffering")
                         }
+                    }
+
+                    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                        logDebug("PLAYER_STATE", "onPlayWhenReadyChanged playWhenReady=$playWhenReady reason=$reason url=$lastRequestedPlaybackUrl")
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
