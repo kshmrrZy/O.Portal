@@ -211,6 +211,7 @@ class MainActivity : AppCompatActivity() {
     private val memoryLogRunnable: Runnable = object : Runnable {
         override fun run() {
             logMemoryStats("periodic")
+            logPlaybackProgress("periodic")
             if (mediaPlayer != null && !isArchivePlayback) {
                 handler.postDelayed(this, 5000L)
             }
@@ -2900,6 +2901,14 @@ class MainActivity : AppCompatActivity() {
                         logDebug("PLAYER_NET", "onLoadError type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} canceled=$wasCanceled headers=${loadEventInfo.responseHeaders} error=${error.message} url=$lastRequestedPlaybackUrl", error)
                     }
 
+                    override fun onLoadCanceled(
+                        eventTime: AnalyticsListener.EventTime,
+                        loadEventInfo: LoadEventInfo,
+                        mediaLoadData: MediaLoadData
+                    ) {
+                        logDebug("PLAYER_NET", "onLoadCanceled type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} url=$lastRequestedPlaybackUrl")
+                    }
+
                     override fun onDroppedVideoFrames(
                         eventTime: AnalyticsListener.EventTime,
                         droppedFrames: Int,
@@ -2946,6 +2955,14 @@ class MainActivity : AppCompatActivity() {
         val freeMb = rt.freeMemory() / (1024 * 1024)
         val usedMb = totalMb - freeMb
         logDebug("PLAYER_MEM", "stage=$stage usedMb=$usedMb totalMb=$totalMb freeMb=$freeMb maxMb=$maxMb url=$lastRequestedPlaybackUrl")
+    }
+
+    private fun logPlaybackProgress(stage: String) {
+        val player = mediaPlayer ?: return
+        logDebug(
+            "PLAYER_PROGRESS",
+            "stage=$stage posMs=${player.currentPosition} bufferedPosMs=${player.bufferedPosition} totalBufferedMs=${player.totalBufferedDuration} isPlaying=${player.isPlaying} isLoading=${player.isLoading} playWhenReady=${player.playWhenReady} state=${player.playbackState} url=$lastRequestedPlaybackUrl"
+        )
     }
 
 
