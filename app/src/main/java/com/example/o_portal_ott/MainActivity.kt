@@ -274,6 +274,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val USE_FFMPEG_AUDIO_FOR_MPEG_L2 = true
+        private const val PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2 = "pref_use_ffmpeg_audio_for_mpeg_l2"
         private const val PREF_PLAYLISTS = "playlist_profiles"
         private const val PREF_SELECTED_PLAYLIST = "selected_playlist"
         private const val PREF_SELECTED_EPG = "selected_epg"
@@ -1284,6 +1285,13 @@ class MainActivity : AppCompatActivity() {
         }
         btnUserSettings.setOnClickListener { openUserSettingsScreen() }
         btnExportDebugLog.setOnClickListener { exportDebugLogToDownloads() }
+        btnExportDebugLog.setOnLongClickListener {
+            val current = prefs.getBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, USE_FFMPEG_AUDIO_FOR_MPEG_L2)
+            val next = !current
+            prefs.edit().putBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, next).apply()
+            Toast.makeText(this, "FFmpeg audio mode: ${if (next) "PREFER" else "OFF"} (перезапустите поток)", Toast.LENGTH_LONG).show()
+            true
+        }
     }
 
     private fun openPlaylistSettingsScreen() {
@@ -2764,12 +2772,13 @@ class MainActivity : AppCompatActivity() {
             MediaCodecSelector.DEFAULT
         }
 
-        val extensionMode = if (USE_FFMPEG_AUDIO_FOR_MPEG_L2) {
+        val useFfmpegAudio = prefs.getBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, USE_FFMPEG_AUDIO_FOR_MPEG_L2)
+        val extensionMode = if (useFfmpegAudio) {
             DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
         } else {
             DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
         }
-        logDebug("PLAYER_STATE", "ffmpeg_mode=${if (USE_FFMPEG_AUDIO_FOR_MPEG_L2) "PREFER" else "OFF"}")
+        logDebug("PLAYER_STATE", "ffmpeg_mode=${if (useFfmpegAudio) "PREFER" else "OFF"}")
         val renderersFactory = DefaultRenderersFactory(this)
             .setExtensionRendererMode(extensionMode)
             .setEnableDecoderFallback(true)
@@ -2870,7 +2879,7 @@ class MainActivity : AppCompatActivity() {
                         loadEventInfo: LoadEventInfo,
                         mediaLoadData: MediaLoadData
                     ) {
-                        Log.i("PLAYER_NET", "onLoadStarted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} url=$lastRequestedPlaybackUrl")
+                        logDebug("PLAYER_NET", "onLoadStarted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} url=$lastRequestedPlaybackUrl")
                     }
 
                     override fun onLoadCompleted(
@@ -2878,7 +2887,7 @@ class MainActivity : AppCompatActivity() {
                         loadEventInfo: LoadEventInfo,
                         mediaLoadData: MediaLoadData
                     ) {
-                        Log.i("PLAYER_NET", "onLoadCompleted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} headers=${loadEventInfo.responseHeaders} url=$lastRequestedPlaybackUrl")
+                        logDebug("PLAYER_NET", "onLoadCompleted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} headers=${loadEventInfo.responseHeaders} url=$lastRequestedPlaybackUrl")
                     }
 
                     override fun onLoadError(
@@ -2888,7 +2897,7 @@ class MainActivity : AppCompatActivity() {
                         error: IOException,
                         wasCanceled: Boolean
                     ) {
-                        Log.e("PLAYER_NET", "onLoadError type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} canceled=$wasCanceled headers=${loadEventInfo.responseHeaders} error=${error.message} url=$lastRequestedPlaybackUrl", error)
+                        logDebug("PLAYER_NET", "onLoadError type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri} bytes=${loadEventInfo.bytesLoaded} loadMs=${loadEventInfo.loadDurationMs} canceled=$wasCanceled headers=${loadEventInfo.responseHeaders} error=${error.message} url=$lastRequestedPlaybackUrl", error)
                     }
 
                     override fun onDroppedVideoFrames(
@@ -2947,7 +2956,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun logSelectedPlaybackFormats(tracks: Tracks) {
-        Log.i("PLAYER_FORMAT", "trackGroups=${tracks.groups.size} url=$lastRequestedPlaybackUrl")
+        logDebug("PLAYER_FORMAT", "trackGroups=${tracks.groups.size} url=$lastRequestedPlaybackUrl")
         for (group in tracks.groups) {
             if (!group.isSelected) continue
             for (i in 0 until group.length) {
@@ -2958,7 +2967,7 @@ class MainActivity : AppCompatActivity() {
                     "audio" -> "audio"
                     else -> "track"
                 }
-                Log.i(
+                logDebug(
                     "PLAYER_FORMAT",
                     "$type codec=${format.codecs ?: format.sampleMimeType.orEmpty()} sampleMime=${format.sampleMimeType.orEmpty()} " +
                             "containerMime=${format.containerMimeType.orEmpty()} bitrate=${format.bitrate} " +
