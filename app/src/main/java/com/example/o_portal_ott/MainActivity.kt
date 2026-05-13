@@ -3057,8 +3057,25 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun isAudioTrackTypeDisabledCompat(): Boolean {
+        val params = trackSelector?.parameters ?: return false
+        return try {
+            val method = params.javaClass.getMethod("isTrackTypeDisabled", Int::class.javaPrimitiveType)
+            (method.invoke(params, C.TRACK_TYPE_AUDIO) as? Boolean) == true
+        } catch (_: Throwable) {
+            try {
+                val field = params.javaClass.getDeclaredField("disabledTrackTypes")
+                field.isAccessible = true
+                val value = field.get(params) as? Set<*>
+                value?.contains(C.TRACK_TYPE_AUDIO) == true
+            } catch (_: Throwable) {
+                false
+            }
+        }
+    }
+
     private fun logAudioTrackState(stage: String) {
-        val audioDisabled = trackSelector?.parameters?.isTrackTypeDisabled(C.TRACK_TYPE_AUDIO) ?: false
+        val audioDisabled = isAudioTrackTypeDisabledCompat()
         val selectedAudioTracks = mediaPlayer?.currentTracks?.groups
             ?.filter { it.isSelected }
             ?.sumOf { group ->
