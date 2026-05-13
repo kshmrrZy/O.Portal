@@ -3058,7 +3058,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun logAudioTrackState(stage: String) {
-        val audioDisabled = trackSelector?.parameters?.getTrackTypeDisabled(C.TRACK_TYPE_AUDIO) ?: false
+        val audioDisabled = trackSelector?.parameters?.isTrackTypeDisabled(C.TRACK_TYPE_AUDIO) ?: false
         val selectedAudioTracks = mediaPlayer?.currentTracks?.groups
             ?.filter { it.isSelected }
             ?.sumOf { group ->
