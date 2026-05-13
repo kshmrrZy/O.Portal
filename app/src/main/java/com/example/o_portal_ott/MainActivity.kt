@@ -204,6 +204,7 @@ class MainActivity : AppCompatActivity() {
     private val maxStartupRecoveryAttempts = 3
     private var startupPlaybackUrlLock: String? = null
     private var videoOnlyMinimalMode = false
+    private var audioTrackForcedDisabled = false
     private val startupSlowStreamRunnable: Runnable = Runnable {
         if (!firstFrameRendered) {
             showCenterError("Поток долго загружается", 3000L)
@@ -3035,12 +3036,7 @@ class MainActivity : AppCompatActivity() {
         if (url.isBlank()) return
         retriedWithoutAudio = true
         videoOnlyMinimalMode = true
-        disableAudioTrack()
-        logAudioTrackState("retry_without_audio_params_applied")
-        mediaPlayer?.stop()
-        mediaPlayer?.setMediaItem(buildMediaItem(url))
-        mediaPlayer?.prepare()
-        mediaPlayer?.playWhenReady = true
+        startVideoOnlyMinimalDebug(url)
         logMemoryStats("retry_without_audio_start")
         handler.removeCallbacks(memoryLogRunnable)
         handler.post(memoryLogRunnable)
@@ -3051,6 +3047,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun disableAudioTrack() {
+        audioTrackForcedDisabled = true
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
                 ?: return
@@ -3076,28 +3073,96 @@ class MainActivity : AppCompatActivity() {
 
     private fun logAudioTrackState(stage: String) {
         val audioDisabled = isAudioTrackTypeDisabledCompat()
-        val selectedAudioTracks = mediaPlayer?.currentTracks?.groups
+        val selectedAudioTracks = countSelectedTracksByType("audio/")
+        val selectedVideoTracks = countSelectedTracksByType("video/")
+        val trackGroupCount = mediaPlayer?.currentTracks?.groups?.size ?: -1
+        logDebug(
+            "PLAYER_STATE",
+            "$stage audioTrackForcedDisabled=$audioTrackForcedDisabled audioDisabled=$audioDisabled selected audio tracks count=$selectedAudioTracks selected video tracks count=$selectedVideoTracks trackGroups=$trackGroupCount videoOnlyMinimalMode=$videoOnlyMinimalMode url=$lastRequestedPlaybackUrl"
+        )
+    }
+
+    private fun countSelectedTracksByType(prefix: String): Int {
+        return mediaPlayer?.currentTracks?.groups
             ?.filter { it.isSelected }
             ?.sumOf { group ->
                 var count = 0
                 for (i in 0 until group.length) {
                     if (!group.isTrackSelected(i)) continue
                     val format = group.getTrackFormat(i)
-                    if (format.sampleMimeType?.startsWith("audio/") == true) count++
+                    if (format.sampleMimeType?.startsWith(prefix) == true) count++
                 }
                 count
             } ?: -1
-        logDebug(
-            "PLAYER_STATE",
-            "$stage audioDisabled=$audioDisabled selected audio tracks count=$selectedAudioTracks url=$lastRequestedPlaybackUrl"
-        )
     }
 
     private fun enableAudioTrack() {
+        audioTrackForcedDisabled = false
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                 ?: return
         )
+    }
+
+    private fun startVideoOnlyMinimalDebug(url: String) {
+        releasePlayer()
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(userAgent)
+            .setAllowCrossProtocolRedirects(true)
+        val selector = DefaultTrackSelector(this)
+        trackSelector = selector
+        selector.setParameters(
+            selector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+        )
+        audioTrackForcedDisabled = true
+        val player = ExoPlayer.Builder(this)
+            .setTrackSelector(selector)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
+            .build()
+        mediaPlayer = player
+        findViewById<PlayerView>(R.id.videoLayout).player = player
+        player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                logDebug(
+                    "VIDEO_ONLY_MINIMAL",
+                    "state=$playbackState currentPosition=${player.currentPosition} bufferedPosition=${player.bufferedPosition} totalBufferedDuration=${player.totalBufferedDuration} playWhenReady=${player.playWhenReady}"
+                )
+            }
+
+            override fun onRenderedFirstFrame() {
+                logDebug("VIDEO_ONLY_MINIMAL", "onRenderedFirstFrame")
+            }
+
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                logDebug("VIDEO_ONLY_MINIMAL", "videoSize=${videoSize.width}x${videoSize.height}")
+            }
+        })
+        player.addAnalyticsListener(object : AnalyticsListener {
+            override fun onLoadStarted(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData) {
+                logDebug("VIDEO_ONLY_MINIMAL", "onLoadStarted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri}")
+            }
+            override fun onLoadCompleted(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData) {
+                logDebug("VIDEO_ONLY_MINIMAL", "onLoadCompleted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} bytes=${loadEventInfo.bytesLoaded} ms=${loadEventInfo.loadDurationMs}")
+            }
+            override fun onLoadCanceled(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData) {
+                logDebug("VIDEO_ONLY_MINIMAL", "onLoadCanceled type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType}")
+            }
+            override fun onLoadError(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData, error: IOException, wasCanceled: Boolean) {
+                logDebug("VIDEO_ONLY_MINIMAL", "onLoadError type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} error=${error.message}")
+            }
+            override fun onVideoDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
+                logDebug("VIDEO_ONLY_MINIMAL", "videoDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs")
+            }
+            override fun onVideoEnabled(eventTime: AnalyticsListener.EventTime, decoderCounters: DecoderCounters) {
+                decoderCounters.ensureUpdated()
+                logDebug("VIDEO_ONLY_MINIMAL", "renderedOutputBufferCount=${decoderCounters.renderedOutputBufferCount}")
+            }
+        })
+        logAudioTrackState("video_only_minimal_before_prepare")
+        player.setMediaItem(buildMediaItem(url))
+        player.prepare()
+        player.playWhenReady = true
+        logAudioTrackState("video_only_minimal_after_prepare")
     }
 
     private fun applyUnlimitedVideoConstraints() {
