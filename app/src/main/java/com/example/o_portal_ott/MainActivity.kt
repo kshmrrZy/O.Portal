@@ -62,14 +62,11 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
-import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.DecoderCounters
-import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
-import androidx.media3.extractor.ts.TsExtractor
 import androidx.media3.ui.PlayerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.model.GlideUrl
@@ -2806,20 +2803,10 @@ class MainActivity : AppCompatActivity() {
             .setMediaCodecSelector(codecSelector)
 
         val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
-        val tsFlags = TsExtractor.FLAG_DETECT_ACCESS_UNITS or
-                TsExtractor.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS or
-                (if (allowNonIdr) TsExtractor.FLAG_ALLOW_NON_IDR_KEYFRAMES else 0)
-        logDebug("PLAYER_HLS", "tsExtractorFlags=$tsFlags allowNonIdr=$allowNonIdr")
-        val extractorsFactory = DefaultExtractorsFactory().setTsExtractorFlags(tsFlags)
-        val hlsMediaSourceFactory = HlsMediaSource.Factory(httpFactory)
-            .setExtractorFactory(
-                DefaultHlsExtractorFactory(
-                    DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES,
-                    true
-                )
-            )
-        val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory, extractorsFactory)
-            .setDataSourceFactory(httpFactory)
+        val hlsPayloadReaderFlags =
+            if (allowNonIdr) DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES else 0
+        logDebug("PLAYER_HLS", "hlsPayloadReaderFlags=$hlsPayloadReaderFlags allowNonIdr=$allowNonIdr")
+        val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory).setDataSourceFactory(httpFactory)
 
         trackSelector = DefaultTrackSelector(this).apply {
             setParameters(
