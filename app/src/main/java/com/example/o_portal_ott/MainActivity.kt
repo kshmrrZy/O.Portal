@@ -3036,14 +3036,12 @@ class MainActivity : AppCompatActivity() {
         if (url.isBlank()) return
         retriedWithoutAudio = true
         videoOnlyMinimalMode = true
-        startVideoOnlyMinimalDebug(url)
-        logMemoryStats("retry_without_audio_start")
         handler.removeCallbacks(memoryLogRunnable)
-        handler.post(memoryLogRunnable)
-        firstFrameRendered = false
         handler.removeCallbacks(startupSlowStreamRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-        handler.postDelayed(startupSlowStreamRunnable, 45_000L)
+        startVideoOnlyMinimalDebug(url)
+        logMemoryStats("retry_without_audio_start")
+        firstFrameRendered = false
     }
 
     private fun disableAudioTrack() {
@@ -3061,12 +3059,10 @@ class MainActivity : AppCompatActivity() {
             (method.invoke(params, C.TRACK_TYPE_AUDIO) as? Boolean) == true
         } catch (_: Throwable) {
             try {
-                val field = params.javaClass.getDeclaredField("disabledTrackTypes")
-                field.isAccessible = true
-                val value = field.get(params) as? Set<*>
-                value?.contains(C.TRACK_TYPE_AUDIO) == true
+                val method = params.javaClass.getMethod("getTrackTypeDisabled", Int::class.javaPrimitiveType)
+                (method.invoke(params, C.TRACK_TYPE_AUDIO) as? Boolean) == true
             } catch (_: Throwable) {
-                false
+                audioTrackForcedDisabled
             }
         }
     }
@@ -3159,9 +3155,10 @@ class MainActivity : AppCompatActivity() {
             }
         })
         logAudioTrackState("video_only_minimal_before_prepare")
+        player.playWhenReady = true
         player.setMediaItem(buildMediaItem(url))
         player.prepare()
-        player.playWhenReady = true
+        player.play()
         logAudioTrackState("video_only_minimal_after_prepare")
     }
 
