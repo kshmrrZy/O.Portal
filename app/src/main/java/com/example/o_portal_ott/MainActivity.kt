@@ -209,6 +209,7 @@ class MainActivity : AppCompatActivity() {
     private var audioTrackForcedDisabled = false
     private var videoOnlyMinimalFirstFrameRendered = false
     private var videoOnlyMinimalTriedSoftwareDecoder = false
+    private var videoOnlyMinimalNoFrameRunnable: Runnable? = null
     private val startupSlowStreamRunnable: Runnable = Runnable {
         if (!firstFrameRendered) {
             showCenterError("Поток долго загружается", 3000L)
@@ -2568,6 +2569,8 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = ch.url
             startupPlaybackUrlLock = ch.url
+            videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
+            videoOnlyMinimalNoFrameRunnable = null
             logHlsManifestPreview(ch.url)
             firstFrameRendered = false
             handler.removeCallbacks(startupSlowStreamRunnable)
@@ -3135,7 +3138,7 @@ class MainActivity : AppCompatActivity() {
             .build()
         mediaPlayer = player
         findViewById<PlayerView>(R.id.videoLayout).player = player
-        player.addListener(object : androidx.media3.common.Player.Listener {
+        val minimalListener = object : androidx.media3.common.Player.Listener {
             override fun onTracksChanged(tracks: Tracks) {
                 logDebug("VIDEO_ONLY_MINIMAL", "trackGroups=${tracks.groups.size}")
                 logAudioTrackState("video_only_minimal_tracks_changed")
@@ -3156,8 +3159,10 @@ class MainActivity : AppCompatActivity() {
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                 logDebug("VIDEO_ONLY_MINIMAL", "videoSize=${videoSize.width}x${videoSize.height}")
             }
-        })
-        player.addAnalyticsListener(object : AnalyticsListener {
+        }
+        player.addListener(minimalListener)
+        playerEventListener = minimalListener
+        val minimalAnalytics = object : AnalyticsListener {
             override fun onLoadStarted(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData) {
                 logDebug("VIDEO_ONLY_MINIMAL", "onLoadStarted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri}")
             }
@@ -3180,7 +3185,9 @@ class MainActivity : AppCompatActivity() {
                 decoderCounters.ensureUpdated()
                 logDebug("VIDEO_ONLY_MINIMAL", "renderedOutputBufferCount=${decoderCounters.renderedOutputBufferCount}")
             }
-        })
+        }
+        player.addAnalyticsListener(minimalAnalytics)
+        playerAnalyticsListener = minimalAnalytics
         logAudioTrackState("video_only_minimal_before_prepare")
         logDebug("VIDEO_ONLY_MINIMAL", "startup preferSoftwareDecoder=$preferSoftwareDecoder")
         player.playWhenReady = true
@@ -3188,7 +3195,8 @@ class MainActivity : AppCompatActivity() {
         player.prepare()
         player.play()
         logAudioTrackState("video_only_minimal_after_prepare")
-        handler.postDelayed({
+        videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
+        val noFrameRunnable = Runnable {
             if (!videoOnlyMinimalFirstFrameRendered && videoOnlyMinimalMode) {
                 logAudioTrackState("video_only_minimal_no_first_frame_25s")
                 logDebug(
@@ -3201,7 +3209,9 @@ class MainActivity : AppCompatActivity() {
                     startVideoOnlyMinimalDebug(url, preferSoftwareDecoder = true)
                 }
             }
-        }, 25_000L)
+        }
+        videoOnlyMinimalNoFrameRunnable = noFrameRunnable
+        handler.postDelayed(noFrameRunnable, 25_000L)
     }
 
     private fun applyUnlimitedVideoConstraints() {
@@ -3479,6 +3489,8 @@ class MainActivity : AppCompatActivity() {
         trackSelector = null
         handler.removeCallbacks(startupSlowStreamRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+        videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
+        videoOnlyMinimalNoFrameRunnable = null
 
     }
 
