@@ -246,7 +246,8 @@ class MainActivity : AppCompatActivity() {
                 if (now - bufferingSinceMs > 12_000L) {
                     showCenterError("Буферизация зависла, перезапуск потока", 2200L)
                     player.stop()
-                    player.setMediaItem(buildMediaItem(lastRequestedPlaybackUrl))
+                    val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+                    player.setMediaSource(buildHlsMediaSource(lastRequestedPlaybackUrl, allowNonIdr))
                     player.prepare()
                     player.playWhenReady = true
                     bufferingSinceMs = now
@@ -265,7 +266,8 @@ class MainActivity : AppCompatActivity() {
         } else if (lastProgressWallClockMs > 0L && now - lastProgressWallClockMs > 10_000L) {
             showCenterError("Поток завис, выполняем перезапуск", 2200L)
             player.stop()
-            player.setMediaItem(buildMediaItem(lastRequestedPlaybackUrl))
+            val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+            player.setMediaSource(buildHlsMediaSource(lastRequestedPlaybackUrl, allowNonIdr))
             player.prepare()
             player.playWhenReady = true
             lastProgressWallClockMs = now
@@ -602,6 +604,14 @@ class MainActivity : AppCompatActivity() {
         })
 
         btnSettings.setOnClickListener { showSettingsDialog() }
+        btnSettings.setOnLongClickListener {
+            val next = !prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+            prefs.edit().putBoolean(PREF_HLS_ALLOW_NON_IDR, next).apply()
+            logDebug("PLAYER_HLS", "runtime toggle allowNonIdr=$next")
+            showCenterError("HLS allowNonIdr=${if (next) "ON" else "OFF"}", 1500L)
+            restartCurrentStream(recreatePlayer = false)
+            true
+        }
         btnSleepTimer.setOnClickListener { showTimerDialog() }
 
         btnPlayPause.setOnClickListener {
@@ -3194,11 +3204,13 @@ class MainActivity : AppCompatActivity() {
         findViewById<PlayerView>(R.id.videoLayout).player = player
         val minimalListener = object : androidx.media3.common.Player.Listener {
             override fun onTracksChanged(tracks: Tracks) {
+                if (!videoOnlyMinimalMode) return
                 logDebug("VIDEO_ONLY_MINIMAL", "trackGroups=${tracks.groups.size}")
                 logAudioTrackState("video_only_minimal_tracks_changed")
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
+                if (!videoOnlyMinimalMode) return
                 logDebug(
                     "VIDEO_ONLY_MINIMAL",
                     "state=$playbackState currentPosition=${player.currentPosition} bufferedPosition=${player.bufferedPosition} totalBufferedDuration=${player.totalBufferedDuration} playWhenReady=${player.playWhenReady}"
@@ -3207,10 +3219,12 @@ class MainActivity : AppCompatActivity() {
 
             override fun onRenderedFirstFrame() {
                 videoOnlyMinimalFirstFrameRendered = true
+                if (!videoOnlyMinimalMode) return
                 logDebug("VIDEO_ONLY_MINIMAL", "onRenderedFirstFrame")
             }
 
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                if (!videoOnlyMinimalMode) return
                 logDebug("VIDEO_ONLY_MINIMAL", "videoSize=${videoSize.width}x${videoSize.height}")
             }
         }
@@ -3296,7 +3310,8 @@ class MainActivity : AppCompatActivity() {
         } else {
             mediaPlayer?.stop()
         }
-        mediaPlayer?.setMediaItem(buildMediaItem(url))
+        val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+        mediaPlayer?.setMediaSource(buildHlsMediaSource(url, allowNonIdr))
         mediaPlayer?.prepare()
         mediaPlayer?.playWhenReady = true
         logMemoryStats("restart_stream_start")
