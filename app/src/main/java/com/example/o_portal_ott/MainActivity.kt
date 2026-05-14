@@ -47,12 +47,14 @@ import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.view.GestureDetectorCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -205,6 +207,7 @@ class MainActivity : AppCompatActivity() {
     private var startupPlaybackUrlLock: String? = null
     private var videoOnlyMinimalMode = false
     private var audioTrackForcedDisabled = false
+    private var videoOnlyMinimalFirstFrameRendered = false
     private val startupSlowStreamRunnable: Runnable = Runnable {
         if (!firstFrameRendered) {
             showCenterError("Поток долго загружается", 3000L)
@@ -3102,6 +3105,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun startVideoOnlyMinimalDebug(url: String) {
         stopPlayback()
+        videoOnlyMinimalFirstFrameRendered = false
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(userAgent)
             .setAllowCrossProtocolRedirects(true)
@@ -3118,6 +3122,11 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer = player
         findViewById<PlayerView>(R.id.videoLayout).player = player
         player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onTracksChanged(tracks: Tracks) {
+                logDebug("VIDEO_ONLY_MINIMAL", "trackGroups=${tracks.groups.size}")
+                logAudioTrackState("video_only_minimal_tracks_changed")
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
                 logDebug(
                     "VIDEO_ONLY_MINIMAL",
@@ -3126,6 +3135,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onRenderedFirstFrame() {
+                videoOnlyMinimalFirstFrameRendered = true
                 logDebug("VIDEO_ONLY_MINIMAL", "onRenderedFirstFrame")
             }
 
@@ -3149,6 +3159,9 @@ class MainActivity : AppCompatActivity() {
             override fun onVideoDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
                 logDebug("VIDEO_ONLY_MINIMAL", "videoDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs")
             }
+            override fun onVideoInputFormatChanged(eventTime: AnalyticsListener.EventTime, format: Format, decoderReuseEvaluation: DecoderReuseEvaluation?) {
+                logDebug("VIDEO_ONLY_MINIMAL", "videoInputFormat codec=${format.codecs} sampleMime=${format.sampleMimeType} size=${format.width}x${format.height}")
+            }
             override fun onVideoEnabled(eventTime: AnalyticsListener.EventTime, decoderCounters: DecoderCounters) {
                 decoderCounters.ensureUpdated()
                 logDebug("VIDEO_ONLY_MINIMAL", "renderedOutputBufferCount=${decoderCounters.renderedOutputBufferCount}")
@@ -3160,6 +3173,15 @@ class MainActivity : AppCompatActivity() {
         player.prepare()
         player.play()
         logAudioTrackState("video_only_minimal_after_prepare")
+        handler.postDelayed({
+            if (!videoOnlyMinimalFirstFrameRendered && videoOnlyMinimalMode) {
+                logAudioTrackState("video_only_minimal_no_first_frame_25s")
+                logDebug(
+                    "VIDEO_ONLY_MINIMAL",
+                    "no first frame after 25s; audioDisabled path is active, network loads continue, likely decode/render incompatibility for this AVC TS stream on device"
+                )
+            }
+        }, 25_000L)
     }
 
     private fun applyUnlimitedVideoConstraints() {
