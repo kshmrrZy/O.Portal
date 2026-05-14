@@ -3105,7 +3105,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startVideoOnlyMinimalDebug(url: String) {
-        releasePlayer()
+        stopPlayback()
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(userAgent)
             .setAllowCrossProtocolRedirects(true)
