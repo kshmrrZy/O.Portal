@@ -62,6 +62,7 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -212,6 +213,7 @@ class MainActivity : AppCompatActivity() {
     private var videoOnlyMinimalFirstFrameRendered = false
     private var videoOnlyMinimalTriedSoftwareDecoder = false
     private var videoOnlyMinimalNoFrameRunnable: Runnable? = null
+    private val enableTsForensicDump = true
     private val startupSlowStreamRunnable: Runnable = Runnable {
         if (!firstFrameRendered) {
             showCenterError("Поток долго загружается", 3000L)
@@ -2575,6 +2577,7 @@ class MainActivity : AppCompatActivity() {
             videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
             videoOnlyMinimalNoFrameRunnable = null
             logHlsManifestPreview(ch.url)
+            dumpDebugTsSegments(ch.url, "problem")
             firstFrameRendered = false
             handler.removeCallbacks(startupSlowStreamRunnable)
             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
@@ -2584,7 +2587,8 @@ class MainActivity : AppCompatActivity() {
             enableAudioTrack()
             applyUnlimitedVideoConstraints()
 
-            mediaPlayer?.setMediaItem(buildMediaItem(ch.url))
+            val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+            mediaPlayer?.setMediaSource(buildHlsMediaSource(ch.url, allowNonIdr))
             mediaPlayer?.prepare()
             mediaPlayer?.playWhenReady = true
             mediaPlayer?.play()
@@ -2976,6 +2980,49 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
+    private fun buildHlsMediaSource(url: String, allowNonIdr: Boolean): HlsMediaSource {
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(userAgent)
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(12_000)
+            .setReadTimeoutMs(25_000)
+        val hlsPayloadReaderFlags =
+            if (allowNonIdr) DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES else 0
+        logDebug("PLAYER_HLS", "hlsPayloadReaderFlags=$hlsPayloadReaderFlags allowNonIdr=$allowNonIdr")
+        return HlsMediaSource.Factory(httpFactory)
+            .setExtractorFactory(DefaultHlsExtractorFactory(hlsPayloadReaderFlags, true))
+            .createMediaSource(buildMediaItem(url))
+    }
+
+    private fun dumpDebugTsSegments(playlistUrl: String, label: String) {
+        if (!enableTsForensicDump) return
+        thread(name = "ts-dump-$label") {
+            runCatching {
+                val text = URL(playlistUrl).openConnection().run {
+                    (this as HttpURLConnection).apply {
+                        connectTimeout = 10000
+                        readTimeout = 15000
+                        setRequestProperty("User-Agent", userAgent)
+                    }.inputStream.bufferedReader().use { it.readText() }
+                }
+                val segments = text.lineSequence()
+                    .map { it.trim() }
+                    .filter { it.startsWith("http", true) && it.contains(".ts") }
+                    .toList()
+                val tail = segments.takeLast(3)
+                val dir = File(filesDir, "debug_ts/$label-${System.currentTimeMillis()}")
+                dir.mkdirs()
+                tail.forEachIndexed { index, segUrl ->
+                    val out = File(dir, "segment_${index + 1}.ts")
+                    URL(segUrl).openStream().use { input -> out.outputStream().use { input.copyTo(it) } }
+                }
+                logDebug("PLAYER_HLS", "forensic TS dump saved path=${dir.absolutePath} files=${tail.size}")
+            }.onFailure {
+                logDebug("PLAYER_HLS", "forensic TS dump failed url=$playlistUrl error=${it.message}", it)
+            }
+        }
+    }
+
     private fun logMemoryStats(stage: String) {
         val rt = Runtime.getRuntime()
         val maxMb = rt.maxMemory() / (1024 * 1024)
@@ -3198,7 +3245,8 @@ class MainActivity : AppCompatActivity() {
         logAudioTrackState("video_only_minimal_before_prepare")
         logDebug("VIDEO_ONLY_MINIMAL", "startup preferSoftwareDecoder=$preferSoftwareDecoder")
         player.playWhenReady = true
-        player.setMediaItem(buildMediaItem(url))
+        val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+        player.setMediaSource(buildHlsMediaSource(url, allowNonIdr))
         player.prepare()
         player.play()
         logAudioTrackState("video_only_minimal_after_prepare")
