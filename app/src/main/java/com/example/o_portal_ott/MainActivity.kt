@@ -208,6 +208,7 @@ class MainActivity : AppCompatActivity() {
     private var videoOnlyMinimalMode = false
     private var audioTrackForcedDisabled = false
     private var videoOnlyMinimalFirstFrameRendered = false
+    private var videoOnlyMinimalTriedSoftwareDecoder = false
     private val startupSlowStreamRunnable: Runnable = Runnable {
         if (!firstFrameRendered) {
             showCenterError("Поток долго загружается", 3000L)
@@ -3042,7 +3043,8 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(memoryLogRunnable)
         handler.removeCallbacks(startupSlowStreamRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-        startVideoOnlyMinimalDebug(url)
+        videoOnlyMinimalTriedSoftwareDecoder = false
+        startVideoOnlyMinimalDebug(url, preferSoftwareDecoder = false)
         logMemoryStats("retry_without_audio_start")
         firstFrameRendered = false
     }
@@ -3103,19 +3105,31 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun startVideoOnlyMinimalDebug(url: String) {
+    private fun startVideoOnlyMinimalDebug(url: String, preferSoftwareDecoder: Boolean) {
         stopPlayback()
         videoOnlyMinimalFirstFrameRendered = false
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(userAgent)
             .setAllowCrossProtocolRedirects(true)
+        val codecSelector = if (preferSoftwareDecoder) {
+            MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
+                MediaCodecSelector.DEFAULT
+                    .getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+                    .sortedBy { it.hardwareAccelerated }
+            }
+        } else {
+            MediaCodecSelector.DEFAULT
+        }
+        val renderersFactory = DefaultRenderersFactory(this)
+            .setEnableDecoderFallback(true)
+            .setMediaCodecSelector(codecSelector)
         val selector = DefaultTrackSelector(this)
         trackSelector = selector
         selector.setParameters(
             selector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
         )
         audioTrackForcedDisabled = true
-        val player = ExoPlayer.Builder(this)
+        val player = ExoPlayer.Builder(this, renderersFactory)
             .setTrackSelector(selector)
             .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
             .build()
@@ -3168,6 +3182,7 @@ class MainActivity : AppCompatActivity() {
             }
         })
         logAudioTrackState("video_only_minimal_before_prepare")
+        logDebug("VIDEO_ONLY_MINIMAL", "startup preferSoftwareDecoder=$preferSoftwareDecoder")
         player.playWhenReady = true
         player.setMediaItem(buildMediaItem(url))
         player.prepare()
@@ -3180,6 +3195,11 @@ class MainActivity : AppCompatActivity() {
                     "VIDEO_ONLY_MINIMAL",
                     "no first frame after 25s; audioDisabled path is active, network loads continue, likely decode/render incompatibility for this AVC TS stream on device"
                 )
+                if (!videoOnlyMinimalTriedSoftwareDecoder) {
+                    videoOnlyMinimalTriedSoftwareDecoder = true
+                    logDebug("VIDEO_ONLY_MINIMAL", "retry once with software-preferred decoder for compatibility check")
+                    startVideoOnlyMinimalDebug(url, preferSoftwareDecoder = true)
+                }
             }
         }, 25_000L)
     }
