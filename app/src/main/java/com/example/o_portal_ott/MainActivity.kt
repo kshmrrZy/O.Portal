@@ -209,6 +209,7 @@ class MainActivity : AppCompatActivity() {
     private val maxStartupRecoveryAttempts = 3
     private var startupPlaybackUrlLock: String? = null
     private var videoOnlyMinimalMode = false
+    private var runtimeRecoveryAttempted = false
     private var audioTrackForcedDisabled = false
     private var videoOnlyMinimalFirstFrameRendered = false
     private var videoOnlyMinimalTriedSoftwareDecoder = false
@@ -244,12 +245,7 @@ class MainActivity : AppCompatActivity() {
             if (player.playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
                 if (bufferingSinceMs == 0L) bufferingSinceMs = now
                 if (now - bufferingSinceMs > 12_000L) {
-                    showCenterError("Буферизация зависла, перезапуск потока", 2200L)
-                    player.stop()
-                    val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
-                    player.setMediaSource(buildHlsMediaSource(lastRequestedPlaybackUrl, allowNonIdr))
-                    player.prepare()
-                    player.playWhenReady = true
+                    logDebug("PLAYER_STATE", "watchdog buffering detected; auto-restart disabled")
                     bufferingSinceMs = now
                 }
             } else {
@@ -264,12 +260,7 @@ class MainActivity : AppCompatActivity() {
             lastPlaybackPositionMs = pos
             lastProgressWallClockMs = now
         } else if (lastProgressWallClockMs > 0L && now - lastProgressWallClockMs > 10_000L) {
-            showCenterError("Поток завис, выполняем перезапуск", 2200L)
-            player.stop()
-            val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
-            player.setMediaSource(buildHlsMediaSource(lastRequestedPlaybackUrl, allowNonIdr))
-            player.prepare()
-            player.playWhenReady = true
+            logDebug("PLAYER_STATE", "watchdog progress stall detected; auto-restart disabled")
             lastProgressWallClockMs = now
         }
         handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
@@ -2571,11 +2562,6 @@ class MainActivity : AppCompatActivity() {
     private fun playChannel(forcePlay: Boolean = false) {
         runCatching {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
-            val lockedUrl = startupPlaybackUrlLock
-            if (!lockedUrl.isNullOrBlank() && !firstFrameRendered && ch.url != lockedUrl) {
-                logDebug("PLAYER_STATE", "startup lock prevents channel switch from $lockedUrl to ${ch.url}")
-                return
-            }
             homePanel.visibility = View.GONE
             val shouldUseSoftware = !preferGpuDecoding
             if (softwareDecoderMode != shouldUseSoftware) {
@@ -2595,6 +2581,7 @@ class MainActivity : AppCompatActivity() {
             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
             retriedWithoutAudio = false
             videoOnlyMinimalMode = false
+            runtimeRecoveryAttempted = false
             retriedWithAlternateDecoder = false
             enableAudioTrack()
             applyUnlimitedVideoConstraints()
@@ -2873,8 +2860,7 @@ class MainActivity : AppCompatActivity() {
                             logAudioTrackState("post_fallback_tracks_changed")
                         }
                         if (!firstFrameRendered && !retriedWithoutAudio && hasSelectedMpegL2Audio(tracks) && !shouldAllowNonIdrForStream(lastRequestedPlaybackUrl)) {
-                            logDebug("PLAYER_STATE", "mpeg-l2 audio detected before first frame, switching to video-only fallback")
-                            retryCurrentStreamWithoutAudio()
+                            logDebug("PLAYER_STATE", "mpeg-l2 detected, but auto video-only fallback disabled in production path")
                         }
                     }
 
@@ -2897,18 +2883,22 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
-                        logDebug("PLAYER_STATE", "onPlayerError url=$lastRequestedPlaybackUrl message=${error.message}", error)
+                        val causeChain = generateSequence(error.cause) { it.cause }
+                            .take(6)
+                            .joinToString(" -> ") { "${it::class.java.simpleName}:${it.message}" }
+                        logDebug("PLAYER_STATE", "onPlayerError url=$lastRequestedPlaybackUrl message=${error.message} code=${error.errorCode} codeName=${error.errorCodeName} causeChain=$causeChain", error)
                         startupPlaybackUrlLock = null
                         logMemoryStats("on_player_error")
                         handler.post {
                             handler.removeCallbacks(startupSlowStreamRunnable)
                             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-                            if (shouldRetryWithoutAudio(error) && !shouldAllowNonIdrForStream(lastRequestedPlaybackUrl)) {
-                                showCenterError(
-                                    "Аудио MPEG не поддерживается устройством, продолжаем без звука",
-                                    2500L
-                                )
-                                retryCurrentStreamWithoutAudio()
+                            videoOnlyMinimalMode = false
+                            audioTrackForcedDisabled = false
+                            enableAudioTrack()
+                            if (!runtimeRecoveryAttempted) {
+                                runtimeRecoveryAttempted = true
+                                showCenterError("Ошибка воспроизведения, одна попытка восстановления", 1800L)
+                                restartCurrentStream(recreatePlayer = false)
                             } else {
                                 showPlaybackFailureAndReturn(
                                     lastRequestedPlaybackUrl,
@@ -3126,6 +3116,7 @@ class MainActivity : AppCompatActivity() {
     private fun retryCurrentStreamWithoutAudio() {
         val url = lastRequestedPlaybackUrl
         if (url.isBlank()) return
+        if (!videoOnlyMinimalMode) return
         retriedWithoutAudio = true
         videoOnlyMinimalMode = true
         handler.removeCallbacks(memoryLogRunnable)
