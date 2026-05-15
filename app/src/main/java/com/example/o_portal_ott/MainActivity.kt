@@ -213,8 +213,7 @@ class MainActivity : AppCompatActivity() {
     private var videoOnlyMinimalFirstFrameRendered = false
     private var videoOnlyMinimalTriedSoftwareDecoder = false
     private var videoOnlyMinimalNoFrameRunnable: Runnable? = null
-    private val enableTsForensicDump = true
-    private val forceAllowNonIdrForDebug = true
+    private val enableTsForensicDump = false
     private val startupSlowStreamRunnable: Runnable = Runnable {
         if (!firstFrameRendered) {
             showCenterError("Поток долго загружается", 3000L)
@@ -2858,6 +2857,7 @@ class MainActivity : AppCompatActivity() {
                         handler.removeCallbacks(startupSlowStreamRunnable)
                         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                         logDebug("PLAYER_STATE", "onRenderedFirstFrame videoOnlyMode=$videoOnlyMinimalMode url=$lastRequestedPlaybackUrl")
+                        logAudioTrackState("first_frame_rendered")
                     }
 
                     override fun onTracksChanged(tracks: Tracks) {
@@ -2865,7 +2865,7 @@ class MainActivity : AppCompatActivity() {
                         if (retriedWithoutAudio) {
                             logAudioTrackState("post_fallback_tracks_changed")
                         }
-                        if (!firstFrameRendered && !retriedWithoutAudio && hasSelectedMpegL2Audio(tracks)) {
+                        if (!firstFrameRendered && !retriedWithoutAudio && hasSelectedMpegL2Audio(tracks) && !shouldAllowNonIdrForStream(lastRequestedPlaybackUrl)) {
                             logDebug("PLAYER_STATE", "mpeg-l2 audio detected before first frame, switching to video-only fallback")
                             retryCurrentStreamWithoutAudio()
                         }
@@ -2896,7 +2896,7 @@ class MainActivity : AppCompatActivity() {
                         handler.post {
                             handler.removeCallbacks(startupSlowStreamRunnable)
                             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-                            if (shouldRetryWithoutAudio(error)) {
+                            if (shouldRetryWithoutAudio(error) && !shouldAllowNonIdrForStream(lastRequestedPlaybackUrl)) {
                                 showCenterError(
                                     "Аудио MPEG не поддерживается устройством, продолжаем без звука",
                                     2500L
@@ -3003,7 +3003,7 @@ class MainActivity : AppCompatActivity() {
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(12_000)
             .setReadTimeoutMs(25_000)
-        val effectiveAllowNonIdr = forceAllowNonIdrForDebug || allowNonIdr
+        val effectiveAllowNonIdr = allowNonIdr || shouldAllowNonIdrForStream(url)
         val hlsPayloadReaderFlags =
             if (effectiveAllowNonIdr) DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES else 0
         logDebug("PLAYER_HLS", "hlsPayloadReaderFlags=$hlsPayloadReaderFlags allowNonIdr=$effectiveAllowNonIdr requestedAllowNonIdr=$allowNonIdr")
@@ -3011,6 +3011,11 @@ class MainActivity : AppCompatActivity() {
             .setAllowChunklessPreparation(false)
             .setExtractorFactory(DefaultHlsExtractorFactory(hlsPayloadReaderFlags, true))
             .createMediaSource(buildMediaItem(url))
+    }
+
+    private fun shouldAllowNonIdrForStream(url: String): Boolean {
+        if (!url.contains(".m3u8", ignoreCase = true)) return false
+        return true
     }
 
     private fun dumpDebugTsSegments(playlistUrl: String, label: String) {
