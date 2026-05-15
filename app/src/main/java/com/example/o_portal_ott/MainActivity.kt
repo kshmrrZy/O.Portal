@@ -47,22 +47,27 @@ import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.view.GestureDetectorCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.DecoderCounters
+import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.PlayerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.model.GlideUrl
@@ -204,6 +209,12 @@ class MainActivity : AppCompatActivity() {
     private val maxStartupRecoveryAttempts = 3
     private var startupPlaybackUrlLock: String? = null
     private var videoOnlyMinimalMode = false
+    private var runtimeRecoveryAttempted = false
+    private var audioTrackForcedDisabled = false
+    private var videoOnlyMinimalFirstFrameRendered = false
+    private var videoOnlyMinimalTriedSoftwareDecoder = false
+    private var videoOnlyMinimalNoFrameRunnable: Runnable? = null
+    private val enableTsForensicDump = false
     private val startupSlowStreamRunnable: Runnable = Runnable {
         if (!firstFrameRendered) {
             showCenterError("Поток долго загружается", 3000L)
@@ -234,11 +245,7 @@ class MainActivity : AppCompatActivity() {
             if (player.playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
                 if (bufferingSinceMs == 0L) bufferingSinceMs = now
                 if (now - bufferingSinceMs > 12_000L) {
-                    showCenterError("Буферизация зависла, перезапуск потока", 2200L)
-                    player.stop()
-                    player.setMediaItem(buildMediaItem(lastRequestedPlaybackUrl))
-                    player.prepare()
-                    player.playWhenReady = true
+                    logDebug("PLAYER_STATE", "watchdog buffering detected; auto-restart disabled")
                     bufferingSinceMs = now
                 }
             } else {
@@ -253,11 +260,7 @@ class MainActivity : AppCompatActivity() {
             lastPlaybackPositionMs = pos
             lastProgressWallClockMs = now
         } else if (lastProgressWallClockMs > 0L && now - lastProgressWallClockMs > 10_000L) {
-            showCenterError("Поток завис, выполняем перезапуск", 2200L)
-            player.stop()
-            player.setMediaItem(buildMediaItem(lastRequestedPlaybackUrl))
-            player.prepare()
-            player.playWhenReady = true
+            logDebug("PLAYER_STATE", "watchdog progress stall detected; auto-restart disabled")
             lastProgressWallClockMs = now
         }
         handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
@@ -301,6 +304,7 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_USER_TOKEN = "pref_user_token"
         private const val PREF_USER_NAME = "pref_user_name"
         private const val PREF_USER_PLAYLIST = "pref_user_playlist"
+        private const val PREF_HLS_ALLOW_NON_IDR = "pref_hls_allow_non_idr"
 
         private const val TOKEN_PREFIX = "https://o.avff.ru/my/"
         private const val TOKEN_SUFFIX = ".m3u"
@@ -551,6 +555,7 @@ class MainActivity : AppCompatActivity() {
         ivHomePower.setOnClickListener { closeAppCompletely() }
 
         btnLiveReload.setOnClickListener {
+            logPathState("LIVE_PATH before_reload_click")
             if (System.currentTimeMillis() >= suppressReloadOverlayUntilMs) {
                 showReloadingStatus(
                     title = "Выполняется обновление трансляции! Ожидайте...",
@@ -558,6 +563,7 @@ class MainActivity : AppCompatActivity() {
                 )
             }
             playChannel(forcePlay = true)
+            logPathState("LIVE_PATH after_reload_click")
             handler.postDelayed({
                 tvReloadingStatus.visibility = View.GONE
             }, 1200)
@@ -591,6 +597,14 @@ class MainActivity : AppCompatActivity() {
         })
 
         btnSettings.setOnClickListener { showSettingsDialog() }
+        btnSettings.setOnLongClickListener {
+            val next = !prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+            prefs.edit().putBoolean(PREF_HLS_ALLOW_NON_IDR, next).apply()
+            logDebug("PLAYER_HLS", "runtime toggle allowNonIdr=$next")
+            showCenterError("HLS allowNonIdr=${if (next) "ON" else "OFF"}", 1500L)
+            restartCurrentStream(recreatePlayer = false)
+            true
+        }
         btnSleepTimer.setOnClickListener { showTimerDialog() }
 
         btnPlayPause.setOnClickListener {
@@ -2548,11 +2562,6 @@ class MainActivity : AppCompatActivity() {
     private fun playChannel(forcePlay: Boolean = false) {
         runCatching {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
-            val lockedUrl = startupPlaybackUrlLock
-            if (!lockedUrl.isNullOrBlank() && !firstFrameRendered && ch.url != lockedUrl) {
-                logDebug("PLAYER_STATE", "startup lock prevents channel switch from $lockedUrl to ${ch.url}")
-                return
-            }
             homePanel.visibility = View.GONE
             val shouldUseSoftware = !preferGpuDecoding
             if (softwareDecoderMode != shouldUseSoftware) {
@@ -2563,20 +2572,31 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = ch.url
             startupPlaybackUrlLock = ch.url
+            videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
+            videoOnlyMinimalNoFrameRunnable = null
             logHlsManifestPreview(ch.url)
+            dumpDebugTsSegments(ch.url, "problem")
             firstFrameRendered = false
             handler.removeCallbacks(startupSlowStreamRunnable)
             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
             retriedWithoutAudio = false
             videoOnlyMinimalMode = false
+            runtimeRecoveryAttempted = false
             retriedWithAlternateDecoder = false
             enableAudioTrack()
             applyUnlimitedVideoConstraints()
 
-            mediaPlayer?.setMediaItem(buildMediaItem(ch.url))
+            val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+            logPathState("STARTUP_PATH before_set_source allowNonIdr=${allowNonIdr || shouldAllowNonIdrForStream(ch.url)} forcePlay=$forcePlay")
+            mediaPlayer?.setMediaSource(buildHlsMediaSource(ch.url, allowNonIdr))
+            mediaPlayer?.seekToDefaultPosition()
+            logPathState("STARTUP_PATH after_seek_default")
             mediaPlayer?.prepare()
+            mediaPlayer?.seekToDefaultPosition()
+            logPathState("STARTUP_PATH after_prepare_seek_default")
             mediaPlayer?.playWhenReady = true
             mediaPlayer?.play()
+            logPathState("STARTUP_PATH after_play")
             logMemoryStats("play_channel_start")
             handler.removeCallbacks(memoryLogRunnable)
             handler.post(memoryLogRunnable)
@@ -2648,7 +2668,11 @@ class MainActivity : AppCompatActivity() {
                 logDebug("PLAYER_HLS", "manifest status=$code finalUrl=$finalUrl contentType=${conn.contentType} headers=${conn.headerFields}")
                 logDebug("PLAYER_HLS", "manifest head:\n${lines.take(20).joinToString("\n")}")
                 logDebug("PLAYER_HLS", "variantLines=${lines.filter { it.contains("#EXT-X-STREAM-INF") }.take(8)}")
-                logDebug("PLAYER_HLS", "segmentLines=${lines.filter { it.isNotBlank() && !it.startsWith("#") }.take(8)}")
+                val segments = lines.filter { it.isNotBlank() && !it.startsWith("#") }
+                val chosen = segments.takeLast(2).firstOrNull()
+                val liveEdge = segments.lastOrNull()
+                logDebug("PLAYER_HLS", "segmentLines=${segments.take(8)}")
+                logDebug("PLAYER_HLS", "segmentChoice chosen=$chosen liveEdge=$liveEdge segmentCount=${segments.size}")
                 logDebug("PLAYER_HLS", "hasMap=${lines.any { it.startsWith("#EXT-X-MAP") }} hasKey=${lines.any { it.startsWith("#EXT-X-KEY") }} targetDuration=${lines.firstOrNull { it.startsWith("#EXT-X-TARGETDURATION") }} mediaSequence=${lines.firstOrNull { it.startsWith("#EXT-X-MEDIA-SEQUENCE") }}")
                 if (lines.none { it.contains("#EXT-X-STREAM-INF") }) {
                     logDebug("PLAYER_HLS", "single-variant TS playlist detected; device may struggle with 1080p AVC High profile streams")
@@ -2791,7 +2815,11 @@ class MainActivity : AppCompatActivity() {
             .setEnableDecoderFallback(true)
             .setMediaCodecSelector(codecSelector)
 
-        val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory)
+        val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+        val hlsPayloadReaderFlags =
+            if (allowNonIdr) DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES else 0
+        logDebug("PLAYER_HLS", "hlsPayloadReaderFlags=$hlsPayloadReaderFlags allowNonIdr=$allowNonIdr")
+        val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory).setDataSourceFactory(httpFactory)
 
         trackSelector = DefaultTrackSelector(this).apply {
             setParameters(
@@ -2822,6 +2850,8 @@ class MainActivity : AppCompatActivity() {
                         handler.removeCallbacks(startupSlowStreamRunnable)
                         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                         logDebug("PLAYER_STATE", "onRenderedFirstFrame videoOnlyMode=$videoOnlyMinimalMode url=$lastRequestedPlaybackUrl")
+                        logAudioTrackState("first_frame_rendered")
+                        logPathState("STARTUP_PATH onRenderedFirstFrame")
                     }
 
                     override fun onTracksChanged(tracks: Tracks) {
@@ -2829,9 +2859,8 @@ class MainActivity : AppCompatActivity() {
                         if (retriedWithoutAudio) {
                             logAudioTrackState("post_fallback_tracks_changed")
                         }
-                        if (!firstFrameRendered && !retriedWithoutAudio && hasSelectedMpegL2Audio(tracks)) {
-                            logDebug("PLAYER_STATE", "mpeg-l2 audio detected before first frame, switching to video-only fallback")
-                            retryCurrentStreamWithoutAudio()
+                        if (!firstFrameRendered && !retriedWithoutAudio && hasSelectedMpegL2Audio(tracks) && !shouldAllowNonIdrForStream(lastRequestedPlaybackUrl)) {
+                            logDebug("PLAYER_STATE", "mpeg-l2 detected, but auto video-only fallback disabled in production path")
                         }
                     }
 
@@ -2854,18 +2883,22 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
-                        logDebug("PLAYER_STATE", "onPlayerError url=$lastRequestedPlaybackUrl message=${error.message}", error)
+                        val causeChain = generateSequence(error.cause) { it.cause }
+                            .take(6)
+                            .joinToString(" -> ") { "${it::class.java.simpleName}:${it.message}" }
+                        logDebug("PLAYER_STATE", "onPlayerError url=$lastRequestedPlaybackUrl message=${error.message} code=${error.errorCode} codeName=${error.errorCodeName} causeChain=$causeChain", error)
                         startupPlaybackUrlLock = null
                         logMemoryStats("on_player_error")
                         handler.post {
                             handler.removeCallbacks(startupSlowStreamRunnable)
                             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-                            if (shouldRetryWithoutAudio(error)) {
-                                showCenterError(
-                                    "Аудио MPEG не поддерживается устройством, продолжаем без звука",
-                                    2500L
-                                )
-                                retryCurrentStreamWithoutAudio()
+                            videoOnlyMinimalMode = false
+                            audioTrackForcedDisabled = false
+                            enableAudioTrack()
+                            if (!runtimeRecoveryAttempted) {
+                                runtimeRecoveryAttempted = true
+                                showCenterError("Ошибка воспроизведения, одна попытка восстановления", 1800L)
+                                restartCurrentStream(recreatePlayer = false)
                             } else {
                                 showPlaybackFailureAndReturn(
                                     lastRequestedPlaybackUrl,
@@ -2961,6 +2994,56 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
+    private fun buildHlsMediaSource(url: String, allowNonIdr: Boolean): HlsMediaSource {
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(userAgent)
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(12_000)
+            .setReadTimeoutMs(25_000)
+        val effectiveAllowNonIdr = allowNonIdr || shouldAllowNonIdrForStream(url)
+        val hlsPayloadReaderFlags =
+            if (effectiveAllowNonIdr) DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES else 0
+        logDebug("PLAYER_HLS", "hlsPayloadReaderFlags=$hlsPayloadReaderFlags allowNonIdr=$effectiveAllowNonIdr requestedAllowNonIdr=$allowNonIdr")
+        return HlsMediaSource.Factory(httpFactory)
+            .setAllowChunklessPreparation(false)
+            .setExtractorFactory(DefaultHlsExtractorFactory(hlsPayloadReaderFlags, true))
+            .createMediaSource(buildMediaItem(url))
+    }
+
+    private fun shouldAllowNonIdrForStream(url: String): Boolean {
+        if (!url.contains(".m3u8", ignoreCase = true)) return false
+        return true
+    }
+
+    private fun dumpDebugTsSegments(playlistUrl: String, label: String) {
+        if (!enableTsForensicDump) return
+        thread(name = "ts-dump-$label") {
+            runCatching {
+                val text = URL(playlistUrl).openConnection().run {
+                    (this as HttpURLConnection).apply {
+                        connectTimeout = 10000
+                        readTimeout = 15000
+                        setRequestProperty("User-Agent", userAgent)
+                    }.inputStream.bufferedReader().use { it.readText() }
+                }
+                val segments = text.lineSequence()
+                    .map { it.trim() }
+                    .filter { it.startsWith("http", true) && it.contains(".ts") }
+                    .toList()
+                val tail = segments.takeLast(3)
+                val dir = File(filesDir, "debug_ts/$label-${System.currentTimeMillis()}")
+                dir.mkdirs()
+                tail.forEachIndexed { index, segUrl ->
+                    val out = File(dir, "segment_${index + 1}.ts")
+                    URL(segUrl).openStream().use { input -> out.outputStream().use { input.copyTo(it) } }
+                }
+                logDebug("PLAYER_HLS", "forensic TS dump saved path=${dir.absolutePath} files=${tail.size}")
+            }.onFailure {
+                logDebug("PLAYER_HLS", "forensic TS dump failed url=$playlistUrl error=${it.message}", it)
+            }
+        }
+    }
+
     private fun logMemoryStats(stage: String) {
         val rt = Runtime.getRuntime()
         val maxMb = rt.maxMemory() / (1024 * 1024)
@@ -3033,24 +3116,20 @@ class MainActivity : AppCompatActivity() {
     private fun retryCurrentStreamWithoutAudio() {
         val url = lastRequestedPlaybackUrl
         if (url.isBlank()) return
+        if (!videoOnlyMinimalMode) return
         retriedWithoutAudio = true
         videoOnlyMinimalMode = true
-        disableAudioTrack()
-        logAudioTrackState("retry_without_audio_params_applied")
-        mediaPlayer?.stop()
-        mediaPlayer?.setMediaItem(buildMediaItem(url))
-        mediaPlayer?.prepare()
-        mediaPlayer?.playWhenReady = true
-        logMemoryStats("retry_without_audio_start")
         handler.removeCallbacks(memoryLogRunnable)
-        handler.post(memoryLogRunnable)
-        firstFrameRendered = false
         handler.removeCallbacks(startupSlowStreamRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-        handler.postDelayed(startupSlowStreamRunnable, 45_000L)
+        videoOnlyMinimalTriedSoftwareDecoder = false
+        startVideoOnlyMinimalDebug(url, preferSoftwareDecoder = false)
+        logMemoryStats("retry_without_audio_start")
+        firstFrameRendered = false
     }
 
     private fun disableAudioTrack() {
+        audioTrackForcedDisabled = true
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
                 ?: return
@@ -3064,40 +3143,170 @@ class MainActivity : AppCompatActivity() {
             (method.invoke(params, C.TRACK_TYPE_AUDIO) as? Boolean) == true
         } catch (_: Throwable) {
             try {
-                val field = params.javaClass.getDeclaredField("disabledTrackTypes")
-                field.isAccessible = true
-                val value = field.get(params) as? Set<*>
-                value?.contains(C.TRACK_TYPE_AUDIO) == true
+                val method = params.javaClass.getMethod("getTrackTypeDisabled", Int::class.javaPrimitiveType)
+                (method.invoke(params, C.TRACK_TYPE_AUDIO) as? Boolean) == true
             } catch (_: Throwable) {
-                false
+                audioTrackForcedDisabled
             }
         }
     }
 
     private fun logAudioTrackState(stage: String) {
         val audioDisabled = isAudioTrackTypeDisabledCompat()
-        val selectedAudioTracks = mediaPlayer?.currentTracks?.groups
+        val selectedAudioTracks = countSelectedTracksByType("audio/")
+        val selectedVideoTracks = countSelectedTracksByType("video/")
+        val trackGroupCount = mediaPlayer?.currentTracks?.groups?.size ?: -1
+        logDebug(
+            "PLAYER_STATE",
+            "$stage audioTrackForcedDisabled=$audioTrackForcedDisabled audioDisabled=$audioDisabled selected audio tracks count=$selectedAudioTracks selected video tracks count=$selectedVideoTracks trackGroups=$trackGroupCount videoOnlyMinimalMode=$videoOnlyMinimalMode url=$lastRequestedPlaybackUrl"
+        )
+    }
+
+    private fun logPathState(stage: String) {
+        val player = mediaPlayer
+        val allowNonIdr = shouldAllowNonIdrForStream(lastRequestedPlaybackUrl)
+        val liveOffset = player?.currentLiveOffset ?: C.TIME_UNSET
+        val selectedAudioTracks = countSelectedTracksByType("audio/")
+        val selectedVideoTracks = countSelectedTracksByType("video/")
+        logDebug(
+            "PLAYER_PATH",
+            "$stage posMs=${player?.currentPosition ?: -1} bufferedPosMs=${player?.bufferedPosition ?: -1} liveOffsetMs=$liveOffset playWhenReady=${player?.playWhenReady} isPlaying=${player?.isPlaying} state=${player?.playbackState} selectedAudio=$selectedAudioTracks selectedVideo=$selectedVideoTracks audioTrackForcedDisabled=$audioTrackForcedDisabled audioDisabled=${isAudioTrackTypeDisabledCompat()} allowNonIdr=$allowNonIdr url=$lastRequestedPlaybackUrl"
+        )
+    }
+
+    private fun countSelectedTracksByType(prefix: String): Int {
+        return mediaPlayer?.currentTracks?.groups
             ?.filter { it.isSelected }
             ?.sumOf { group ->
                 var count = 0
                 for (i in 0 until group.length) {
                     if (!group.isTrackSelected(i)) continue
                     val format = group.getTrackFormat(i)
-                    if (format.sampleMimeType?.startsWith("audio/") == true) count++
+                    if (format.sampleMimeType?.startsWith(prefix) == true) count++
                 }
                 count
             } ?: -1
-        logDebug(
-            "PLAYER_STATE",
-            "$stage audioDisabled=$audioDisabled selected audio tracks count=$selectedAudioTracks url=$lastRequestedPlaybackUrl"
-        )
     }
 
     private fun enableAudioTrack() {
+        audioTrackForcedDisabled = false
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                 ?: return
         )
+    }
+
+    private fun startVideoOnlyMinimalDebug(url: String, preferSoftwareDecoder: Boolean) {
+        stopPlayback()
+        videoOnlyMinimalFirstFrameRendered = false
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(userAgent)
+            .setAllowCrossProtocolRedirects(true)
+        val codecSelector = if (preferSoftwareDecoder) {
+            MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
+                MediaCodecSelector.DEFAULT
+                    .getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+                    .sortedBy { it.hardwareAccelerated }
+            }
+        } else {
+            MediaCodecSelector.DEFAULT
+        }
+        val renderersFactory = DefaultRenderersFactory(this)
+            .setEnableDecoderFallback(true)
+            .setMediaCodecSelector(codecSelector)
+        val selector = DefaultTrackSelector(this)
+        trackSelector = selector
+        selector.setParameters(
+            selector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+        )
+        audioTrackForcedDisabled = true
+        val player = ExoPlayer.Builder(this, renderersFactory)
+            .setTrackSelector(selector)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
+            .build()
+        mediaPlayer = player
+        findViewById<PlayerView>(R.id.videoLayout).player = player
+        val minimalListener = object : androidx.media3.common.Player.Listener {
+            override fun onTracksChanged(tracks: Tracks) {
+                if (!videoOnlyMinimalMode) return
+                logDebug("VIDEO_ONLY_MINIMAL", "trackGroups=${tracks.groups.size}")
+                logAudioTrackState("video_only_minimal_tracks_changed")
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (!videoOnlyMinimalMode) return
+                logDebug(
+                    "VIDEO_ONLY_MINIMAL",
+                    "state=$playbackState currentPosition=${player.currentPosition} bufferedPosition=${player.bufferedPosition} totalBufferedDuration=${player.totalBufferedDuration} playWhenReady=${player.playWhenReady}"
+                )
+            }
+
+            override fun onRenderedFirstFrame() {
+                videoOnlyMinimalFirstFrameRendered = true
+                if (!videoOnlyMinimalMode) return
+                logDebug("VIDEO_ONLY_MINIMAL", "onRenderedFirstFrame")
+            }
+
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                if (!videoOnlyMinimalMode) return
+                logDebug("VIDEO_ONLY_MINIMAL", "videoSize=${videoSize.width}x${videoSize.height}")
+            }
+        }
+        player.addListener(minimalListener)
+        playerEventListener = minimalListener
+        val minimalAnalytics = object : AnalyticsListener {
+            override fun onLoadStarted(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData) {
+                logDebug("VIDEO_ONLY_MINIMAL", "onLoadStarted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri}")
+            }
+            override fun onLoadCompleted(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData) {
+                logDebug("VIDEO_ONLY_MINIMAL", "onLoadCompleted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} bytes=${loadEventInfo.bytesLoaded} ms=${loadEventInfo.loadDurationMs}")
+            }
+            override fun onLoadCanceled(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData) {
+                logDebug("VIDEO_ONLY_MINIMAL", "onLoadCanceled type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType}")
+            }
+            override fun onLoadError(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData, error: IOException, wasCanceled: Boolean) {
+                logDebug("VIDEO_ONLY_MINIMAL", "onLoadError type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} error=${error.message}")
+            }
+            override fun onVideoDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
+                logDebug("VIDEO_ONLY_MINIMAL", "videoDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs")
+            }
+            override fun onVideoInputFormatChanged(eventTime: AnalyticsListener.EventTime, format: Format, decoderReuseEvaluation: DecoderReuseEvaluation?) {
+                logDebug("VIDEO_ONLY_MINIMAL", "videoInputFormat codec=${format.codecs} sampleMime=${format.sampleMimeType} size=${format.width}x${format.height}")
+            }
+            override fun onVideoEnabled(eventTime: AnalyticsListener.EventTime, decoderCounters: DecoderCounters) {
+                decoderCounters.ensureUpdated()
+                logDebug("VIDEO_ONLY_MINIMAL", "renderedOutputBufferCount=${decoderCounters.renderedOutputBufferCount}")
+            }
+        }
+        player.addAnalyticsListener(minimalAnalytics)
+        playerAnalyticsListener = minimalAnalytics
+        logAudioTrackState("video_only_minimal_before_prepare")
+        logDebug("VIDEO_ONLY_MINIMAL", "startup preferSoftwareDecoder=$preferSoftwareDecoder")
+        player.playWhenReady = true
+        val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+        player.setMediaSource(buildHlsMediaSource(url, allowNonIdr))
+        player.seekToDefaultPosition()
+        player.prepare()
+        player.seekToDefaultPosition()
+        player.play()
+        logAudioTrackState("video_only_minimal_after_prepare")
+        videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
+        val noFrameRunnable = Runnable {
+            if (!videoOnlyMinimalFirstFrameRendered && videoOnlyMinimalMode) {
+                logAudioTrackState("video_only_minimal_no_first_frame_25s")
+                logDebug(
+                    "VIDEO_ONLY_MINIMAL",
+                    "no first frame after 25s; audioDisabled path is active, network loads continue, likely decode/render incompatibility for this AVC TS stream on device"
+                )
+                if (!videoOnlyMinimalTriedSoftwareDecoder) {
+                    videoOnlyMinimalTriedSoftwareDecoder = true
+                    logDebug("VIDEO_ONLY_MINIMAL", "retry once with software-preferred decoder for compatibility check")
+                    startVideoOnlyMinimalDebug(url, preferSoftwareDecoder = true)
+                }
+            }
+        }
+        videoOnlyMinimalNoFrameRunnable = noFrameRunnable
+        handler.postDelayed(noFrameRunnable, 25_000L)
     }
 
     private fun applyUnlimitedVideoConstraints() {
@@ -3127,7 +3336,8 @@ class MainActivity : AppCompatActivity() {
         } else {
             mediaPlayer?.stop()
         }
-        mediaPlayer?.setMediaItem(buildMediaItem(url))
+        val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+        mediaPlayer?.setMediaSource(buildHlsMediaSource(url, allowNonIdr))
         mediaPlayer?.prepare()
         mediaPlayer?.playWhenReady = true
         logMemoryStats("restart_stream_start")
@@ -3375,6 +3585,8 @@ class MainActivity : AppCompatActivity() {
         trackSelector = null
         handler.removeCallbacks(startupSlowStreamRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+        videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
+        videoOnlyMinimalNoFrameRunnable = null
 
     }
 
