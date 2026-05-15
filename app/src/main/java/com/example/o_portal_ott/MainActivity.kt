@@ -564,6 +564,7 @@ class MainActivity : AppCompatActivity() {
         ivHomePower.setOnClickListener { closeAppCompletely() }
 
         btnLiveReload.setOnClickListener {
+            logPathState("LIVE_PATH before_reload_click")
             if (System.currentTimeMillis() >= suppressReloadOverlayUntilMs) {
                 showReloadingStatus(
                     title = "Выполняется обновление трансляции! Ожидайте...",
@@ -571,6 +572,7 @@ class MainActivity : AppCompatActivity() {
                 )
             }
             playChannel(forcePlay = true)
+            logPathState("LIVE_PATH after_reload_click")
             handler.postDelayed({
                 tvReloadingStatus.visibility = View.GONE
             }, 1200)
@@ -2598,12 +2600,16 @@ class MainActivity : AppCompatActivity() {
             applyUnlimitedVideoConstraints()
 
             val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+            logPathState("STARTUP_PATH before_set_source allowNonIdr=${allowNonIdr || shouldAllowNonIdrForStream(ch.url)} forcePlay=$forcePlay")
             mediaPlayer?.setMediaSource(buildHlsMediaSource(ch.url, allowNonIdr))
             mediaPlayer?.seekToDefaultPosition()
+            logPathState("STARTUP_PATH after_seek_default")
             mediaPlayer?.prepare()
             mediaPlayer?.seekToDefaultPosition()
+            logPathState("STARTUP_PATH after_prepare_seek_default")
             mediaPlayer?.playWhenReady = true
             mediaPlayer?.play()
+            logPathState("STARTUP_PATH after_play")
             logMemoryStats("play_channel_start")
             handler.removeCallbacks(memoryLogRunnable)
             handler.post(memoryLogRunnable)
@@ -2858,6 +2864,7 @@ class MainActivity : AppCompatActivity() {
                         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                         logDebug("PLAYER_STATE", "onRenderedFirstFrame videoOnlyMode=$videoOnlyMinimalMode url=$lastRequestedPlaybackUrl")
                         logAudioTrackState("first_frame_rendered")
+                        logPathState("STARTUP_PATH onRenderedFirstFrame")
                     }
 
                     override fun onTracksChanged(tracks: Tracks) {
@@ -3161,6 +3168,18 @@ class MainActivity : AppCompatActivity() {
         logDebug(
             "PLAYER_STATE",
             "$stage audioTrackForcedDisabled=$audioTrackForcedDisabled audioDisabled=$audioDisabled selected audio tracks count=$selectedAudioTracks selected video tracks count=$selectedVideoTracks trackGroups=$trackGroupCount videoOnlyMinimalMode=$videoOnlyMinimalMode url=$lastRequestedPlaybackUrl"
+        )
+    }
+
+    private fun logPathState(stage: String) {
+        val player = mediaPlayer
+        val allowNonIdr = shouldAllowNonIdrForStream(lastRequestedPlaybackUrl)
+        val liveOffset = player?.currentLiveOffset ?: C.TIME_UNSET
+        val selectedAudioTracks = countSelectedTracksByType("audio/")
+        val selectedVideoTracks = countSelectedTracksByType("video/")
+        logDebug(
+            "PLAYER_PATH",
+            "$stage posMs=${player?.currentPosition ?: -1} bufferedPosMs=${player?.bufferedPosition ?: -1} liveOffsetMs=$liveOffset playWhenReady=${player?.playWhenReady} isPlaying=${player?.isPlaying} state=${player?.playbackState} selectedAudio=$selectedAudioTracks selectedVideo=$selectedVideoTracks audioTrackForcedDisabled=$audioTrackForcedDisabled audioDisabled=${isAudioTrackTypeDisabledCompat()} allowNonIdr=$allowNonIdr url=$lastRequestedPlaybackUrl"
         )
     }
 
