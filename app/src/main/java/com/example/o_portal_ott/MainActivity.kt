@@ -209,6 +209,7 @@ class MainActivity : AppCompatActivity() {
     private val maxStartupRecoveryAttempts = 3
     private var startupPlaybackUrlLock: String? = null
     private var videoOnlyMinimalMode = false
+    private var runtimeRecoveryAttempted = false
     private var audioTrackForcedDisabled = false
     private var videoOnlyMinimalFirstFrameRendered = false
     private var videoOnlyMinimalTriedSoftwareDecoder = false
