@@ -214,6 +214,7 @@ class MainActivity : AppCompatActivity() {
     private var videoOnlyMinimalTriedSoftwareDecoder = false
     private var videoOnlyMinimalNoFrameRunnable: Runnable? = null
     private val enableTsForensicDump = true
+    private val forceAllowNonIdrForDebug = true
     private val startupSlowStreamRunnable: Runnable = Runnable {
         if (!firstFrameRendered) {
             showCenterError("Поток долго загружается", 3000L)
@@ -2599,7 +2600,9 @@ class MainActivity : AppCompatActivity() {
 
             val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
             mediaPlayer?.setMediaSource(buildHlsMediaSource(ch.url, allowNonIdr))
+            mediaPlayer?.seekToDefaultPosition()
             mediaPlayer?.prepare()
+            mediaPlayer?.seekToDefaultPosition()
             mediaPlayer?.playWhenReady = true
             mediaPlayer?.play()
             logMemoryStats("play_channel_start")
@@ -2673,7 +2676,11 @@ class MainActivity : AppCompatActivity() {
                 logDebug("PLAYER_HLS", "manifest status=$code finalUrl=$finalUrl contentType=${conn.contentType} headers=${conn.headerFields}")
                 logDebug("PLAYER_HLS", "manifest head:\n${lines.take(20).joinToString("\n")}")
                 logDebug("PLAYER_HLS", "variantLines=${lines.filter { it.contains("#EXT-X-STREAM-INF") }.take(8)}")
-                logDebug("PLAYER_HLS", "segmentLines=${lines.filter { it.isNotBlank() && !it.startsWith("#") }.take(8)}")
+                val segments = lines.filter { it.isNotBlank() && !it.startsWith("#") }
+                val chosen = segments.takeLast(2).firstOrNull()
+                val liveEdge = segments.lastOrNull()
+                logDebug("PLAYER_HLS", "segmentLines=${segments.take(8)}")
+                logDebug("PLAYER_HLS", "segmentChoice chosen=$chosen liveEdge=$liveEdge segmentCount=${segments.size}")
                 logDebug("PLAYER_HLS", "hasMap=${lines.any { it.startsWith("#EXT-X-MAP") }} hasKey=${lines.any { it.startsWith("#EXT-X-KEY") }} targetDuration=${lines.firstOrNull { it.startsWith("#EXT-X-TARGETDURATION") }} mediaSequence=${lines.firstOrNull { it.startsWith("#EXT-X-MEDIA-SEQUENCE") }}")
                 if (lines.none { it.contains("#EXT-X-STREAM-INF") }) {
                     logDebug("PLAYER_HLS", "single-variant TS playlist detected; device may struggle with 1080p AVC High profile streams")
@@ -2996,10 +3003,12 @@ class MainActivity : AppCompatActivity() {
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(12_000)
             .setReadTimeoutMs(25_000)
+        val effectiveAllowNonIdr = forceAllowNonIdrForDebug || allowNonIdr
         val hlsPayloadReaderFlags =
-            if (allowNonIdr) DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES else 0
-        logDebug("PLAYER_HLS", "hlsPayloadReaderFlags=$hlsPayloadReaderFlags allowNonIdr=$allowNonIdr")
+            if (effectiveAllowNonIdr) DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES else 0
+        logDebug("PLAYER_HLS", "hlsPayloadReaderFlags=$hlsPayloadReaderFlags allowNonIdr=$effectiveAllowNonIdr requestedAllowNonIdr=$allowNonIdr")
         return HlsMediaSource.Factory(httpFactory)
+            .setAllowChunklessPreparation(false)
             .setExtractorFactory(DefaultHlsExtractorFactory(hlsPayloadReaderFlags, true))
             .createMediaSource(buildMediaItem(url))
     }
@@ -3261,7 +3270,9 @@ class MainActivity : AppCompatActivity() {
         player.playWhenReady = true
         val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
         player.setMediaSource(buildHlsMediaSource(url, allowNonIdr))
+        player.seekToDefaultPosition()
         player.prepare()
+        player.seekToDefaultPosition()
         player.play()
         logAudioTrackState("video_only_minimal_after_prepare")
         videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
