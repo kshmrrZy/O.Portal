@@ -2522,7 +2522,7 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             homePanel.visibility = View.GONE
             val shouldUseSoftware = !preferGpuDecoding
-            if (forcePlay || softwareDecoderMode != shouldUseSoftware || mediaPlayer == null) {
+            if (softwareDecoderMode != shouldUseSoftware || mediaPlayer == null) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
                 setupPlayer(preferSoftwareDecoder = shouldUseSoftware)
