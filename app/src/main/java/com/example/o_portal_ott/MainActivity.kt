@@ -209,7 +209,6 @@ class MainActivity : AppCompatActivity() {
     private val maxStartupRecoveryAttempts = 3
     private var startupPlaybackUrlLock: String? = null
     private var videoOnlyMinimalMode = false
-    private var runtimeRecoveryAttempted = false
     private var audioTrackForcedDisabled = false
     private var videoOnlyMinimalFirstFrameRendered = false
     private var videoOnlyMinimalTriedSoftwareDecoder = false
@@ -2706,7 +2705,8 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.clearVideoSurface()
         showCenterError(message, 5000L)
         handler.removeCallbacks(returnToLiveRunnable)
-        handler.postDelayed(returnToLiveRunnable, 3000L)
+        startupPlaybackUrlLock = null
+        logDebug("PLAYER_STATE", "playback failure shown; waiting for user LIVE/channel action url=$url")
     }
 
     private fun updateEpgDisplay() {
@@ -2784,12 +2784,12 @@ class MainActivity : AppCompatActivity() {
         val loadControl = DefaultLoadControl.Builder()
             .setAllocator(allocator)
             .setBufferDurationsMs(
-                2_500,
-                6_000,
-                700,
-                1_200
+                1_800,
+                4_500,
+                500,
+                900
             )
-            .setTargetBufferBytes(4 * C.DEFAULT_BUFFER_SEGMENT_SIZE)
+            .setTargetBufferBytes(3 * C.DEFAULT_BUFFER_SEGMENT_SIZE)
             .setBackBuffer(0, false)
             .build()
 
@@ -2895,16 +2895,10 @@ class MainActivity : AppCompatActivity() {
                             videoOnlyMinimalMode = false
                             audioTrackForcedDisabled = false
                             enableAudioTrack()
-                            if (!runtimeRecoveryAttempted) {
-                                runtimeRecoveryAttempted = true
-                                showCenterError("Ошибка воспроизведения, одна попытка восстановления", 1800L)
-                                restartCurrentStream(recreatePlayer = false)
-                            } else {
-                                showPlaybackFailureAndReturn(
-                                    lastRequestedPlaybackUrl,
-                                    error.message ?: "PlaybackException"
-                                )
-                            }
+                            showPlaybackFailureAndReturn(
+                                lastRequestedPlaybackUrl,
+                                "${error.errorCodeName}: ${error.message ?: "PlaybackException"}"
+                            )
                         }
                     }
                 }
