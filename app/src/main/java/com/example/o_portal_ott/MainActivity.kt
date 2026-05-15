@@ -2522,7 +2522,7 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             homePanel.visibility = View.GONE
             val shouldUseSoftware = !preferGpuDecoding
-            if (softwareDecoderMode != shouldUseSoftware) {
+            if (forcePlay || softwareDecoderMode != shouldUseSoftware || mediaPlayer == null) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
                 setupPlayer(preferSoftwareDecoder = shouldUseSoftware)
@@ -2785,12 +2785,12 @@ class MainActivity : AppCompatActivity() {
         val loadControl = DefaultLoadControl.Builder()
             .setAllocator(allocator)
             .setBufferDurationsMs(
-                1_800,
-                4_500,
-                500,
-                900
+                6_000,
+                20_000,
+                1_200,
+                2_500
             )
-            .setTargetBufferBytes(3 * C.DEFAULT_BUFFER_SEGMENT_SIZE)
+            .setTargetBufferBytes(C.LENGTH_UNSET)
             .setBackBuffer(0, false)
             .build()
 
@@ -2896,6 +2896,11 @@ class MainActivity : AppCompatActivity() {
                             videoOnlyMinimalMode = false
                             audioTrackForcedDisabled = false
                             enableAudioTrack()
+                            if (error.errorCodeName == "ERROR_CODE_FAILED_RUNTIME_CHECK") {
+                                showCenterError("Буферизация потока, попробуйте LIVE", 2000L)
+                                startupPlaybackUrlLock = null
+                                return@post
+                            }
                             showPlaybackFailureAndReturn(
                                 lastRequestedPlaybackUrl,
                                 "${error.errorCodeName}: ${error.message ?: "PlaybackException"}"
