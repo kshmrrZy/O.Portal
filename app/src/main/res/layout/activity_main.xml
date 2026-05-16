@@ -123,19 +123,31 @@
 
     <LinearLayout
         android:id="@+id/topInfoPanel"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_width="1242dp"
+        android:layout_height="50dp"
+        android:layout_marginStart="19dp"
+        android:layout_marginTop="42dp"
         android:background="@drawable/top_panel_bg"
         android:orientation="horizontal"
-        android:paddingHorizontal="20dp"
-        android:paddingVertical="10dp"
+        android:padding="0dp"
         android:gravity="center_vertical"
         android:visibility="gone">
 
         <ImageView
+            android:id="@+id/btnBackToMenu"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:layout_gravity="center_vertical"
+            android:src="@drawable/back"
+            android:contentDescription="Back to menu" />
+
+        <ImageView
             android:id="@+id/ivChannelLogo"
-            android:layout_width="54dp"
-            android:layout_height="54dp"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:layout_marginStart="19dp"
+            android:background="@drawable/channel_logo_frame"
+            android:padding="2dp"
             android:scaleType="fitCenter" />
 
 
@@ -143,7 +155,7 @@
             android:layout_width="0dp"
             android:layout_weight="1"
             android:layout_height="wrap_content"
-            android:layout_marginStart="15dp"
+            android:layout_marginStart="19dp"
             android:orientation="vertical">
 
             <LinearLayout
@@ -154,17 +166,19 @@
                     android:id="@+id/tvChannelNumber"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:fontFamily="@font/golos_text"
                     android:textColor="#FFFFFF"
-                    android:textSize="22sp"
+                    android:textSize="24sp"
                     android:textStyle="bold"
                     tools:text="1." />
                 <TextView
                     android:id="@+id/tvChannelNameInfo"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="5dp"
+                    android:layout_marginStart="4dp"
+                    android:fontFamily="@font/golos_text"
                     android:textColor="#FFFFFF"
-                    android:textSize="22sp"
+                    android:textSize="24sp"
                     android:textStyle="bold"
                     android:gravity="left"
                     tools:text="Название канала" />
@@ -174,31 +188,30 @@
                 android:id="@+id/tvEpgInfo"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="#CCCCCC"
-                android:textSize="14sp"
+                android:layout_marginTop="-2dp"
+                android:fontFamily="@font/golos_text"
+                android:textColor="#B3FFFFFF"
+                android:textSize="12sp"
                 android:gravity="left"
                 tools:text="Загрузка программы..." />
         </LinearLayout>
 
         <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="32dp"
-            android:background="@drawable/live_btn_bg"
+            android:layout_width="89dp"
+            android:layout_height="43dp"
+            android:layout_marginEnd="0dp"
+            android:background="@drawable/time"
             android:gravity="center"
-            android:paddingHorizontal="12dp">
+            android:paddingHorizontal="0dp">
             <TextView
                 android:id="@+id/tvSystemTime"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:fontFamily="@font/golos_text"
                 android:textColor="#FFFFFF"
                 android:textSize="14sp"
                 android:textStyle="bold"
                 tools:text="17:10" />
-            <View
-                android:layout_width="6dp"
-                android:layout_height="6dp"
-                android:layout_marginStart="8dp"
-                android:background="#4CAF50" />
         </LinearLayout>
     </LinearLayout>
 
