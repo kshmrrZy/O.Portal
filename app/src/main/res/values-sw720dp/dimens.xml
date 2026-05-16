@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="player_top_side_margin">16dp</dimen>
+    <dimen name="player_top_margin">6dp</dimen>
+    <dimen name="player_top_min_height">54dp</dimen>
+    <dimen name="player_top_inner_pad_h">6dp</dimen>
+    <dimen name="player_top_inner_pad_v">2dp</dimen>
+
+    <dimen name="player_top_icon_size">50dp</dimen>
+    <dimen name="player_top_logo_margin_start">14dp</dimen>
+    <dimen name="player_top_logo_pad">2dp</dimen>
+    <dimen name="player_top_text_margin_start">16dp</dimen>
+    <dimen name="player_top_channel_name_gap">4dp</dimen>
+    <dimen name="player_top_channel_text_size">24sp</dimen>
+    <dimen name="player_top_epg_text_size">12sp</dimen>
+    <dimen name="player_top_epg_margin_top">-1dp</dimen>
+
+    <dimen name="player_time_width">89dp</dimen>
+    <dimen name="player_time_height">43dp</dimen>
+    <dimen name="player_time_margin_start">16dp</dimen>
+    <dimen name="player_time_pad_h">8dp</dimen>
+    <dimen name="player_time_text_size">14sp</dimen>
+</resources>
