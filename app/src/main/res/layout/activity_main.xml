@@ -124,7 +124,7 @@
     <View
         android:id="@+id/topGradientOverlay"
         android:layout_width="match_parent"
-        android:layout_height="140dp"
+        android:layout_height="@dimen/player_top_gradient_height"
         android:background="@drawable/top_panel_bg"
         android:visibility="gone" />
 
@@ -167,6 +167,7 @@
             android:layout_width="0dp"
             android:layout_weight="1"
             android:layout_height="wrap_content"
+            android:maxWidth="@dimen/player_top_text_max_width"
             android:layout_marginStart="@dimen/player_top_text_margin_start"
             android:orientation="vertical">
 
