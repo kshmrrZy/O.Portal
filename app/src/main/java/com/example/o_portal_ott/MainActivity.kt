@@ -137,6 +137,7 @@ class MainActivity : AppCompatActivity() {
     // UI элементы
     private lateinit var controlsPanel: View
     private lateinit var topInfoPanel: View
+    private lateinit var topGradientOverlay: View
     private lateinit var tvEpg: TextView
     private lateinit var tvChannelName: TextView
     private lateinit var tvSystemTime: TextView
@@ -210,6 +211,7 @@ class MainActivity : AppCompatActivity() {
     private var startupPlaybackUrlLock: String? = null
     private var videoOnlyMinimalMode = false
     private var runtimeRecoveryAttempted = false
+    private var behindLiveWindowRecoveryInProgress = false
     private var audioTrackForcedDisabled = false
     private var videoOnlyMinimalFirstFrameRendered = false
     private var videoOnlyMinimalTriedSoftwareDecoder = false
@@ -419,6 +421,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeCategoryBack = findViewById(R.id.tvHomeCategoryBack)
         ivLogo = findViewById(R.id.ivChannelLogo)
         btnLock = findViewById(R.id.btnLock)
+        topGradientOverlay = findViewById(R.id.topGradientOverlay)
         btnSettings = findViewById(R.id.btnSettings)
         btnPlayPause = findViewById(R.id.btnPlayPause)
         btnSleepTimer = findViewById(R.id.btnSleepTimer)
@@ -568,6 +571,9 @@ class MainActivity : AppCompatActivity() {
                 tvReloadingStatus.visibility = View.GONE
             }, 1200)
         }
+        findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
+            onBackPressedDispatcher.onBackPressed()
+        }
         sbTimeline.max = 1000
         sbTimeline.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {}
@@ -688,6 +694,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeCategoryBack.visibility = View.GONE
         homePanel.post { applyHomeScreenScale(force = true) }
         topInfoPanel.visibility = View.GONE
+        topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
     }
 
@@ -2896,6 +2903,31 @@ class MainActivity : AppCompatActivity() {
                             videoOnlyMinimalMode = false
                             audioTrackForcedDisabled = false
                             enableAudioTrack()
+                            if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+                                if (behindLiveWindowRecoveryInProgress) {
+                                    showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, "ERROR_CODE_BEHIND_LIVE_WINDOW")
+                                    return@post
+                                }
+                                behindLiveWindowRecoveryInProgress = true
+                                logDebug("PLAYER_STATE", "BEHIND_LIVE_WINDOW recovery started attempt=1 url=$lastRequestedPlaybackUrl")
+                                val playerRef = mediaPlayer ?: run {
+                                    behindLiveWindowRecoveryInProgress = false
+                                    return@post
+                                }
+                                val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+                                playerRef.stop()
+                                playerRef.clearMediaItems()
+                                logPathState("BEHIND_LIVE_WINDOW after_clear")
+                                playerRef.setMediaSource(buildHlsMediaSource(lastRequestedPlaybackUrl, allowNonIdr))
+                                playerRef.seekToDefaultPosition()
+                                logPathState("BEHIND_LIVE_WINDOW after_seek_default")
+                                playerRef.prepare()
+                                playerRef.playWhenReady = true
+                                playerRef.play()
+                                logPathState("BEHIND_LIVE_WINDOW after_prepare_play")
+                                behindLiveWindowRecoveryInProgress = false
+                                return@post
+                            }
                             if (error.errorCodeName == "ERROR_CODE_FAILED_RUNTIME_CHECK") {
                                 showCenterError("Буферизация потока, попробуйте LIVE", 2000L)
                                 startupPlaybackUrlLock = null
@@ -3355,10 +3387,12 @@ class MainActivity : AppCompatActivity() {
     private fun showUI() {
         if (isSettingsModalVisible) {
             topInfoPanel.visibility = View.GONE
+            topGradientOverlay.visibility = View.GONE
             controlsPanel.visibility = View.GONE
             return
         }
         topInfoPanel.visibility = View.VISIBLE
+        topGradientOverlay.visibility = View.VISIBLE
         controlsPanel.visibility = View.VISIBLE
         sbTimeline.isEnabled = true
         handler.removeCallbacks(hideUiRunnable)
@@ -3367,6 +3401,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun hideUI() {
         topInfoPanel.visibility = View.GONE
+        topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         sbTimeline.isEnabled = false
         hideSystemUI()
