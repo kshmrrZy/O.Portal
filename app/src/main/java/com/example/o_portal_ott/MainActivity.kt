@@ -2589,6 +2589,7 @@ class MainActivity : AppCompatActivity() {
             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
             retriedWithoutAudio = false
             videoOnlyMinimalMode = false
+            runtimeRecoveryAttempted = false
             retriedWithAlternateDecoder = false
             enableAudioTrack()
             applyUnlimitedVideoConstraints()
