@@ -573,7 +573,7 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
             logDebug("PLAYER_UI", "back button returns to playlist, not app exit")
-            showChannelList()
+            showHomePlaylistSelector()
         }
         sbTimeline.max = 1000
         sbTimeline.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -2746,9 +2746,7 @@ class MainActivity : AppCompatActivity() {
         val programs = getProgramsForDisplay(ch)
 
         val cur = programs.find { now in it.start until it.stop }
-        tvEpg.text = cur?.let {
-            "${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it.start))} - ${it.title}"
-        } ?: "Загрузка программы..."
+        tvEpg.text = cur?.title ?: "Загрузка программы..."
         updateTimelineUi()
     }
 
