@@ -572,7 +572,8 @@ class MainActivity : AppCompatActivity() {
             }, 1200)
         }
         findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
-            onBackPressedDispatcher.onBackPressed()
+            logDebug("PLAYER_UI", "back button returns to playlist, not app exit")
+            showChannelList()
         }
         sbTimeline.max = 1000
         sbTimeline.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {

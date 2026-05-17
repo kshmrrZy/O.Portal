@@ -212,7 +212,7 @@
             android:layout_width="@dimen/player_time_width"
             android:layout_height="@dimen/player_time_height"
             android:layout_marginStart="@dimen/player_time_margin_start"
-            android:background="@drawable/timer"
+            android:background="@drawable/time"
             android:gravity="center"
             android:paddingHorizontal="@dimen/player_time_pad_h">
             <TextView
