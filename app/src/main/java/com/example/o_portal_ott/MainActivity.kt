@@ -1137,6 +1137,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun configureBackButtonsForSettings(stage: String) {
         val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
+        val btnBackToMenu = findViewById<View>(R.id.btnBackToMenu)
+        val tvHomeCategoryBack = findViewById<View>(R.id.tvHomeCategoryBack)
 
         tvSettingsBack.visibility = View.VISIBLE
         tvSettingsBack.isEnabled = true
