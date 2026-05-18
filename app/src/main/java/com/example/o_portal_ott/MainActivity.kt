@@ -1209,10 +1209,13 @@ class MainActivity : AppCompatActivity() {
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
         val btnExportDebugLog = findViewById<View>(R.id.btnExportDebugLog)
         val btnBackToMenu = findViewById<View>(R.id.btnBackToMenu)
+        val tvHomeCategoryBack = findViewById<View>(R.id.tvHomeCategoryBack)
         val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings)
 
         btnBackToMenu.visibility = View.GONE
         btnBackToMenu.setOnClickListener(null)
+        tvHomeCategoryBack.visibility = View.GONE
+        tvHomeCategoryBack.setOnClickListener(null)
         tvSettingsBack.visibility = View.VISIBLE
         tvSettingsBack.setOnClickListener { hideSettingsScreen() }
         logVisibleBackButtonIds("showSettingsDialog_after_back_config")
@@ -1230,9 +1233,9 @@ class MainActivity : AppCompatActivity() {
         epgSettingsPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
         settingsRows.forEach { it.visibility = View.VISIBLE }
-        btnExportDebugLog.visibility = View.GONE
-        btnExportDebugLog.isEnabled = false
-        btnExportDebugLog.isClickable = false
+        btnExportDebugLog.visibility = View.VISIBLE
+        btnExportDebugLog.isEnabled = true
+        btnExportDebugLog.isClickable = true
         btnPlaylistSettings.setOnClickListener { openPlaylistSettingsScreen() }
         btnEpgSelect.setOnClickListener { openEpgSettingsScreen() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
@@ -1331,7 +1334,8 @@ class MainActivity : AppCompatActivity() {
         val settingsRows = listOf(
             findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect),
             findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode),
-            findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings)
+            findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings),
+            findViewById<View>(R.id.btnExportDebugLog)
         )
         settingsRows.forEach { it.visibility = View.GONE }
         userSettingsPanel.visibility = View.GONE
@@ -1386,7 +1390,7 @@ class MainActivity : AppCompatActivity() {
         val epgPanel = findViewById<View>(R.id.epgSettingsPanel)
         val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
         val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
-        val settingsRows = listOf(findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect), findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode), findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings))
+        val settingsRows = listOf(findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect), findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode), findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings), findViewById<View>(R.id.btnExportDebugLog))
         settingsRows.forEach { it.visibility = View.GONE }
         playlistPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
@@ -1494,12 +1498,12 @@ class MainActivity : AppCompatActivity() {
         homeSettingsScreen.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = false)
         playerSettingsOverlay.visibility = View.GONE
+        homePanel.setBackgroundResource(R.drawable.bg_home_screen)
+        findViewById<View>(R.id.tvHomeCategoryBack).visibility = View.GONE
         findViewById<View>(R.id.btnBackToMenu).visibility = View.VISIBLE
         findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
-            showReloadingStatus("Возврат в меню…", "")
             exitPlayerToPlaylist()
         }
-        logVisibleBackButtonIds("hideSettingsScreen_before_return")
         if (settingsOpenedFromPlayer) {
             homePanel.visibility = View.GONE
             showUI()
