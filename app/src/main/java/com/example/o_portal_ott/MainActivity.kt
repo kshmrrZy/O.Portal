@@ -129,6 +129,8 @@ class MainActivity : AppCompatActivity() {
     private var bufferingSinceMs = 0L
     private var playerEventListener: androidx.media3.common.Player.Listener? = null
     private var playerAnalyticsListener: AnalyticsListener? = null
+    private var forceFreshPlayerSession = false
+    private var lastReleasedPlayerId: Int? = null
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -1137,6 +1139,7 @@ class MainActivity : AppCompatActivity() {
         settingsOpenedFromPlayer = homePanel.visibility != View.VISIBLE
         isSettingsModalVisible = true
         homePlaylistTilesPanel.visibility = View.GONE
+        logVisibleBackButtonIds("hideSettingsScreen_before_return")
         if (settingsOpenedFromPlayer) {
             playerSettingsOverlay.visibility = View.GONE
             hideUI()
@@ -1212,6 +1215,7 @@ class MainActivity : AppCompatActivity() {
         btnBackToMenu.setOnClickListener(null)
         tvSettingsBack.visibility = View.VISIBLE
         tvSettingsBack.setOnClickListener { hideSettingsScreen() }
+        logVisibleBackButtonIds("showSettingsDialog_after_back_config")
         userSettingsPanel.visibility = View.GONE
 
         tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
@@ -1309,6 +1313,8 @@ class MainActivity : AppCompatActivity() {
         }
         btnUserSettings.setOnClickListener { openUserSettingsScreen() }
         btnExportDebugLog.setOnClickListener { exportDebugLogToDownloads() }
+        logVisibleBackButtonIds("showSettingsDialog_final")
+
         btnExportDebugLog.setOnLongClickListener {
             val current = prefs.getBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, USE_FFMPEG_AUDIO_FOR_MPEG_L2)
             val next = !current
@@ -1470,6 +1476,19 @@ class MainActivity : AppCompatActivity() {
         savePlaylistProfiles((portal + thirdParty).distinctBy { it.name })
     }
 
+    private fun logVisibleBackButtonIds(stage: String) {
+        val candidates = listOf(
+            R.id.tvSettingsBack,
+            R.id.btnBackToMenu,
+            R.id.tvHomeCategoryBack
+        )
+        val visible = candidates.mapNotNull { id ->
+            val v = findViewById<View?>(id) ?: return@mapNotNull null
+            if (v.visibility == View.VISIBLE) resources.getResourceEntryName(id) else null
+        }
+        logDebug("SETTINGS_UI", "VISIBLE BACK BUTTON IDS [$stage]: ${visible.joinToString(",")}")
+    }
+
     private fun hideSettingsScreen() {
         isSettingsModalVisible = false
         homeSettingsScreen.visibility = View.GONE
@@ -1480,6 +1499,7 @@ class MainActivity : AppCompatActivity() {
             showReloadingStatus("Возврат в меню…", "")
             exitPlayerToPlaylist()
         }
+        logVisibleBackButtonIds("hideSettingsScreen_before_return")
         if (settingsOpenedFromPlayer) {
             homePanel.visibility = View.GONE
             showUI()
@@ -2759,6 +2779,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupPlayer(preferSoftwareDecoder: Boolean = false) {
+        val reused = mediaPlayer != null
+        val oldId = mediaPlayer?.let { System.identityHashCode(it) }
+        logDebug("PLAYER_LIFECYCLE", "setupPlayer start reused=$reused oldPlayerId=$oldId forceFreshPlayerSession=$forceFreshPlayerSession looper=${Looper.myLooper()} thread=${Thread.currentThread().name}")
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(userAgent)
             .setAllowCrossProtocolRedirects(true)
@@ -2832,6 +2855,9 @@ class MainActivity : AppCompatActivity() {
             .build()
             .also { player ->
                 findViewById<PlayerView>(R.id.videoLayout).player = player
+                val newId = System.identityHashCode(player)
+                logDebug("PLAYER_LIFECYCLE", "NEW PLAYER SESSION CREATED oldPlayerId=$oldId newPlayerId=$newId reused=$reused lastReleasedPlayerId=$lastReleasedPlayerId playerViewAttached=${findViewById<PlayerView>(R.id.videoLayout).player === player}")
+                forceFreshPlayerSession = false
                 val listener = object : androidx.media3.common.Player.Listener {
                     override fun onRenderedFirstFrame() {
                         firstFrameRendered = true
@@ -3505,7 +3531,10 @@ class MainActivity : AppCompatActivity() {
         if (versionChanged) {
             prefs.edit().putLong(PREF_APP_VERSION_CODE, currentVersion).apply()
         }
-        if (mediaPlayer == null) {
+        if (mediaPlayer == null || forceFreshPlayerSession) {
+            if (mediaPlayer != null && forceFreshPlayerSession) {
+                stopPlayback()
+            }
             setupPlayer(preferSoftwareDecoder = softwareDecoderMode)
             if (channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
                 playChannel(forcePlay = true)
@@ -3589,22 +3618,37 @@ class MainActivity : AppCompatActivity() {
 
     private fun stopPlayback() {
         handler.removeCallbacks(memoryLogRunnable)
+        handler.removeCallbacks(startupSlowStreamRunnable)
+        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+        videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
+        videoOnlyMinimalNoFrameRunnable = null
+
+        val playerView = findViewById<PlayerView>(R.id.videoLayout)
+        val attachedBefore = playerView.player
+        val attachedBeforeId = attachedBefore?.let { System.identityHashCode(it) }
+        val oldPlayerId = mediaPlayer?.let { System.identityHashCode(it) }
+        logDebug("PLAYER_LIFECYCLE", "stopPlayback start oldPlayerId=$oldPlayerId attachedPlayerId=$attachedBeforeId listenerSet=${playerEventListener != null} analyticsSet=${playerAnalyticsListener != null} looper=${Looper.myLooper()} thread=${Thread.currentThread().name}")
+
         mediaPlayer?.let { player ->
             playerEventListener?.let { player.removeListener(it) }
             playerAnalyticsListener?.let { player.removeAnalyticsListener(it) }
+            player.clearVideoSurface()
             player.clearMediaItems()
             player.stop()
             player.release()
+            logDebug("PLAYER_LIFECYCLE", "release completed playerId=${System.identityHashCode(player)} renderersReleased=true codecReleased=unknown")
+            lastReleasedPlayerId = System.identityHashCode(player)
         }
+
+        playerView.player = null
+        logDebug("PLAYER_LIFECYCLE", "playerView detached beforeId=$attachedBeforeId afterIsNull=${playerView.player == null}")
+
         mediaPlayer = null
         startupPlaybackUrlLock = null
         playerEventListener = null
         playerAnalyticsListener = null
         trackSelector = null
-        handler.removeCallbacks(startupSlowStreamRunnable)
-        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-        videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
-        videoOnlyMinimalNoFrameRunnable = null
+        forceFreshPlayerSession = true
     }
 
     private fun resetPlaybackSessionStateOnExit() {
