@@ -573,8 +573,7 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
             logDebug("PLAYER_UI", "back button returns to playlist, not app exit")
-            stopPlayback()
-            showPlaylistPageOnHome()
+            exitPlayerToPlaylist()
         }
         sbTimeline.max = 1000
         sbTimeline.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -1206,10 +1205,13 @@ class MainActivity : AppCompatActivity() {
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
         val btnExportDebugLog = findViewById<View>(R.id.btnExportDebugLog)
+        val btnBackToMenu = findViewById<View>(R.id.btnBackToMenu)
         val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings)
 
-        tvSettingsBack.visibility = View.GONE
-        tvSettingsBack.setOnClickListener(null)
+        btnBackToMenu.visibility = View.GONE
+        btnBackToMenu.setOnClickListener(null)
+        tvSettingsBack.visibility = View.VISIBLE
+        tvSettingsBack.setOnClickListener { hideSettingsScreen() }
         userSettingsPanel.visibility = View.GONE
 
         tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
@@ -1300,8 +1302,8 @@ class MainActivity : AppCompatActivity() {
         fun openUserSettingsScreen() {
             settingsRows.forEach { it.visibility = View.GONE }
             userSettingsPanel.visibility = View.VISIBLE
-            tvSettingsBack.visibility = View.GONE
-            tvSettingsBack.setOnClickListener(null)
+            tvSettingsBack.visibility = View.VISIBLE
+            tvSettingsBack.setOnClickListener { hideSettingsScreen() }
             applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройка пользователя")
             bindInlineUserSettings(userSettingsPanel)
         }
@@ -1368,7 +1370,7 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener { loadPlaylist(forceReload = true, showErrors = true, autoPlay = false) }
 
-        tvSettingsBack.setOnClickListener(null)
+        tvSettingsBack.setOnClickListener { hideSettingsScreen() }
         bindData()
     }
 
@@ -1441,7 +1443,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Обновление EPG запущено", Toast.LENGTH_SHORT).show()
         }
 
-        tvSettingsBack.setOnClickListener(null)
+        tvSettingsBack.setOnClickListener { hideSettingsScreen() }
     }
 
     private fun getThirdPartyPlaylistProfiles(): List<PlaylistProfile> = getPlaylistProfiles().filter { it.name !in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные", "Пользователь", "По умолчанию") }
@@ -1473,6 +1475,11 @@ class MainActivity : AppCompatActivity() {
         homeSettingsScreen.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = false)
         playerSettingsOverlay.visibility = View.GONE
+        findViewById<View>(R.id.btnBackToMenu).visibility = View.VISIBLE
+        findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
+            showCenterReloadingOverlay("Возврат в меню…")
+            exitPlayerToPlaylist()
+        }
         if (settingsOpenedFromPlayer) {
             homePanel.visibility = View.GONE
             showUI()
@@ -3598,7 +3605,36 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
         videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
         videoOnlyMinimalNoFrameRunnable = null
+    }
 
+    private fun resetPlaybackSessionStateOnExit() {
+        startupPlaybackUrlLock = null
+        lastRequestedPlaybackUrl = ""
+        firstFrameRendered = false
+        retriedWithoutAudio = false
+        videoOnlyMinimalMode = false
+        retriedWithAlternateDecoder = false
+        runtimeRecoveryAttempted = false
+        behindLiveWindowRecoveryInProgress = false
+        startupRecoveryAttempts = 0
+        bufferingSinceMs = 0L
+        lastPlaybackPositionMs = -1L
+        lastProgressWallClockMs = 0L
+        videoOnlyMinimalFirstFrameRendered = false
+        videoOnlyMinimalTriedSoftwareDecoder = false
+        audioTrackForcedDisabled = false
+        isPlaybackPaused = false
+        isArchivePlayback = false
+        currentArchiveProgram = null
+        archiveStreamStartMs = 0L
+        enableAudioTrack()
+        applyUnlimitedVideoConstraints()
+    }
+
+    private fun exitPlayerToPlaylist() {
+        stopPlayback()
+        resetPlaybackSessionStateOnExit()
+        showPlaylistPageOnHome()
     }
 
     private fun showLockedMessage() {
