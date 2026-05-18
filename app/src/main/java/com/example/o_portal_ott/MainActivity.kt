@@ -47,22 +47,27 @@ import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.view.GestureDetectorCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.DecoderCounters
+import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.PlayerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.model.GlideUrl
@@ -124,6 +129,8 @@ class MainActivity : AppCompatActivity() {
     private var bufferingSinceMs = 0L
     private var playerEventListener: androidx.media3.common.Player.Listener? = null
     private var playerAnalyticsListener: AnalyticsListener? = null
+    private var forceFreshPlayerSession = false
+    private var lastReleasedPlayerId: Int? = null
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
@@ -132,6 +139,7 @@ class MainActivity : AppCompatActivity() {
     // UI элементы
     private lateinit var controlsPanel: View
     private lateinit var topInfoPanel: View
+    private lateinit var topGradientOverlay: View
     private lateinit var tvEpg: TextView
     private lateinit var tvChannelName: TextView
     private lateinit var tvSystemTime: TextView
@@ -204,6 +212,13 @@ class MainActivity : AppCompatActivity() {
     private val maxStartupRecoveryAttempts = 3
     private var startupPlaybackUrlLock: String? = null
     private var videoOnlyMinimalMode = false
+    private var runtimeRecoveryAttempted = false
+    private var behindLiveWindowRecoveryInProgress = false
+    private var audioTrackForcedDisabled = false
+    private var videoOnlyMinimalFirstFrameRendered = false
+    private var videoOnlyMinimalTriedSoftwareDecoder = false
+    private var videoOnlyMinimalNoFrameRunnable: Runnable? = null
+    private val enableTsForensicDump = false
     private val startupSlowStreamRunnable: Runnable = Runnable {
         if (!firstFrameRendered) {
             showCenterError("Поток долго загружается", 3000L)
@@ -234,11 +249,7 @@ class MainActivity : AppCompatActivity() {
             if (player.playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
                 if (bufferingSinceMs == 0L) bufferingSinceMs = now
                 if (now - bufferingSinceMs > 12_000L) {
-                    showCenterError("Буферизация зависла, перезапуск потока", 2200L)
-                    player.stop()
-                    player.setMediaItem(buildMediaItem(lastRequestedPlaybackUrl))
-                    player.prepare()
-                    player.playWhenReady = true
+                    logDebug("PLAYER_STATE", "watchdog buffering detected; auto-restart disabled")
                     bufferingSinceMs = now
                 }
             } else {
@@ -253,11 +264,7 @@ class MainActivity : AppCompatActivity() {
             lastPlaybackPositionMs = pos
             lastProgressWallClockMs = now
         } else if (lastProgressWallClockMs > 0L && now - lastProgressWallClockMs > 10_000L) {
-            showCenterError("Поток завис, выполняем перезапуск", 2200L)
-            player.stop()
-            player.setMediaItem(buildMediaItem(lastRequestedPlaybackUrl))
-            player.prepare()
-            player.playWhenReady = true
+            logDebug("PLAYER_STATE", "watchdog progress stall detected; auto-restart disabled")
             lastProgressWallClockMs = now
         }
         handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
@@ -301,6 +308,7 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_USER_TOKEN = "pref_user_token"
         private const val PREF_USER_NAME = "pref_user_name"
         private const val PREF_USER_PLAYLIST = "pref_user_playlist"
+        private const val PREF_HLS_ALLOW_NON_IDR = "pref_hls_allow_non_idr"
 
         private const val TOKEN_PREFIX = "https://o.avff.ru/my/"
         private const val TOKEN_SUFFIX = ".m3u"
@@ -415,6 +423,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeCategoryBack = findViewById(R.id.tvHomeCategoryBack)
         ivLogo = findViewById(R.id.ivChannelLogo)
         btnLock = findViewById(R.id.btnLock)
+        topGradientOverlay = findViewById(R.id.topGradientOverlay)
         btnSettings = findViewById(R.id.btnSettings)
         btnPlayPause = findViewById(R.id.btnPlayPause)
         btnSleepTimer = findViewById(R.id.btnSleepTimer)
@@ -551,6 +560,7 @@ class MainActivity : AppCompatActivity() {
         ivHomePower.setOnClickListener { closeAppCompletely() }
 
         btnLiveReload.setOnClickListener {
+            logPathState("LIVE_PATH before_reload_click")
             if (System.currentTimeMillis() >= suppressReloadOverlayUntilMs) {
                 showReloadingStatus(
                     title = "Выполняется обновление трансляции! Ожидайте...",
@@ -558,9 +568,14 @@ class MainActivity : AppCompatActivity() {
                 )
             }
             playChannel(forcePlay = true)
+            logPathState("LIVE_PATH after_reload_click")
             handler.postDelayed({
                 tvReloadingStatus.visibility = View.GONE
             }, 1200)
+        }
+        findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
+            logDebug("PLAYER_UI", "back button returns to playlist, not app exit")
+            exitPlayerToPlaylist()
         }
         sbTimeline.max = 1000
         sbTimeline.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -591,6 +606,14 @@ class MainActivity : AppCompatActivity() {
         })
 
         btnSettings.setOnClickListener { showSettingsDialog() }
+        btnSettings.setOnLongClickListener {
+            val next = !prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+            prefs.edit().putBoolean(PREF_HLS_ALLOW_NON_IDR, next).apply()
+            logDebug("PLAYER_HLS", "runtime toggle allowNonIdr=$next")
+            showCenterError("HLS allowNonIdr=${if (next) "ON" else "OFF"}", 1500L)
+            restartCurrentStream(recreatePlayer = false)
+            true
+        }
         btnSleepTimer.setOnClickListener { showTimerDialog() }
 
         btnPlayPause.setOnClickListener {
@@ -674,6 +697,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeCategoryBack.visibility = View.GONE
         homePanel.post { applyHomeScreenScale(force = true) }
         topInfoPanel.visibility = View.GONE
+        topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
     }
 
@@ -1111,6 +1135,29 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun configureBackButtonsForSettings(stage: String) {
+        val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
+        val btnBackToMenu = findViewById<View>(R.id.btnBackToMenu)
+        val tvHomeCategoryBack = findViewById<View>(R.id.tvHomeCategoryBack)
+
+        tvSettingsBack.visibility = View.VISIBLE
+        tvSettingsBack.isEnabled = true
+        tvSettingsBack.isClickable = true
+        tvSettingsBack.setOnClickListener { hideSettingsScreen() }
+
+        btnBackToMenu.visibility = View.GONE
+        btnBackToMenu.isEnabled = false
+        btnBackToMenu.isClickable = false
+        btnBackToMenu.setOnClickListener(null)
+
+        tvHomeCategoryBack.visibility = View.GONE
+        tvHomeCategoryBack.isEnabled = false
+        tvHomeCategoryBack.isClickable = false
+        tvHomeCategoryBack.setOnClickListener(null)
+
+        logVisibleBackButtonIds(stage)
+    }
+
     private fun showSettingsDialog() {
         settingsOpenedFromPlayer = homePanel.visibility != View.VISIBLE
         isSettingsModalVisible = true
@@ -1183,11 +1230,9 @@ class MainActivity : AppCompatActivity() {
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
         val btnExportDebugLog = findViewById<View>(R.id.btnExportDebugLog)
-        val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings, btnExportDebugLog)
+        val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings)
 
-        tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
-        tvSettingsBack.translationY = -10f
-        tvSettingsBack.setOnClickListener { hideSettingsScreen() }
+        configureBackButtonsForSettings("showSettingsDialog_after_back_config")
         userSettingsPanel.visibility = View.GONE
 
         tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
@@ -1202,6 +1247,9 @@ class MainActivity : AppCompatActivity() {
         epgSettingsPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
         settingsRows.forEach { it.visibility = View.VISIBLE }
+        btnExportDebugLog.visibility = View.VISIBLE
+        btnExportDebugLog.isEnabled = true
+        btnExportDebugLog.isClickable = true
         btnPlaylistSettings.setOnClickListener { openPlaylistSettingsScreen() }
         btnEpgSelect.setOnClickListener { openEpgSettingsScreen() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
@@ -1276,21 +1324,14 @@ class MainActivity : AppCompatActivity() {
             settingsRows.forEach { it.visibility = View.GONE }
             userSettingsPanel.visibility = View.VISIBLE
             tvSettingsBack.visibility = View.VISIBLE
-            tvSettingsBack.translationY = -10f
-            tvSettingsBack.setOnClickListener {
-                userSettingsPanel.visibility = View.GONE
-                settingsRows.forEach { it.visibility = View.VISIBLE }
-                tvSettingsBack.visibility =
-                    if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
-                tvSettingsBack.translationY = -10f
-                tvSettingsBack.setOnClickListener { hideSettingsScreen() }
-                applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
-            }
+            tvSettingsBack.setOnClickListener { hideSettingsScreen() }
             applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройка пользователя")
             bindInlineUserSettings(userSettingsPanel)
         }
         btnUserSettings.setOnClickListener { openUserSettingsScreen() }
         btnExportDebugLog.setOnClickListener { exportDebugLogToDownloads() }
+        configureBackButtonsForSettings("showSettingsDialog_final")
+
         btnExportDebugLog.setOnLongClickListener {
             val current = prefs.getBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, USE_FFMPEG_AUDIO_FOR_MPEG_L2)
             val next = !current
@@ -1307,7 +1348,8 @@ class MainActivity : AppCompatActivity() {
         val settingsRows = listOf(
             findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect),
             findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode),
-            findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings)
+            findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings),
+            findViewById<View>(R.id.btnExportDebugLog)
         )
         settingsRows.forEach { it.visibility = View.GONE }
         userSettingsPanel.visibility = View.GONE
@@ -1352,13 +1394,7 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener { loadPlaylist(forceReload = true, showErrors = true, autoPlay = false) }
 
-        tvSettingsBack.setOnClickListener {
-            playlistPanel.visibility = View.GONE
-            settingsRows.forEach { it.visibility = View.VISIBLE }
-            tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
-            tvSettingsBack.setOnClickListener { hideSettingsScreen() }
-            applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
-        }
+        configureBackButtonsForSettings("openPlaylistSettingsScreen")
         bindData()
     }
 
@@ -1368,7 +1404,7 @@ class MainActivity : AppCompatActivity() {
         val epgPanel = findViewById<View>(R.id.epgSettingsPanel)
         val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
         val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
-        val settingsRows = listOf(findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect), findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode), findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings))
+        val settingsRows = listOf(findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect), findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode), findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings), findViewById<View>(R.id.btnExportDebugLog))
         settingsRows.forEach { it.visibility = View.GONE }
         playlistPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
@@ -1431,17 +1467,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Обновление EPG запущено", Toast.LENGTH_SHORT).show()
         }
 
-        tvSettingsBack.setOnClickListener {
-            epgPanel.visibility = View.GONE
-            if (settingsOpenedFromPlayer) {
-                hideSettingsScreen()
-            } else {
-                settingsRows.forEach { it.visibility = View.VISIBLE }
-                tvSettingsBack.visibility = View.GONE
-                tvSettingsBack.setOnClickListener { hideSettingsScreen() }
-                applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
-            }
-        }
+        configureBackButtonsForSettings("openEpgSettingsScreen")
     }
 
     private fun getThirdPartyPlaylistProfiles(): List<PlaylistProfile> = getPlaylistProfiles().filter { it.name !in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные", "Пользователь", "По умолчанию") }
@@ -1468,11 +1494,37 @@ class MainActivity : AppCompatActivity() {
         savePlaylistProfiles((portal + thirdParty).distinctBy { it.name })
     }
 
+    private fun logVisibleBackButtonIds(stage: String) {
+        val candidates = listOf(
+            R.id.tvSettingsBack,
+            R.id.btnBackToMenu,
+            R.id.tvHomeCategoryBack
+        )
+        val visible = candidates.mapNotNull { id ->
+            val v = findViewById<View?>(id) ?: return@mapNotNull null
+            if (v.visibility == View.VISIBLE) resources.getResourceEntryName(id) else null
+        }
+        logDebug("SETTINGS_UI", "VISIBLE BACK BUTTON IDS [$stage]: ${visible.joinToString(",")}")
+    }
+
     private fun hideSettingsScreen() {
         isSettingsModalVisible = false
         homeSettingsScreen.visibility = View.GONE
+        findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = false)
         playerSettingsOverlay.visibility = View.GONE
+        homePanel.setBackgroundResource(R.drawable.bg_home_screen)
+        findViewById<View>(R.id.tvHomeCategoryBack).visibility = View.GONE
+        findViewById<View>(R.id.tvHomeCategoryBack).isEnabled = false
+        findViewById<View>(R.id.tvHomeCategoryBack).isClickable = false
+        findViewById<View>(R.id.btnBackToMenu).visibility = View.VISIBLE
+        findViewById<View>(R.id.btnBackToMenu).isEnabled = true
+        findViewById<View>(R.id.btnBackToMenu).isClickable = true
+        findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
+            exitPlayerToPlaylist()
+        }
         if (settingsOpenedFromPlayer) {
             homePanel.visibility = View.GONE
             showUI()
@@ -1496,7 +1548,7 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun restoreDefaultSettingsRows() {
-        val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings, R.id.btnExportDebugLog)
+        val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings)
         rowIds.forEachIndexed { i, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
@@ -1519,7 +1571,6 @@ class MainActivity : AppCompatActivity() {
             R.id.itemStartMode,
             R.id.btnAdvancedSettings,
             R.id.btnUserSettings,
-            R.id.btnExportDebugLog
         )
         val containerHeight = (homeSettingsScreen.layoutParams?.height ?: 0).takeIf { it > 0 }
             ?: (resources.displayMetrics.heightPixels - dpToPx(40))
@@ -2499,6 +2550,14 @@ class MainActivity : AppCompatActivity() {
         return resolved
     }
 
+    private fun ensurePlayerReadyForPlayback(preferSoftwareDecoder: Boolean) {
+        if (mediaPlayer == null) {
+            setupPlayer(preferSoftwareDecoder = preferSoftwareDecoder)
+            logDebug("PLAYER_LIFECYCLE", "PLAYER WAS NULL, CREATED NEW PLAYER BEFORE STARTUP")
+        }
+        findViewById<PlayerView>(R.id.videoLayout).player = mediaPlayer
+    }
+
     private fun playArchiveProgram(channel: Channel, program: Program) {
         val archiveUrl = buildArchiveUrl(channel, program)
         if (archiveUrl.isNullOrBlank()) {
@@ -2511,8 +2570,8 @@ class MainActivity : AppCompatActivity() {
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
-                setupPlayer(preferSoftwareDecoder = shouldUseSoftware)
             }
+            ensurePlayerReadyForPlayback(preferSoftwareDecoder = shouldUseSoftware)
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = archiveUrl
             logHlsManifestPreview(archiveUrl)
@@ -2548,22 +2607,20 @@ class MainActivity : AppCompatActivity() {
     private fun playChannel(forcePlay: Boolean = false) {
         runCatching {
             val ch = channels.getOrNull(currentChannelIndex) ?: return
-            val lockedUrl = startupPlaybackUrlLock
-            if (!lockedUrl.isNullOrBlank() && !firstFrameRendered && ch.url != lockedUrl) {
-                logDebug("PLAYER_STATE", "startup lock prevents channel switch from $lockedUrl to ${ch.url}")
-                return
-            }
             homePanel.visibility = View.GONE
             val shouldUseSoftware = !preferGpuDecoding
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
-                setupPlayer(preferSoftwareDecoder = shouldUseSoftware)
             }
+            ensurePlayerReadyForPlayback(preferSoftwareDecoder = shouldUseSoftware)
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = ch.url
             startupPlaybackUrlLock = ch.url
+            videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
+            videoOnlyMinimalNoFrameRunnable = null
             logHlsManifestPreview(ch.url)
+            dumpDebugTsSegments(ch.url, "problem")
             firstFrameRendered = false
             handler.removeCallbacks(startupSlowStreamRunnable)
             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
@@ -2573,10 +2630,22 @@ class MainActivity : AppCompatActivity() {
             enableAudioTrack()
             applyUnlimitedVideoConstraints()
 
-            mediaPlayer?.setMediaItem(buildMediaItem(ch.url))
-            mediaPlayer?.prepare()
-            mediaPlayer?.playWhenReady = true
-            mediaPlayer?.play()
+            val player = mediaPlayer ?: run {
+                logDebug("PLAYER_LIFECYCLE", "PLAYER NULL AFTER ensurePlayerReadyForPlayback, abort startup")
+                return@runCatching
+            }
+
+            val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+            logPathState("STARTUP_PATH before_set_source allowNonIdr=${allowNonIdr || shouldAllowNonIdrForStream(ch.url)} forcePlay=$forcePlay")
+            player.setMediaSource(buildHlsMediaSource(ch.url, allowNonIdr))
+            player.seekToDefaultPosition()
+            logPathState("STARTUP_PATH after_seek_default")
+            player.prepare()
+            player.seekToDefaultPosition()
+            logPathState("STARTUP_PATH after_prepare_seek_default")
+            player.playWhenReady = true
+            player.play()
+            logPathState("STARTUP_PATH after_play")
             logMemoryStats("play_channel_start")
             handler.removeCallbacks(memoryLogRunnable)
             handler.post(memoryLogRunnable)
@@ -2648,7 +2717,11 @@ class MainActivity : AppCompatActivity() {
                 logDebug("PLAYER_HLS", "manifest status=$code finalUrl=$finalUrl contentType=${conn.contentType} headers=${conn.headerFields}")
                 logDebug("PLAYER_HLS", "manifest head:\n${lines.take(20).joinToString("\n")}")
                 logDebug("PLAYER_HLS", "variantLines=${lines.filter { it.contains("#EXT-X-STREAM-INF") }.take(8)}")
-                logDebug("PLAYER_HLS", "segmentLines=${lines.filter { it.isNotBlank() && !it.startsWith("#") }.take(8)}")
+                val segments = lines.filter { it.isNotBlank() && !it.startsWith("#") }
+                val chosen = segments.takeLast(2).firstOrNull()
+                val liveEdge = segments.lastOrNull()
+                logDebug("PLAYER_HLS", "segmentLines=${segments.take(8)}")
+                logDebug("PLAYER_HLS", "segmentChoice chosen=$chosen liveEdge=$liveEdge segmentCount=${segments.size}")
                 logDebug("PLAYER_HLS", "hasMap=${lines.any { it.startsWith("#EXT-X-MAP") }} hasKey=${lines.any { it.startsWith("#EXT-X-KEY") }} targetDuration=${lines.firstOrNull { it.startsWith("#EXT-X-TARGETDURATION") }} mediaSequence=${lines.firstOrNull { it.startsWith("#EXT-X-MEDIA-SEQUENCE") }}")
                 if (lines.none { it.contains("#EXT-X-STREAM-INF") }) {
                     logDebug("PLAYER_HLS", "single-variant TS playlist detected; device may struggle with 1080p AVC High profile streams")
@@ -2682,7 +2755,8 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.clearVideoSurface()
         showCenterError(message, 5000L)
         handler.removeCallbacks(returnToLiveRunnable)
-        handler.postDelayed(returnToLiveRunnable, 3000L)
+        startupPlaybackUrlLock = null
+        logDebug("PLAYER_STATE", "playback failure shown; waiting for user LIVE/channel action url=$url")
     }
 
     private fun updateEpgDisplay() {
@@ -2713,9 +2787,7 @@ class MainActivity : AppCompatActivity() {
         val programs = getProgramsForDisplay(ch)
 
         val cur = programs.find { now in it.start until it.stop }
-        tvEpg.text = cur?.let {
-            "${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it.start))} - ${it.title}"
-        } ?: "Загрузка программы..."
+        tvEpg.text = cur?.title ?: "Загрузка программы..."
         updateTimelineUi()
     }
 
@@ -2744,6 +2816,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupPlayer(preferSoftwareDecoder: Boolean = false) {
+        val reused = mediaPlayer != null
+        val oldId = mediaPlayer?.let { System.identityHashCode(it) }
+        logDebug("PLAYER_LIFECYCLE", "setupPlayer start reused=$reused oldPlayerId=$oldId forceFreshPlayerSession=$forceFreshPlayerSession looper=${Looper.myLooper()} thread=${Thread.currentThread().name}")
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(userAgent)
             .setAllowCrossProtocolRedirects(true)
@@ -2760,12 +2835,12 @@ class MainActivity : AppCompatActivity() {
         val loadControl = DefaultLoadControl.Builder()
             .setAllocator(allocator)
             .setBufferDurationsMs(
-                2_500,
                 6_000,
-                700,
-                1_200
+                20_000,
+                1_200,
+                2_500
             )
-            .setTargetBufferBytes(4 * C.DEFAULT_BUFFER_SEGMENT_SIZE)
+            .setTargetBufferBytes(C.LENGTH_UNSET)
             .setBackBuffer(0, false)
             .build()
 
@@ -2791,7 +2866,11 @@ class MainActivity : AppCompatActivity() {
             .setEnableDecoderFallback(true)
             .setMediaCodecSelector(codecSelector)
 
-        val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory)
+        val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+        val hlsPayloadReaderFlags =
+            if (allowNonIdr) DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES else 0
+        logDebug("PLAYER_HLS", "hlsPayloadReaderFlags=$hlsPayloadReaderFlags allowNonIdr=$allowNonIdr")
+        val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory).setDataSourceFactory(httpFactory)
 
         trackSelector = DefaultTrackSelector(this).apply {
             setParameters(
@@ -2813,6 +2892,9 @@ class MainActivity : AppCompatActivity() {
             .build()
             .also { player ->
                 findViewById<PlayerView>(R.id.videoLayout).player = player
+                val newId = System.identityHashCode(player)
+                logDebug("PLAYER_LIFECYCLE", "NEW PLAYER SESSION CREATED oldPlayerId=$oldId newPlayerId=$newId reused=$reused lastReleasedPlayerId=$lastReleasedPlayerId playerViewAttached=${findViewById<PlayerView>(R.id.videoLayout).player === player}")
+                forceFreshPlayerSession = false
                 val listener = object : androidx.media3.common.Player.Listener {
                     override fun onRenderedFirstFrame() {
                         firstFrameRendered = true
@@ -2822,6 +2904,8 @@ class MainActivity : AppCompatActivity() {
                         handler.removeCallbacks(startupSlowStreamRunnable)
                         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                         logDebug("PLAYER_STATE", "onRenderedFirstFrame videoOnlyMode=$videoOnlyMinimalMode url=$lastRequestedPlaybackUrl")
+                        logAudioTrackState("first_frame_rendered")
+                        logPathState("STARTUP_PATH onRenderedFirstFrame")
                     }
 
                     override fun onTracksChanged(tracks: Tracks) {
@@ -2829,9 +2913,8 @@ class MainActivity : AppCompatActivity() {
                         if (retriedWithoutAudio) {
                             logAudioTrackState("post_fallback_tracks_changed")
                         }
-                        if (!firstFrameRendered && !retriedWithoutAudio && hasSelectedMpegL2Audio(tracks)) {
-                            logDebug("PLAYER_STATE", "mpeg-l2 audio detected before first frame, switching to video-only fallback")
-                            retryCurrentStreamWithoutAudio()
+                        if (!firstFrameRendered && !retriedWithoutAudio && hasSelectedMpegL2Audio(tracks) && !shouldAllowNonIdrForStream(lastRequestedPlaybackUrl)) {
+                            logDebug("PLAYER_STATE", "mpeg-l2 detected, but auto video-only fallback disabled in production path")
                         }
                     }
 
@@ -2854,24 +2937,52 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
-                        logDebug("PLAYER_STATE", "onPlayerError url=$lastRequestedPlaybackUrl message=${error.message}", error)
+                        val causeChain = generateSequence(error.cause) { it.cause }
+                            .take(6)
+                            .joinToString(" -> ") { "${it::class.java.simpleName}:${it.message}" }
+                        logDebug("PLAYER_STATE", "onPlayerError url=$lastRequestedPlaybackUrl message=${error.message} code=${error.errorCode} codeName=${error.errorCodeName} causeChain=$causeChain", error)
                         startupPlaybackUrlLock = null
                         logMemoryStats("on_player_error")
                         handler.post {
                             handler.removeCallbacks(startupSlowStreamRunnable)
                             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-                            if (shouldRetryWithoutAudio(error)) {
-                                showCenterError(
-                                    "Аудио MPEG не поддерживается устройством, продолжаем без звука",
-                                    2500L
-                                )
-                                retryCurrentStreamWithoutAudio()
-                            } else {
-                                showPlaybackFailureAndReturn(
-                                    lastRequestedPlaybackUrl,
-                                    error.message ?: "PlaybackException"
-                                )
+                            videoOnlyMinimalMode = false
+                            audioTrackForcedDisabled = false
+                            enableAudioTrack()
+                            if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+                                if (behindLiveWindowRecoveryInProgress) {
+                                    showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, "ERROR_CODE_BEHIND_LIVE_WINDOW")
+                                    return@post
+                                }
+                                behindLiveWindowRecoveryInProgress = true
+                                logDebug("PLAYER_STATE", "BEHIND_LIVE_WINDOW recovery started attempt=1 url=$lastRequestedPlaybackUrl")
+                                val playerRef = mediaPlayer ?: run {
+                                    behindLiveWindowRecoveryInProgress = false
+                                    return@post
+                                }
+                                val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+                                playerRef.stop()
+                                playerRef.clearMediaItems()
+                                logPathState("BEHIND_LIVE_WINDOW after_clear")
+                                playerRef.setMediaSource(buildHlsMediaSource(lastRequestedPlaybackUrl, allowNonIdr))
+                                playerRef.seekToDefaultPosition()
+                                logPathState("BEHIND_LIVE_WINDOW after_seek_default")
+                                playerRef.prepare()
+                                playerRef.playWhenReady = true
+                                playerRef.play()
+                                logPathState("BEHIND_LIVE_WINDOW after_prepare_play")
+                                behindLiveWindowRecoveryInProgress = false
+                                return@post
                             }
+                            if (error.errorCodeName == "ERROR_CODE_FAILED_RUNTIME_CHECK") {
+                                showCenterError("Буферизация потока, попробуйте LIVE", 2000L)
+                                startupPlaybackUrlLock = null
+                                return@post
+                            }
+                            showPlaybackFailureAndReturn(
+                                lastRequestedPlaybackUrl,
+                                "${error.errorCodeName}: ${error.message ?: "PlaybackException"}"
+                            )
                         }
                     }
                 }
@@ -2961,6 +3072,56 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
+    private fun buildHlsMediaSource(url: String, allowNonIdr: Boolean): HlsMediaSource {
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(userAgent)
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(12_000)
+            .setReadTimeoutMs(25_000)
+        val effectiveAllowNonIdr = allowNonIdr || shouldAllowNonIdrForStream(url)
+        val hlsPayloadReaderFlags =
+            if (effectiveAllowNonIdr) DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES else 0
+        logDebug("PLAYER_HLS", "hlsPayloadReaderFlags=$hlsPayloadReaderFlags allowNonIdr=$effectiveAllowNonIdr requestedAllowNonIdr=$allowNonIdr")
+        return HlsMediaSource.Factory(httpFactory)
+            .setAllowChunklessPreparation(false)
+            .setExtractorFactory(DefaultHlsExtractorFactory(hlsPayloadReaderFlags, true))
+            .createMediaSource(buildMediaItem(url))
+    }
+
+    private fun shouldAllowNonIdrForStream(url: String): Boolean {
+        if (!url.contains(".m3u8", ignoreCase = true)) return false
+        return true
+    }
+
+    private fun dumpDebugTsSegments(playlistUrl: String, label: String) {
+        if (!enableTsForensicDump) return
+        thread(name = "ts-dump-$label") {
+            runCatching {
+                val text = URL(playlistUrl).openConnection().run {
+                    (this as HttpURLConnection).apply {
+                        connectTimeout = 10000
+                        readTimeout = 15000
+                        setRequestProperty("User-Agent", userAgent)
+                    }.inputStream.bufferedReader().use { it.readText() }
+                }
+                val segments = text.lineSequence()
+                    .map { it.trim() }
+                    .filter { it.startsWith("http", true) && it.contains(".ts") }
+                    .toList()
+                val tail = segments.takeLast(3)
+                val dir = File(filesDir, "debug_ts/$label-${System.currentTimeMillis()}")
+                dir.mkdirs()
+                tail.forEachIndexed { index, segUrl ->
+                    val out = File(dir, "segment_${index + 1}.ts")
+                    URL(segUrl).openStream().use { input -> out.outputStream().use { input.copyTo(it) } }
+                }
+                logDebug("PLAYER_HLS", "forensic TS dump saved path=${dir.absolutePath} files=${tail.size}")
+            }.onFailure {
+                logDebug("PLAYER_HLS", "forensic TS dump failed url=$playlistUrl error=${it.message}", it)
+            }
+        }
+    }
+
     private fun logMemoryStats(stage: String) {
         val rt = Runtime.getRuntime()
         val maxMb = rt.maxMemory() / (1024 * 1024)
@@ -3033,24 +3194,20 @@ class MainActivity : AppCompatActivity() {
     private fun retryCurrentStreamWithoutAudio() {
         val url = lastRequestedPlaybackUrl
         if (url.isBlank()) return
+        if (!videoOnlyMinimalMode) return
         retriedWithoutAudio = true
         videoOnlyMinimalMode = true
-        disableAudioTrack()
-        logAudioTrackState("retry_without_audio_params_applied")
-        mediaPlayer?.stop()
-        mediaPlayer?.setMediaItem(buildMediaItem(url))
-        mediaPlayer?.prepare()
-        mediaPlayer?.playWhenReady = true
-        logMemoryStats("retry_without_audio_start")
         handler.removeCallbacks(memoryLogRunnable)
-        handler.post(memoryLogRunnable)
-        firstFrameRendered = false
         handler.removeCallbacks(startupSlowStreamRunnable)
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-        handler.postDelayed(startupSlowStreamRunnable, 45_000L)
+        videoOnlyMinimalTriedSoftwareDecoder = false
+        startVideoOnlyMinimalDebug(url, preferSoftwareDecoder = false)
+        logMemoryStats("retry_without_audio_start")
+        firstFrameRendered = false
     }
 
     private fun disableAudioTrack() {
+        audioTrackForcedDisabled = true
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
                 ?: return
@@ -3064,40 +3221,170 @@ class MainActivity : AppCompatActivity() {
             (method.invoke(params, C.TRACK_TYPE_AUDIO) as? Boolean) == true
         } catch (_: Throwable) {
             try {
-                val field = params.javaClass.getDeclaredField("disabledTrackTypes")
-                field.isAccessible = true
-                val value = field.get(params) as? Set<*>
-                value?.contains(C.TRACK_TYPE_AUDIO) == true
+                val method = params.javaClass.getMethod("getTrackTypeDisabled", Int::class.javaPrimitiveType)
+                (method.invoke(params, C.TRACK_TYPE_AUDIO) as? Boolean) == true
             } catch (_: Throwable) {
-                false
+                audioTrackForcedDisabled
             }
         }
     }
 
     private fun logAudioTrackState(stage: String) {
         val audioDisabled = isAudioTrackTypeDisabledCompat()
-        val selectedAudioTracks = mediaPlayer?.currentTracks?.groups
+        val selectedAudioTracks = countSelectedTracksByType("audio/")
+        val selectedVideoTracks = countSelectedTracksByType("video/")
+        val trackGroupCount = mediaPlayer?.currentTracks?.groups?.size ?: -1
+        logDebug(
+            "PLAYER_STATE",
+            "$stage audioTrackForcedDisabled=$audioTrackForcedDisabled audioDisabled=$audioDisabled selected audio tracks count=$selectedAudioTracks selected video tracks count=$selectedVideoTracks trackGroups=$trackGroupCount videoOnlyMinimalMode=$videoOnlyMinimalMode url=$lastRequestedPlaybackUrl"
+        )
+    }
+
+    private fun logPathState(stage: String) {
+        val player = mediaPlayer
+        val allowNonIdr = shouldAllowNonIdrForStream(lastRequestedPlaybackUrl)
+        val liveOffset = player?.currentLiveOffset ?: C.TIME_UNSET
+        val selectedAudioTracks = countSelectedTracksByType("audio/")
+        val selectedVideoTracks = countSelectedTracksByType("video/")
+        logDebug(
+            "PLAYER_PATH",
+            "$stage posMs=${player?.currentPosition ?: -1} bufferedPosMs=${player?.bufferedPosition ?: -1} liveOffsetMs=$liveOffset playWhenReady=${player?.playWhenReady} isPlaying=${player?.isPlaying} state=${player?.playbackState} selectedAudio=$selectedAudioTracks selectedVideo=$selectedVideoTracks audioTrackForcedDisabled=$audioTrackForcedDisabled audioDisabled=${isAudioTrackTypeDisabledCompat()} allowNonIdr=$allowNonIdr url=$lastRequestedPlaybackUrl"
+        )
+    }
+
+    private fun countSelectedTracksByType(prefix: String): Int {
+        return mediaPlayer?.currentTracks?.groups
             ?.filter { it.isSelected }
             ?.sumOf { group ->
                 var count = 0
                 for (i in 0 until group.length) {
                     if (!group.isTrackSelected(i)) continue
                     val format = group.getTrackFormat(i)
-                    if (format.sampleMimeType?.startsWith("audio/") == true) count++
+                    if (format.sampleMimeType?.startsWith(prefix) == true) count++
                 }
                 count
             } ?: -1
-        logDebug(
-            "PLAYER_STATE",
-            "$stage audioDisabled=$audioDisabled selected audio tracks count=$selectedAudioTracks url=$lastRequestedPlaybackUrl"
-        )
     }
 
     private fun enableAudioTrack() {
+        audioTrackForcedDisabled = false
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()?.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                 ?: return
         )
+    }
+
+    private fun startVideoOnlyMinimalDebug(url: String, preferSoftwareDecoder: Boolean) {
+        stopPlayback()
+        videoOnlyMinimalFirstFrameRendered = false
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(userAgent)
+            .setAllowCrossProtocolRedirects(true)
+        val codecSelector = if (preferSoftwareDecoder) {
+            MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
+                MediaCodecSelector.DEFAULT
+                    .getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+                    .sortedBy { it.hardwareAccelerated }
+            }
+        } else {
+            MediaCodecSelector.DEFAULT
+        }
+        val renderersFactory = DefaultRenderersFactory(this)
+            .setEnableDecoderFallback(true)
+            .setMediaCodecSelector(codecSelector)
+        val selector = DefaultTrackSelector(this)
+        trackSelector = selector
+        selector.setParameters(
+            selector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+        )
+        audioTrackForcedDisabled = true
+        val player = ExoPlayer.Builder(this, renderersFactory)
+            .setTrackSelector(selector)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
+            .build()
+        mediaPlayer = player
+        findViewById<PlayerView>(R.id.videoLayout).player = player
+        val minimalListener = object : androidx.media3.common.Player.Listener {
+            override fun onTracksChanged(tracks: Tracks) {
+                if (!videoOnlyMinimalMode) return
+                logDebug("VIDEO_ONLY_MINIMAL", "trackGroups=${tracks.groups.size}")
+                logAudioTrackState("video_only_minimal_tracks_changed")
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (!videoOnlyMinimalMode) return
+                logDebug(
+                    "VIDEO_ONLY_MINIMAL",
+                    "state=$playbackState currentPosition=${player.currentPosition} bufferedPosition=${player.bufferedPosition} totalBufferedDuration=${player.totalBufferedDuration} playWhenReady=${player.playWhenReady}"
+                )
+            }
+
+            override fun onRenderedFirstFrame() {
+                videoOnlyMinimalFirstFrameRendered = true
+                if (!videoOnlyMinimalMode) return
+                logDebug("VIDEO_ONLY_MINIMAL", "onRenderedFirstFrame")
+            }
+
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                if (!videoOnlyMinimalMode) return
+                logDebug("VIDEO_ONLY_MINIMAL", "videoSize=${videoSize.width}x${videoSize.height}")
+            }
+        }
+        player.addListener(minimalListener)
+        playerEventListener = minimalListener
+        val minimalAnalytics = object : AnalyticsListener {
+            override fun onLoadStarted(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData) {
+                logDebug("VIDEO_ONLY_MINIMAL", "onLoadStarted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} uri=${loadEventInfo.dataSpec.uri}")
+            }
+            override fun onLoadCompleted(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData) {
+                logDebug("VIDEO_ONLY_MINIMAL", "onLoadCompleted type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} bytes=${loadEventInfo.bytesLoaded} ms=${loadEventInfo.loadDurationMs}")
+            }
+            override fun onLoadCanceled(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData) {
+                logDebug("VIDEO_ONLY_MINIMAL", "onLoadCanceled type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType}")
+            }
+            override fun onLoadError(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData, error: IOException, wasCanceled: Boolean) {
+                logDebug("VIDEO_ONLY_MINIMAL", "onLoadError type=${mediaLoadData.dataType} trackType=${mediaLoadData.trackType} error=${error.message}")
+            }
+            override fun onVideoDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
+                logDebug("VIDEO_ONLY_MINIMAL", "videoDecoderInitialized decoder=$decoderName initMs=$initializationDurationMs")
+            }
+            override fun onVideoInputFormatChanged(eventTime: AnalyticsListener.EventTime, format: Format, decoderReuseEvaluation: DecoderReuseEvaluation?) {
+                logDebug("VIDEO_ONLY_MINIMAL", "videoInputFormat codec=${format.codecs} sampleMime=${format.sampleMimeType} size=${format.width}x${format.height}")
+            }
+            override fun onVideoEnabled(eventTime: AnalyticsListener.EventTime, decoderCounters: DecoderCounters) {
+                decoderCounters.ensureUpdated()
+                logDebug("VIDEO_ONLY_MINIMAL", "renderedOutputBufferCount=${decoderCounters.renderedOutputBufferCount}")
+            }
+        }
+        player.addAnalyticsListener(minimalAnalytics)
+        playerAnalyticsListener = minimalAnalytics
+        logAudioTrackState("video_only_minimal_before_prepare")
+        logDebug("VIDEO_ONLY_MINIMAL", "startup preferSoftwareDecoder=$preferSoftwareDecoder")
+        player.playWhenReady = true
+        val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+        player.setMediaSource(buildHlsMediaSource(url, allowNonIdr))
+        player.seekToDefaultPosition()
+        player.prepare()
+        player.seekToDefaultPosition()
+        player.play()
+        logAudioTrackState("video_only_minimal_after_prepare")
+        videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
+        val noFrameRunnable = Runnable {
+            if (!videoOnlyMinimalFirstFrameRendered && videoOnlyMinimalMode) {
+                logAudioTrackState("video_only_minimal_no_first_frame_25s")
+                logDebug(
+                    "VIDEO_ONLY_MINIMAL",
+                    "no first frame after 25s; audioDisabled path is active, network loads continue, likely decode/render incompatibility for this AVC TS stream on device"
+                )
+                if (!videoOnlyMinimalTriedSoftwareDecoder) {
+                    videoOnlyMinimalTriedSoftwareDecoder = true
+                    logDebug("VIDEO_ONLY_MINIMAL", "retry once with software-preferred decoder for compatibility check")
+                    startVideoOnlyMinimalDebug(url, preferSoftwareDecoder = true)
+                }
+            }
+        }
+        videoOnlyMinimalNoFrameRunnable = noFrameRunnable
+        handler.postDelayed(noFrameRunnable, 25_000L)
     }
 
     private fun applyUnlimitedVideoConstraints() {
@@ -3127,7 +3414,8 @@ class MainActivity : AppCompatActivity() {
         } else {
             mediaPlayer?.stop()
         }
-        mediaPlayer?.setMediaItem(buildMediaItem(url))
+        val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
+        mediaPlayer?.setMediaSource(buildHlsMediaSource(url, allowNonIdr))
         mediaPlayer?.prepare()
         mediaPlayer?.playWhenReady = true
         logMemoryStats("restart_stream_start")
@@ -3145,10 +3433,12 @@ class MainActivity : AppCompatActivity() {
     private fun showUI() {
         if (isSettingsModalVisible) {
             topInfoPanel.visibility = View.GONE
+            topGradientOverlay.visibility = View.GONE
             controlsPanel.visibility = View.GONE
             return
         }
         topInfoPanel.visibility = View.VISIBLE
+        topGradientOverlay.visibility = View.VISIBLE
         controlsPanel.visibility = View.VISIBLE
         sbTimeline.isEnabled = true
         handler.removeCallbacks(hideUiRunnable)
@@ -3157,6 +3447,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun hideUI() {
         topInfoPanel.visibility = View.GONE
+        topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         sbTimeline.isEnabled = false
         hideSystemUI()
@@ -3277,7 +3568,10 @@ class MainActivity : AppCompatActivity() {
         if (versionChanged) {
             prefs.edit().putLong(PREF_APP_VERSION_CODE, currentVersion).apply()
         }
-        if (mediaPlayer == null) {
+        if (mediaPlayer == null || forceFreshPlayerSession) {
+            if (mediaPlayer != null && forceFreshPlayerSession) {
+                stopPlayback()
+            }
             setupPlayer(preferSoftwareDecoder = softwareDecoderMode)
             if (channels.isNotEmpty() && homePanel.visibility != View.VISIBLE) {
                 playChannel(forcePlay = true)
@@ -3361,21 +3655,67 @@ class MainActivity : AppCompatActivity() {
 
     private fun stopPlayback() {
         handler.removeCallbacks(memoryLogRunnable)
+        handler.removeCallbacks(startupSlowStreamRunnable)
+        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+        videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
+        videoOnlyMinimalNoFrameRunnable = null
+
+        val playerView = findViewById<PlayerView>(R.id.videoLayout)
+        val attachedBefore = playerView.player
+        val attachedBeforeId = attachedBefore?.let { System.identityHashCode(it) }
+        val oldPlayerId = mediaPlayer?.let { System.identityHashCode(it) }
+        logDebug("PLAYER_LIFECYCLE", "stopPlayback start oldPlayerId=$oldPlayerId attachedPlayerId=$attachedBeforeId listenerSet=${playerEventListener != null} analyticsSet=${playerAnalyticsListener != null} looper=${Looper.myLooper()} thread=${Thread.currentThread().name}")
+
         mediaPlayer?.let { player ->
             playerEventListener?.let { player.removeListener(it) }
             playerAnalyticsListener?.let { player.removeAnalyticsListener(it) }
+            player.clearVideoSurface()
             player.clearMediaItems()
             player.stop()
             player.release()
+            logDebug("PLAYER_LIFECYCLE", "release completed playerId=${System.identityHashCode(player)} renderersReleased=true codecReleased=unknown")
+            lastReleasedPlayerId = System.identityHashCode(player)
         }
+
+        playerView.player = null
+        logDebug("PLAYER_LIFECYCLE", "playerView detached beforeId=$attachedBeforeId afterIsNull=${playerView.player == null}")
+
         mediaPlayer = null
         startupPlaybackUrlLock = null
         playerEventListener = null
         playerAnalyticsListener = null
         trackSelector = null
-        handler.removeCallbacks(startupSlowStreamRunnable)
-        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+        forceFreshPlayerSession = true
+    }
 
+    private fun resetPlaybackSessionStateOnExit() {
+        startupPlaybackUrlLock = null
+        lastRequestedPlaybackUrl = ""
+        firstFrameRendered = false
+        retriedWithoutAudio = false
+        videoOnlyMinimalMode = false
+        retriedWithAlternateDecoder = false
+        runtimeRecoveryAttempted = false
+        behindLiveWindowRecoveryInProgress = false
+        startupRecoveryAttempts = 0
+        bufferingSinceMs = 0L
+        lastPlaybackPositionMs = -1L
+        lastProgressWallClockMs = 0L
+        videoOnlyMinimalFirstFrameRendered = false
+        videoOnlyMinimalTriedSoftwareDecoder = false
+        audioTrackForcedDisabled = false
+        isPlaybackPaused = false
+        isArchivePlayback = false
+        currentArchiveProgram = null
+        archiveStreamStartMs = 0L
+        enableAudioTrack()
+        applyUnlimitedVideoConstraints()
+    }
+
+    private fun exitPlayerToPlaylist() {
+        stopPlayback()
+        resetPlaybackSessionStateOnExit()
+        showPlaylistPageOnHome()
     }
 
     private fun showLockedMessage() {
