@@ -1477,7 +1477,7 @@ class MainActivity : AppCompatActivity() {
         playerSettingsOverlay.visibility = View.GONE
         findViewById<View>(R.id.btnBackToMenu).visibility = View.VISIBLE
         findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
-            showCenterReloadingOverlay("Возврат в меню…")
+            showReloadingStatus("Возврат в меню…", "")
             exitPlayerToPlaylist()
         }
         if (settingsOpenedFromPlayer) {
