@@ -1135,6 +1135,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun configureBackButtonsForSettings(stage: String) {
+        val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
+
+        tvSettingsBack.visibility = View.VISIBLE
+        tvSettingsBack.isEnabled = true
+        tvSettingsBack.isClickable = true
+        tvSettingsBack.setOnClickListener { hideSettingsScreen() }
+
+        btnBackToMenu.visibility = View.GONE
+        btnBackToMenu.isEnabled = false
+        btnBackToMenu.isClickable = false
+        btnBackToMenu.setOnClickListener(null)
+
+        tvHomeCategoryBack.visibility = View.GONE
+        tvHomeCategoryBack.isEnabled = false
+        tvHomeCategoryBack.isClickable = false
+        tvHomeCategoryBack.setOnClickListener(null)
+
+        logVisibleBackButtonIds(stage)
+    }
+
     private fun showSettingsDialog() {
         settingsOpenedFromPlayer = homePanel.visibility != View.VISIBLE
         isSettingsModalVisible = true
@@ -1208,17 +1229,9 @@ class MainActivity : AppCompatActivity() {
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
         val btnExportDebugLog = findViewById<View>(R.id.btnExportDebugLog)
-        val btnBackToMenu = findViewById<View>(R.id.btnBackToMenu)
-        val tvHomeCategoryBack = findViewById<View>(R.id.tvHomeCategoryBack)
         val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings)
 
-        btnBackToMenu.visibility = View.GONE
-        btnBackToMenu.setOnClickListener(null)
-        tvHomeCategoryBack.visibility = View.GONE
-        tvHomeCategoryBack.setOnClickListener(null)
-        tvSettingsBack.visibility = View.VISIBLE
-        tvSettingsBack.setOnClickListener { hideSettingsScreen() }
-        logVisibleBackButtonIds("showSettingsDialog_after_back_config")
+        configureBackButtonsForSettings("showSettingsDialog_after_back_config")
         userSettingsPanel.visibility = View.GONE
 
         tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
@@ -1316,7 +1329,7 @@ class MainActivity : AppCompatActivity() {
         }
         btnUserSettings.setOnClickListener { openUserSettingsScreen() }
         btnExportDebugLog.setOnClickListener { exportDebugLogToDownloads() }
-        logVisibleBackButtonIds("showSettingsDialog_final")
+        configureBackButtonsForSettings("showSettingsDialog_final")
 
         btnExportDebugLog.setOnLongClickListener {
             val current = prefs.getBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, USE_FFMPEG_AUDIO_FOR_MPEG_L2)
@@ -1380,7 +1393,7 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener { loadPlaylist(forceReload = true, showErrors = true, autoPlay = false) }
 
-        tvSettingsBack.setOnClickListener { hideSettingsScreen() }
+        configureBackButtonsForSettings("openPlaylistSettingsScreen")
         bindData()
     }
 
@@ -1453,7 +1466,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Обновление EPG запущено", Toast.LENGTH_SHORT).show()
         }
 
-        tvSettingsBack.setOnClickListener { hideSettingsScreen() }
+        configureBackButtonsForSettings("openEpgSettingsScreen")
     }
 
     private fun getThirdPartyPlaylistProfiles(): List<PlaylistProfile> = getPlaylistProfiles().filter { it.name !in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные", "Пользователь", "По умолчанию") }
@@ -1496,11 +1509,18 @@ class MainActivity : AppCompatActivity() {
     private fun hideSettingsScreen() {
         isSettingsModalVisible = false
         homeSettingsScreen.visibility = View.GONE
+        findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = false)
         playerSettingsOverlay.visibility = View.GONE
         homePanel.setBackgroundResource(R.drawable.bg_home_screen)
         findViewById<View>(R.id.tvHomeCategoryBack).visibility = View.GONE
+        findViewById<View>(R.id.tvHomeCategoryBack).isEnabled = false
+        findViewById<View>(R.id.tvHomeCategoryBack).isClickable = false
         findViewById<View>(R.id.btnBackToMenu).visibility = View.VISIBLE
+        findViewById<View>(R.id.btnBackToMenu).isEnabled = true
+        findViewById<View>(R.id.btnBackToMenu).isClickable = true
         findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
             exitPlayerToPlaylist()
         }
@@ -2529,6 +2549,14 @@ class MainActivity : AppCompatActivity() {
         return resolved
     }
 
+    private fun ensurePlayerReadyForPlayback(preferSoftwareDecoder: Boolean) {
+        if (mediaPlayer == null) {
+            setupPlayer(preferSoftwareDecoder = preferSoftwareDecoder)
+            logDebug("PLAYER_LIFECYCLE", "PLAYER WAS NULL, CREATED NEW PLAYER BEFORE STARTUP")
+        }
+        findViewById<PlayerView>(R.id.videoLayout).player = mediaPlayer
+    }
+
     private fun playArchiveProgram(channel: Channel, program: Program) {
         val archiveUrl = buildArchiveUrl(channel, program)
         if (archiveUrl.isNullOrBlank()) {
@@ -2541,15 +2569,15 @@ class MainActivity : AppCompatActivity() {
             if (softwareDecoderMode != shouldUseSoftware || mediaPlayer == null) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
-                setupPlayer(preferSoftwareDecoder = shouldUseSoftware)
             }
+            ensurePlayerReadyForPlayback(preferSoftwareDecoder = shouldUseSoftware)
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = archiveUrl
             logHlsManifestPreview(archiveUrl)
             mediaPlayer?.setMediaItem(buildMediaItem(archiveUrl))
             mediaPlayer?.prepare()
-            mediaPlayer?.playWhenReady = true
-            mediaPlayer?.play()
+            player.playWhenReady = true
+            player.play()
             logMemoryStats("play_archive_start")
             handler.removeCallbacks(memoryLogRunnable)
             handler.post(memoryLogRunnable)
@@ -2583,8 +2611,8 @@ class MainActivity : AppCompatActivity() {
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
-                setupPlayer(preferSoftwareDecoder = shouldUseSoftware)
             }
+            ensurePlayerReadyForPlayback(preferSoftwareDecoder = shouldUseSoftware)
             mediaPlayer?.stop()
             lastRequestedPlaybackUrl = ch.url
             startupPlaybackUrlLock = ch.url
@@ -2602,16 +2630,21 @@ class MainActivity : AppCompatActivity() {
             enableAudioTrack()
             applyUnlimitedVideoConstraints()
 
+            val player = mediaPlayer ?: run {
+                logDebug("PLAYER_LIFECYCLE", "PLAYER NULL AFTER ensurePlayerReadyForPlayback, abort startup")
+                return@runCatching
+            }
+
             val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
             logPathState("STARTUP_PATH before_set_source allowNonIdr=${allowNonIdr || shouldAllowNonIdrForStream(ch.url)} forcePlay=$forcePlay")
-            mediaPlayer?.setMediaSource(buildHlsMediaSource(ch.url, allowNonIdr))
-            mediaPlayer?.seekToDefaultPosition()
+            player.setMediaSource(buildHlsMediaSource(ch.url, allowNonIdr))
+            player.seekToDefaultPosition()
             logPathState("STARTUP_PATH after_seek_default")
-            mediaPlayer?.prepare()
-            mediaPlayer?.seekToDefaultPosition()
+            player.prepare()
+            player.seekToDefaultPosition()
             logPathState("STARTUP_PATH after_prepare_seek_default")
-            mediaPlayer?.playWhenReady = true
-            mediaPlayer?.play()
+            player.playWhenReady = true
+            player.play()
             logPathState("STARTUP_PATH after_play")
             logMemoryStats("play_channel_start")
             handler.removeCallbacks(memoryLogRunnable)
