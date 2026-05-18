@@ -573,7 +573,8 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
             logDebug("PLAYER_UI", "back button returns to playlist, not app exit")
-            showHomePlaylistSelector()
+            stopPlayback()
+            showPlaylistPageOnHome()
         }
         sbTimeline.max = 1000
         sbTimeline.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -1205,11 +1206,10 @@ class MainActivity : AppCompatActivity() {
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
         val btnExportDebugLog = findViewById<View>(R.id.btnExportDebugLog)
-        val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings, btnExportDebugLog)
+        val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings)
 
-        tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
-        tvSettingsBack.translationY = -10f
-        tvSettingsBack.setOnClickListener { hideSettingsScreen() }
+        tvSettingsBack.visibility = View.GONE
+        tvSettingsBack.setOnClickListener(null)
         userSettingsPanel.visibility = View.GONE
 
         tbStartMode.isChecked = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
@@ -1224,6 +1224,9 @@ class MainActivity : AppCompatActivity() {
         epgSettingsPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
         settingsRows.forEach { it.visibility = View.VISIBLE }
+        btnExportDebugLog.visibility = View.GONE
+        btnExportDebugLog.isEnabled = false
+        btnExportDebugLog.isClickable = false
         btnPlaylistSettings.setOnClickListener { openPlaylistSettingsScreen() }
         btnEpgSelect.setOnClickListener { openEpgSettingsScreen() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
@@ -1297,17 +1300,8 @@ class MainActivity : AppCompatActivity() {
         fun openUserSettingsScreen() {
             settingsRows.forEach { it.visibility = View.GONE }
             userSettingsPanel.visibility = View.VISIBLE
-            tvSettingsBack.visibility = View.VISIBLE
-            tvSettingsBack.translationY = -10f
-            tvSettingsBack.setOnClickListener {
-                userSettingsPanel.visibility = View.GONE
-                settingsRows.forEach { it.visibility = View.VISIBLE }
-                tvSettingsBack.visibility =
-                    if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
-                tvSettingsBack.translationY = -10f
-                tvSettingsBack.setOnClickListener { hideSettingsScreen() }
-                applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
-            }
+            tvSettingsBack.visibility = View.GONE
+            tvSettingsBack.setOnClickListener(null)
             applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройка пользователя")
             bindInlineUserSettings(userSettingsPanel)
         }
@@ -1334,7 +1328,7 @@ class MainActivity : AppCompatActivity() {
         settingsRows.forEach { it.visibility = View.GONE }
         userSettingsPanel.visibility = View.GONE
         playlistPanel.visibility = View.VISIBLE
-        tvSettingsBack.visibility = View.VISIBLE
+        tvSettingsBack.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки плейлистов")
 
         val names = listOf<EditText>(findViewById(R.id.etPlaylistName1), findViewById(R.id.etPlaylistName2), findViewById(R.id.etPlaylistName3))
@@ -1374,13 +1368,7 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener { loadPlaylist(forceReload = true, showErrors = true, autoPlay = false) }
 
-        tvSettingsBack.setOnClickListener {
-            playlistPanel.visibility = View.GONE
-            settingsRows.forEach { it.visibility = View.VISIBLE }
-            tvSettingsBack.visibility = if (settingsOpenedFromPlayer) View.VISIBLE else View.GONE
-            tvSettingsBack.setOnClickListener { hideSettingsScreen() }
-            applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
-        }
+        tvSettingsBack.setOnClickListener(null)
         bindData()
     }
 
@@ -1395,7 +1383,7 @@ class MainActivity : AppCompatActivity() {
         playlistPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
         epgPanel.visibility = View.VISIBLE
-        tvSettingsBack.visibility = View.VISIBLE
+        tvSettingsBack.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки EPG")
 
         val urls = listOf<EditText>(findViewById(R.id.etEpgUrl1), findViewById(R.id.etEpgUrl2), findViewById(R.id.etEpgUrl3))
@@ -1453,17 +1441,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Обновление EPG запущено", Toast.LENGTH_SHORT).show()
         }
 
-        tvSettingsBack.setOnClickListener {
-            epgPanel.visibility = View.GONE
-            if (settingsOpenedFromPlayer) {
-                hideSettingsScreen()
-            } else {
-                settingsRows.forEach { it.visibility = View.VISIBLE }
-                tvSettingsBack.visibility = View.GONE
-                tvSettingsBack.setOnClickListener { hideSettingsScreen() }
-                applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
-            }
-        }
+        tvSettingsBack.setOnClickListener(null)
     }
 
     private fun getThirdPartyPlaylistProfiles(): List<PlaylistProfile> = getPlaylistProfiles().filter { it.name !in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные", "Пользователь", "По умолчанию") }
@@ -1518,7 +1496,7 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun restoreDefaultSettingsRows() {
-        val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings, R.id.btnExportDebugLog)
+        val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings)
         rowIds.forEachIndexed { i, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
@@ -1541,7 +1519,6 @@ class MainActivity : AppCompatActivity() {
             R.id.itemStartMode,
             R.id.btnAdvancedSettings,
             R.id.btnUserSettings,
-            R.id.btnExportDebugLog
         )
         val containerHeight = (homeSettingsScreen.layoutParams?.height ?: 0).takeIf { it > 0 }
             ?: (resources.displayMetrics.heightPixels - dpToPx(40))
