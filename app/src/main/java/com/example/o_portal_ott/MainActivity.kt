@@ -2573,11 +2573,15 @@ class MainActivity : AppCompatActivity() {
                 softwareDecoderMode = shouldUseSoftware
             }
             ensurePlayerReadyForPlayback(preferSoftwareDecoder = shouldUseSoftware)
-            mediaPlayer?.stop()
+            val player = mediaPlayer ?: run {
+                logDebug("PLAYER_LIFECYCLE", "PLAYER NULL AFTER ensurePlayerReadyForPlayback (archive), abort startup")
+                return@runCatching
+            }
+            player.stop()
             lastRequestedPlaybackUrl = archiveUrl
             logHlsManifestPreview(archiveUrl)
-            mediaPlayer?.setMediaItem(buildMediaItem(archiveUrl))
-            mediaPlayer?.prepare()
+            player.setMediaItem(buildMediaItem(archiveUrl))
+            player.prepare()
             player.playWhenReady = true
             player.play()
             logMemoryStats("play_archive_start")
