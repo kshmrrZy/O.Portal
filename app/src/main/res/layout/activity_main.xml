@@ -121,21 +121,45 @@
         </LinearLayout>
     </LinearLayout>
 
+    <View
+        android:id="@+id/topGradientOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/player_top_gradient_height"
+        android:background="@drawable/top_panel_bg"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/topInfoPanel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@drawable/top_panel_bg"
+        android:minHeight="@dimen/player_top_min_height"
+        android:layout_marginStart="@dimen/player_top_side_margin"
+        android:layout_marginEnd="@dimen/player_top_side_margin"
+        android:layout_marginTop="@dimen/player_top_margin"
+        android:background="@android:color/transparent"
         android:orientation="horizontal"
-        android:paddingHorizontal="20dp"
-        android:paddingVertical="10dp"
+        android:paddingStart="@dimen/player_top_inner_pad_h"
+        android:paddingEnd="@dimen/player_top_inner_pad_h"
+        android:paddingTop="@dimen/player_top_inner_pad_v"
+        android:paddingBottom="@dimen/player_top_inner_pad_v"
         android:gravity="center_vertical"
         android:visibility="gone">
 
         <ImageView
+            android:id="@+id/btnBackToMenu"
+            android:layout_width="@dimen/player_top_icon_size"
+            android:layout_height="@dimen/player_top_icon_size"
+            android:layout_gravity="center_vertical"
+            android:src="@drawable/back"
+            android:contentDescription="Back to menu" />
+
+        <ImageView
             android:id="@+id/ivChannelLogo"
-            android:layout_width="54dp"
-            android:layout_height="54dp"
+            android:layout_width="@dimen/player_top_icon_size"
+            android:layout_height="@dimen/player_top_icon_size"
+            android:layout_marginStart="@dimen/player_top_logo_margin_start"
+            android:background="@drawable/channel_logo_frame"
+            android:padding="@dimen/player_top_logo_pad"
             android:scaleType="fitCenter" />
 
 
@@ -143,7 +167,8 @@
             android:layout_width="0dp"
             android:layout_weight="1"
             android:layout_height="wrap_content"
-            android:layout_marginStart="15dp"
+            android:maxWidth="@dimen/player_top_text_max_width"
+            android:layout_marginStart="@dimen/player_top_text_margin_start"
             android:orientation="vertical">
 
             <LinearLayout
@@ -154,17 +179,19 @@
                     android:id="@+id/tvChannelNumber"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:fontFamily="@font/golos_text"
                     android:textColor="#FFFFFF"
-                    android:textSize="22sp"
+                    android:textSize="@dimen/player_top_channel_text_size"
                     android:textStyle="bold"
                     tools:text="1." />
                 <TextView
                     android:id="@+id/tvChannelNameInfo"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="5dp"
+                    android:layout_marginStart="@dimen/player_top_channel_name_gap"
+                    android:fontFamily="@font/golos_text"
                     android:textColor="#FFFFFF"
-                    android:textSize="22sp"
+                    android:textSize="@dimen/player_top_channel_text_size"
                     android:textStyle="bold"
                     android:gravity="left"
                     tools:text="Название канала" />
@@ -174,31 +201,30 @@
                 android:id="@+id/tvEpgInfo"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="#CCCCCC"
-                android:textSize="14sp"
+                android:layout_marginTop="@dimen/player_top_epg_margin_top"
+                android:fontFamily="@font/golos_text"
+                android:textColor="#B3FFFFFF"
+                android:textSize="@dimen/player_top_epg_text_size"
                 android:gravity="left"
                 tools:text="Загрузка программы..." />
         </LinearLayout>
 
         <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="32dp"
-            android:background="@drawable/live_btn_bg"
+            android:layout_width="@dimen/player_time_width"
+            android:layout_height="@dimen/player_time_height"
+            android:layout_marginStart="@dimen/player_time_margin_start"
+            android:background="@drawable/time"
             android:gravity="center"
-            android:paddingHorizontal="12dp">
+            android:paddingHorizontal="@dimen/player_time_pad_h">
             <TextView
                 android:id="@+id/tvSystemTime"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:fontFamily="@font/golos_text"
                 android:textColor="#FFFFFF"
-                android:textSize="14sp"
+                android:textSize="@dimen/player_time_text_size"
                 android:textStyle="bold"
                 tools:text="17:10" />
-            <View
-                android:layout_width="6dp"
-                android:layout_height="6dp"
-                android:layout_marginStart="8dp"
-                android:background="#4CAF50" />
         </LinearLayout>
     </LinearLayout>
 
@@ -441,26 +467,13 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
             app:layout_constraintBottom_toBottomOf="parent">
-            <androidx.constraintlayout.widget.ConstraintLayout android:layout_width="match_parent" android:layout_height="wrap_content">
-                <TextView android:id="@+id/tvTile1" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile2" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile3" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile4" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile5" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile6" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile7" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <androidx.constraintlayout.helper.widget.Flow
-                    android:id="@+id/playlistTilesFlow"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    app:constraint_referenced_ids="tvTile1,tvTile2,tvTile3,tvTile4,tvTile5,tvTile6,tvTile7"
-                    app:flow_horizontalGap="12dp"
-                    app:flow_verticalGap="10dp"
-                    app:flow_wrapMode="aligned"
-                    app:flow_horizontalBias="0"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toTopOf="parent"/>
-            </androidx.constraintlayout.widget.ConstraintLayout>
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvHomeTiles"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingEnd="16dp"
+                android:clipToPadding="false"
+                android:overScrollMode="never"/>
         </ScrollView>
 
         <TextView
