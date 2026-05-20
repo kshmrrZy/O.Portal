@@ -716,8 +716,8 @@ class MainActivity : AppCompatActivity() {
     private fun computeHomeTileColumns(): Int {
         val widthDp = resources.displayMetrics.widthPixels / resources.displayMetrics.density
         return when {
-            widthDp >= 900f -> 4
-            widthDp >= 600f -> 3
+            widthDp >= 700f -> 4
+            widthDp >= 520f -> 3
             else -> 2
         }
     }
@@ -772,7 +772,7 @@ class MainActivity : AppCompatActivity() {
             setSelectedPlaylistName(p.name)
             homePlaylistTilesPanel.visibility = View.GONE
             hideStartPage()
-            loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
+            loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
         } })
     }
 
@@ -804,7 +804,7 @@ class MainActivity : AppCompatActivity() {
                 setSelectedPlaylistName(p.name)
                 homePlaylistTilesPanel.visibility = View.GONE
                 hideStartPage()
-                loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
+                loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
             }
         } })
     }
@@ -878,8 +878,7 @@ class MainActivity : AppCompatActivity() {
                 val p = profiles.getOrNull(sp.selectedItemPosition) ?: return@setPositiveButton
                 setSelectedPlaylistName(p.name)
                 hideStartPage()
-                loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
-                handler.postDelayed({ showChannelList() }, 700)
+                loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
             }
             .setNegativeButton("Отмена", null)
             .show()
@@ -894,8 +893,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         hideStartPage()
-        loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
-        handler.postDelayed({ showChannelList() }, 700)
+        loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
     }
 
     private fun setupBackHandling() {
