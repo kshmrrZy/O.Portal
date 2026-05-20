@@ -90,3 +90,18 @@ object M3uParser {
         return ""
     }
 }
+
+
+    private fun extractGroupTitle(extInfLine: String): String {
+        val patterns = listOf(
+            Regex("""group-title\s*=\s*"([^"]*)"""", RegexOption.IGNORE_CASE),
+            Regex("""group-title\s*=\s*'([^']*)'""", RegexOption.IGNORE_CASE),
+            Regex("""group-title\s*=\s*([^,\s]+)""", RegexOption.IGNORE_CASE)
+        )
+        for (pattern in patterns) {
+            val match = pattern.find(extInfLine) ?: continue
+            val value = match.groupValues.getOrNull(1)?.trim()?.trim('"', ''') ?: continue
+            if (value.isNotBlank()) return value
+        }
+        return ""
+    }
