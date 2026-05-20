@@ -11,6 +11,7 @@ object M3uParser {
         var currentTvgName = ""
         var currentCatchupDays = 0
         var currentCatchupSource = ""
+        var currentGroupTitle = ""
 
         m3uText.lines().forEach { line ->
             val trimmedLine = line.trim()
@@ -51,12 +52,13 @@ object M3uParser {
                         tvgId = if (currentTvgId.isEmpty()) null else currentTvgId,
                         tvgName = if (currentTvgName.isEmpty()) null else currentTvgName,
                         logoFromPlaylist = if (currentLogo.isEmpty()) null else currentLogo,
+                        groupTitle = currentGroupTitle.ifBlank { null },
                         catchupDays = currentCatchupDays,
                         catchupSource = currentCatchupSource.ifBlank { null }
                     )
                 )
                 // Сбрасываем временные данные для следующего канала
-                currentName = ""; currentLogo = ""; currentTvgId = ""; currentTvgName = ""; currentCatchupDays = 0; currentCatchupSource = ""
+                currentName = ""; currentLogo = ""; currentTvgId = ""; currentTvgName = ""; currentCatchupDays = 0; currentCatchupSource = ""; currentGroupTitle = ""
             }
         }
         return channels
