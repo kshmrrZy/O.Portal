@@ -101,6 +101,7 @@ data class Channel(
     val tvgId: String?,
     val tvgName: String?,
     val logoFromPlaylist: String?,
+    val groupTitle: String? = null,
     val catchupDays: Int = 0,
     val catchupSource: String? = null,
     var logoFromEpg: String? = null
@@ -187,6 +188,8 @@ class MainActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private var inputNumber = ""
     private var currentPlaylistText: String = ""
+    private var selectedPlaylistDisplayName: String = ""
+    private var selectedCategoryName: String = ""
     private var availableEpgSources: List<String> = emptyList()
     private var selectedEpgSources: MutableSet<String> = mutableSetOf()
     private val epgSourceStatus = mutableMapOf<String, String>()
@@ -777,6 +780,58 @@ class MainActivity : AppCompatActivity() {
                         hideStartPage()
                         loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
                     }
+                }
+            }
+        }
+    }
+
+
+    private fun computeCategoryGridColumnCount(): Int {
+        val widthDp = resources.displayMetrics.widthPixels / resources.displayMetrics.density
+        val uiMode = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK
+        val isTv = uiMode == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+        return when {
+            isTv -> (widthDp / 180f).toInt().coerceIn(5, 7)
+            widthDp >= 900f -> 4
+            widthDp >= 600f -> 3
+            else -> 2
+        }
+    }
+
+    private fun showCategoryTilesOnHome(playlistName: String, sourceChannels: List<Channel>) {
+        showStartPage()
+        tvHomeStartTitle.visibility = View.GONE
+        tvHomeStartSubtitle.visibility = View.GONE
+        homePlaylistTilesPanel.visibility = View.VISIBLE
+        tvHomeCategoryBack.visibility = View.VISIBLE
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории $playlistName")
+        tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
+
+        val grouped = sourceChannels.groupBy { it.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
+            .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+        val categoryNames = grouped.keys.toList()
+        val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6), findViewById(R.id.tvTile7))
+        val columns = computeCategoryGridColumnCount()
+        val tileWidth = ((resources.displayMetrics.widthPixels - dpToPx(64)) / columns).coerceAtLeast(dpToPx(140))
+        tiles.forEachIndexed { i, tv ->
+            val category = categoryNames.getOrNull(i)
+            if (category == null) {
+                tv.visibility = View.INVISIBLE
+                tv.setOnClickListener(null)
+            } else {
+                tv.visibility = View.VISIBLE
+                tv.text = category
+                tv.layoutParams = tv.layoutParams.apply { width = tileWidth }
+                tv.setTypeface(tv.typeface, Typeface.BOLD)
+                tv.setOnClickListener {
+                    selectedCategoryName = category
+                    val filtered = grouped[category].orEmpty()
+                    channels.clear()
+                    channels.addAll(filtered)
+                    homePlaylistTilesPanel.visibility = View.GONE
+                    hideStartPage()
+                    currentChannelIndex = 0
+                    playChannel(forcePlay = true)
                 }
             }
         }
@@ -2224,12 +2279,13 @@ class MainActivity : AppCompatActivity() {
                         synchronized(epgDataLock) { epgData.clear() }
                     }
 
-                    if (channels.isNotEmpty() && autoPlay) {
-                        currentChannelIndex = currentChannelIndex.coerceIn(channels.indices)
-                        playChannel(forcePlay = true)
+                    if (channels.isEmpty()) {
+                        tvEpg.text = "Каналы не найдены в плейлисте"
+                    } else if (autoPlay) {
+                        selectedPlaylistDisplayName = getSelectedPlaylistName()
+                        showCategoryTilesOnHome(selectedPlaylistDisplayName, channels.toList())
                     } else {
-                        tvEpg.text =
-                            if (channels.isEmpty()) "Каналы не найдены в плейлисте" else "Выберите раздел на стартовой странице"
+                        tvEpg.text = "Выберите раздел на стартовой странице"
                     }
 
                     if (forceReload) {
