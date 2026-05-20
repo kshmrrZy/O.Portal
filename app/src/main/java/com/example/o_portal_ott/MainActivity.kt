@@ -215,6 +215,7 @@ class MainActivity : AppCompatActivity() {
     private var runtimeRecoveryAttempted = false
     private var behindLiveWindowRecoveryInProgress = false
     private var audioTrackForcedDisabled = false
+    private var videoRendererPossiblyBroken = false
     private var videoOnlyMinimalFirstFrameRendered = false
     private var videoOnlyMinimalTriedSoftwareDecoder = false
     private var videoOnlyMinimalNoFrameRunnable: Runnable? = null
@@ -2552,7 +2553,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun ensurePlayerReadyForPlayback(preferSoftwareDecoder: Boolean) {
-        if (mediaPlayer == null) {
+        val oldId = mediaPlayer?.let { System.identityHashCode(it) }
+        if (videoRendererPossiblyBroken && mediaPlayer != null) {
+            stopPlayback()
+            setupPlayer(preferSoftwareDecoder = preferSoftwareDecoder)
+            val newId = mediaPlayer?.let { System.identityHashCode(it) }
+            logDebug("PLAYER_LIFECYCLE", "RECREATE_PLAYER_AFTER_SOURCE_ERROR oldPlayerId=$oldId newPlayerId=$newId")
+        } else if (mediaPlayer == null) {
             setupPlayer(preferSoftwareDecoder = preferSoftwareDecoder)
             logDebug("PLAYER_LIFECYCLE", "PLAYER WAS NULL, CREATED NEW PLAYER BEFORE STARTUP")
         }
@@ -2912,6 +2919,10 @@ class MainActivity : AppCompatActivity() {
                         logDebug("PLAYER_STATE", "onRenderedFirstFrame videoOnlyMode=$videoOnlyMinimalMode url=$lastRequestedPlaybackUrl")
                         logAudioTrackState("first_frame_rendered")
                         logPathState("STARTUP_PATH onRenderedFirstFrame")
+                        if (videoRendererPossiblyBroken) {
+                            videoRendererPossiblyBroken = false
+                            logDebug("PLAYER_LIFECYCLE", "SOURCE_ERROR_RECOVERY_SUCCESS renderer_state_restored=true")
+                        }
                     }
 
                     override fun onTracksChanged(tracks: Tracks) {
@@ -2949,6 +2960,15 @@ class MainActivity : AppCompatActivity() {
                         logDebug("PLAYER_STATE", "onPlayerError url=$lastRequestedPlaybackUrl message=${error.message} code=${error.errorCode} codeName=${error.errorCodeName} causeChain=$causeChain", error)
                         startupPlaybackUrlLock = null
                         logMemoryStats("on_player_error")
+                        if (
+                            error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+                            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                            error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
+                            error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+                        ) {
+                            videoRendererPossiblyBroken = true
+                            logDebug("PLAYER_LIFECYCLE", "PLAYER_ERROR_SOURCE marked_renderer_tainted=true errorCode=${error.errorCode} codeName=${error.errorCodeName}")
+                        }
                         handler.post {
                             handler.removeCallbacks(startupSlowStreamRunnable)
                             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
