@@ -69,6 +69,8 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.DecoderCounters
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.PlayerView
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.load.model.LazyHeaders
@@ -149,6 +151,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvHomeStartTitle: TextView
     private lateinit var tvHomeStartSubtitle: TextView
     private lateinit var homePlaylistTilesPanel: View
+    private lateinit var rvHomeTiles: RecyclerView
     private lateinit var tvHomeCategoryBack: TextView
     private lateinit var ivLogo: ImageView
     private lateinit var btnLock: ImageButton
@@ -424,6 +427,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartTitle = findViewById(R.id.tvHomeStartTitle)
         tvHomeStartSubtitle = findViewById(R.id.tvHomeStartSubtitle)
         homePlaylistTilesPanel = findViewById(R.id.homePlaylistTilesPanel)
+        rvHomeTiles = findViewById(R.id.rvHomeTiles)
         tvHomeCategoryBack = findViewById(R.id.tvHomeCategoryBack)
         ivLogo = findViewById(R.id.ivChannelLogo)
         btnLock = findViewById(R.id.btnLock)
@@ -707,6 +711,52 @@ class MainActivity : AppCompatActivity() {
 
 
 
+    private data class HomeTileItem(val title: String, val onClick: () -> Unit)
+
+    private fun computeHomeTileColumns(): Int {
+        val widthDp = resources.displayMetrics.widthPixels / resources.displayMetrics.density
+        return when {
+            widthDp >= 900f -> 4
+            widthDp >= 600f -> 3
+            else -> 2
+        }
+    }
+
+    private fun bindHomeTiles(items: List<HomeTileItem>) {
+        val columns = computeHomeTileColumns()
+        val spacing = dpToPx(12)
+        val availableWidth = resources.displayMetrics.widthPixels - dpToPx(48)
+        val tileWidth = ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(140))
+        val tileHeight = (tileWidth * 0.47f).toInt()
+        rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
+        rvHomeTiles.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+                val tv = TextView(parent.context)
+                tv.setTextColor(Color.WHITE)
+                tv.gravity = Gravity.CENTER
+                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+                tv.typeface = tv.typeface
+                tv.setBackgroundResource(R.drawable.bg_playlist_tile)
+                tv.isFocusable = true
+                tv.isFocusableInTouchMode = true
+                val lp = RecyclerView.LayoutParams(tileWidth, tileHeight)
+                lp.rightMargin = spacing
+                lp.bottomMargin = spacing
+                tv.layoutParams = lp
+                return object : RecyclerView.ViewHolder(tv) {}
+            }
+
+            override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+                val tv = holder.itemView as TextView
+                val item = items[position]
+                tv.text = item.title
+                tv.setOnClickListener { item.onClick() }
+            }
+
+            override fun getItemCount(): Int = items.size
+        }
+    }
+
     private fun showThirdPartyTilesOnHome(thirdParty: List<PlaylistProfile>) {
         showStartPage()
         tvHomeStartTitle.visibility = View.GONE
@@ -717,25 +767,13 @@ class MainActivity : AppCompatActivity() {
         tvHomeCategoryBack.visibility = View.VISIBLE
         tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
-        val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6), findViewById(R.id.tvTile7))
-        val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }.take(7)
-        tiles.forEachIndexed { i, tv ->
-            val p = list.getOrNull(i)
-            if (p == null) {
-                tv.visibility = View.INVISIBLE
-                tv.setOnClickListener(null)
-            } else {
-                tv.visibility = View.VISIBLE
-                tv.text = p.name
-                tv.setTypeface(tv.typeface, Typeface.BOLD)
-                tv.setOnClickListener {
-                    setSelectedPlaylistName(p.name)
-                    homePlaylistTilesPanel.visibility = View.GONE
-                    hideStartPage()
-                    loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
-                }
-            }
-        }
+        val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }
+        bindHomeTiles(list.map { p -> HomeTileItem(p.name) {
+            setSelectedPlaylistName(p.name)
+            homePlaylistTilesPanel.visibility = View.GONE
+            hideStartPage()
+            loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
+        } })
     }
 
     private fun showPlaylistPageOnHome() {
@@ -745,7 +783,6 @@ class MainActivity : AppCompatActivity() {
         homePlaylistTilesPanel.visibility = View.VISIBLE
         applyHomeAppTitleStyle(settingsMode = false)
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
-        val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6), findViewById(R.id.tvTile7))
         val token = (prefs.getString(PREF_USER_TOKEN, "") ?: "").trim()
         val thirdParty = getThirdPartyPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
         val profiles = if (token.isNotBlank()) {
@@ -759,30 +796,17 @@ class MainActivity : AppCompatActivity() {
             )
             if (thirdParty.isNotEmpty()) base + listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else base
         } else if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
-        val shownProfiles = profiles.take(7)
         if (token.isNotBlank()) savePlaylistProfiles((profiles.filter { it.type != "group" } + thirdParty).distinctBy { it.name })
-        tiles.forEachIndexed { i, tv ->
-            val p = shownProfiles.getOrNull(i)
-            if (p == null) {
-                tv.visibility = View.INVISIBLE
-                tv.setOnClickListener(null)
+        bindHomeTiles(profiles.map { p -> HomeTileItem(p.name) {
+            if (p.type == "group" && p.value == "third_party") {
+                showThirdPartyTilesOnHome(thirdParty)
             } else {
-                tv.visibility = View.VISIBLE
-                tv.text = p.name
-                tv.setTypeface(tv.typeface, Typeface.BOLD)
-                tv.setOnClickListener {
-                    if (p.type == "group" && p.value == "third_party") {
-                        showThirdPartyTilesOnHome(thirdParty)
-                    } else {
-                        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории (${p.name})")
-                        setSelectedPlaylistName(p.name)
-                        homePlaylistTilesPanel.visibility = View.GONE
-                        hideStartPage()
-                        loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
-                    }
-                }
+                setSelectedPlaylistName(p.name)
+                homePlaylistTilesPanel.visibility = View.GONE
+                hideStartPage()
+                loadPlaylist(forceReload = true, showErrors = true, autoPlay = true)
             }
-        }
+        } })
     }
 
 
@@ -810,31 +834,15 @@ class MainActivity : AppCompatActivity() {
         val grouped = sourceChannels.groupBy { it.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
             .toSortedMap(String.CASE_INSENSITIVE_ORDER)
         val categoryNames = grouped.keys.toList()
-        val tiles = listOf<TextView>(findViewById(R.id.tvTile1), findViewById(R.id.tvTile2), findViewById(R.id.tvTile3), findViewById(R.id.tvTile4), findViewById(R.id.tvTile5), findViewById(R.id.tvTile6), findViewById(R.id.tvTile7))
-        val columns = computeCategoryGridColumnCount()
-        val tileWidth = ((resources.displayMetrics.widthPixels - dpToPx(64)) / columns).coerceAtLeast(dpToPx(140))
-        tiles.forEachIndexed { i, tv ->
-            val category = categoryNames.getOrNull(i)
-            if (category == null) {
-                tv.visibility = View.INVISIBLE
-                tv.setOnClickListener(null)
-            } else {
-                tv.visibility = View.VISIBLE
-                tv.text = category
-                tv.layoutParams = tv.layoutParams.apply { width = tileWidth }
-                tv.setTypeface(tv.typeface, Typeface.BOLD)
-                tv.setOnClickListener {
-                    selectedCategoryName = category
-                    val filtered = grouped[category].orEmpty()
-                    channels.clear()
-                    channels.addAll(filtered)
-                    homePlaylistTilesPanel.visibility = View.GONE
-                    hideStartPage()
-                    currentChannelIndex = 0
-                    playChannel(forcePlay = true)
-                }
-            }
-        }
+        bindHomeTiles(categoryNames.map { category -> HomeTileItem(category) {
+            selectedCategoryName = category
+            val filtered = grouped[category].orEmpty()
+            channels.clear()
+            channels.addAll(filtered)
+            homePlaylistTilesPanel.visibility = View.GONE
+            hideStartPage()
+            showChannelList()
+        } })
     }
 
     private fun hideStartPage() {

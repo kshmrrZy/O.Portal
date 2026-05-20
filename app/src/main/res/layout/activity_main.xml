@@ -467,26 +467,13 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
             app:layout_constraintBottom_toBottomOf="parent">
-            <androidx.constraintlayout.widget.ConstraintLayout android:layout_width="match_parent" android:layout_height="wrap_content">
-                <TextView android:id="@+id/tvTile1" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile2" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile3" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile4" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile5" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile6" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <TextView android:id="@+id/tvTile7" style="@style/AppGolosText" android:layout_width="193dp" android:layout_height="91dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp" android:background="@drawable/bg_playlist_tile"/>
-                <androidx.constraintlayout.helper.widget.Flow
-                    android:id="@+id/playlistTilesFlow"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    app:constraint_referenced_ids="tvTile1,tvTile2,tvTile3,tvTile4,tvTile5,tvTile6,tvTile7"
-                    app:flow_horizontalGap="12dp"
-                    app:flow_verticalGap="10dp"
-                    app:flow_wrapMode="aligned"
-                    app:flow_horizontalBias="0"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toTopOf="parent"/>
-            </androidx.constraintlayout.widget.ConstraintLayout>
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvHomeTiles"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingEnd="16dp"
+                android:clipToPadding="false"
+                android:overScrollMode="never"/>
         </ScrollView>
 
         <TextView
