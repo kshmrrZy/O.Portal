@@ -1224,6 +1224,7 @@ class MainActivity : AppCompatActivity() {
         settingsOpenedFromPlayer = homePanel.visibility != View.VISIBLE
         isSettingsModalVisible = true
         homePlaylistTilesPanel.visibility = View.GONE
+        logVisibleBackButtonIds("hideSettingsScreen_before_return")
         if (settingsOpenedFromPlayer) {
             playerSettingsOverlay.visibility = View.GONE
             hideUI()
@@ -1416,7 +1417,7 @@ class MainActivity : AppCompatActivity() {
         settingsRows.forEach { it.visibility = View.GONE }
         userSettingsPanel.visibility = View.GONE
         playlistPanel.visibility = View.VISIBLE
-        tvSettingsBack.visibility = View.VISIBLE
+        tvSettingsBack.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки плейлистов")
 
         val names = listOf<EditText>(findViewById(R.id.etPlaylistName1), findViewById(R.id.etPlaylistName2), findViewById(R.id.etPlaylistName3))
@@ -1471,7 +1472,7 @@ class MainActivity : AppCompatActivity() {
         playlistPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
         epgPanel.visibility = View.VISIBLE
-        tvSettingsBack.visibility = View.VISIBLE
+        tvSettingsBack.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки EPG")
 
         val urls = listOf<EditText>(findViewById(R.id.etEpgUrl1), findViewById(R.id.etEpgUrl2), findViewById(R.id.etEpgUrl3))
@@ -2636,7 +2637,7 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             homePanel.visibility = View.GONE
             val shouldUseSoftware = !preferGpuDecoding
-            if (softwareDecoderMode != shouldUseSoftware) {
+            if (softwareDecoderMode != shouldUseSoftware || mediaPlayer == null) {
                 stopPlayback()
                 softwareDecoderMode = shouldUseSoftware
             }
@@ -2699,6 +2700,7 @@ class MainActivity : AppCompatActivity() {
             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
             retriedWithoutAudio = false
             videoOnlyMinimalMode = false
+            runtimeRecoveryAttempted = false
             retriedWithAlternateDecoder = false
             enableAudioTrack()
             applyUnlimitedVideoConstraints()
