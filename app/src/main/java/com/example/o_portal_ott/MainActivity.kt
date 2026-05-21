@@ -714,6 +714,11 @@ class MainActivity : AppCompatActivity() {
 
 
     private data class HomeTileItem(val title: String, val onClick: () -> Unit)
+    private var homeTilesAdapter: HomeTilesAdapter? = null
+    private var homeTilesColumnsApplied: Int = -1
+    private var homeTilesWidthApplied: Int = -1
+    private var homeTilesHeightApplied: Int = -1
+    private var cachedCategoryGroups: Map<String, List<Channel>> = emptyMap()
 
     private fun computeHomeTileColumns(): Int {
         val widthDp = resources.displayMetrics.widthPixels / resources.displayMetrics.density
@@ -727,41 +732,65 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private inner class HomeTilesAdapter(
+        private val tileWidth: Int,
+        private val tileHeight: Int,
+        private val spacing: Int
+    ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+        private var tileItems: List<HomeTileItem> = emptyList()
+
+        fun submit(list: List<HomeTileItem>) {
+            tileItems = list
+            notifyDataSetChanged()
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val tv = TextView(parent.context)
+            tv.setTextColor(Color.WHITE)
+            tv.gravity = Gravity.CENTER
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            tv.setTypeface(tv.typeface, Typeface.BOLD)
+            tv.setBackgroundResource(R.drawable.bg_playlist_tile)
+            tv.isFocusable = true
+            tv.isFocusableInTouchMode = true
+            tv.isClickable = true
+            tv.setPadding(dpToPx(8), dpToPx(5), dpToPx(8), dpToPx(5))
+            val lp = RecyclerView.LayoutParams(tileWidth, tileHeight)
+            lp.rightMargin = spacing
+            lp.bottomMargin = spacing
+            tv.layoutParams = lp
+            return object : RecyclerView.ViewHolder(tv) {}
+        }
+
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            val tv = holder.itemView as TextView
+            val item = tileItems[position]
+            tv.text = item.title
+            tv.setOnClickListener { item.onClick() }
+        }
+
+        override fun getItemCount(): Int = tileItems.size
+    }
+
     private fun bindHomeTiles(items: List<HomeTileItem>) {
         val columns = computeHomeTileColumns()
-        val spacing = dpToPx(8)
-        val availableWidth = resources.displayMetrics.widthPixels - dpToPx(24)
-        val tileWidth = ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(118))
-        val tileHeight = (tileWidth * 0.47f).toInt()
-        rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
-        rvHomeTiles.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-                val tv = TextView(parent.context)
-                tv.setTextColor(Color.WHITE)
-                tv.gravity = Gravity.CENTER
-                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
-                tv.setTypeface(tv.typeface, Typeface.BOLD)
-                tv.setBackgroundResource(R.drawable.bg_playlist_tile)
-                tv.isFocusable = true
-                tv.isFocusableInTouchMode = true
-                tv.isClickable = true
-                tv.setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6))
-                val lp = RecyclerView.LayoutParams(tileWidth, tileHeight)
-                lp.rightMargin = spacing
-                lp.bottomMargin = spacing
-                tv.layoutParams = lp
-                return object : RecyclerView.ViewHolder(tv) {}
-            }
-
-            override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-                val tv = holder.itemView as TextView
-                val item = items[position]
-                tv.text = item.title
-                tv.setOnClickListener { item.onClick() }
-            }
-
-            override fun getItemCount(): Int = items.size
+        val spacing = dpToPx(6)
+        val availableWidth = resources.displayMetrics.widthPixels - dpToPx(16)
+        val tileWidth = ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(104))
+        val tileHeight = (tileWidth * 0.43f).toInt().coerceAtLeast(dpToPx(44))
+        if (homeTilesColumnsApplied != columns) {
+            rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
+            homeTilesColumnsApplied = columns
         }
+        if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
+            rvHomeTiles.setHasFixedSize(true)
+            rvHomeTiles.itemAnimator = null
+            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, spacing)
+            homeTilesWidthApplied = tileWidth
+            homeTilesHeightApplied = tileHeight
+            rvHomeTiles.adapter = homeTilesAdapter
+        }
+        homeTilesAdapter?.submit(items)
     }
 
     private fun showThirdPartyTilesOnHome(thirdParty: List<PlaylistProfile>) {
@@ -830,6 +859,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCategoryTilesOnHome(playlistName: String, sourceChannels: List<Channel>) {
+        val grouped = sourceChannels.groupBy { it.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
+            .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+            .filterKeys { it != "{region_name}" }
+        showCategoryTilesOnHome(playlistName, grouped)
+    }
+
+    private fun showCategoryTilesOnHome(
+        playlistName: String,
+        groupedCategories: Map<String, List<Channel>>
+    ) {
         logDebug("PLAYLIST_FLOW", "OPEN_CATEGORY_SCREEN playlist=$playlistName")
         showStartPage()
         tvHomeStartTitle.visibility = View.GONE
@@ -839,8 +878,8 @@ class MainActivity : AppCompatActivity() {
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории ($playlistName)")
         tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
 
-        val grouped = sourceChannels.groupBy { it.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
-            .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+        val grouped = groupedCategories.toSortedMap(String.CASE_INSENSITIVE_ORDER)
+        cachedCategoryGroups = grouped
         logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS count=${grouped.size}")
         logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS names=${grouped.keys.joinToString(separator = " | ")}")
         val categoryNames = grouped.keys.toList()
@@ -848,7 +887,7 @@ class MainActivity : AppCompatActivity() {
             selectedCategoryName = category
             logDebug("NAV", "category_click name=$category")
             logDebug("NAV", "open_channels_screen")
-            val filtered = grouped[category].orEmpty()
+            val filtered = cachedCategoryGroups[category].orEmpty()
             channels.clear()
             channels.addAll(filtered)
             homePlaylistTilesPanel.visibility = View.GONE
@@ -2278,6 +2317,9 @@ class MainActivity : AppCompatActivity() {
                 val content = URL(playlistUrl).readText()
                 currentPlaylistText = content
                 val parsedChannels = M3uParser.parse(content)
+                val groupedCategories = parsedChannels
+                    .groupBy { ch -> ch.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
+                    .filterKeys { key -> key != "{region_name}" }
                 val parsedEpgUrls = extractEpgSourcesFromPlaylist(content)
                 val selectedPlaylist = getSelectedPlaylistName()
                 logDebug("PLAYLIST_FLOW", "PLAYLIST_CLICK selectedPlaylist=$selectedPlaylist")
@@ -2306,7 +2348,7 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         selectedPlaylistDisplayName = getSelectedPlaylistName()
                         logDebug("NAV", "open_categories_screen")
-                        showCategoryTilesOnHome(selectedPlaylistDisplayName, channels.toList())
+                        showCategoryTilesOnHome(selectedPlaylistDisplayName, groupedCategories)
                     }
 
                     if (forceReload) {
