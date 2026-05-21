@@ -489,7 +489,7 @@ class MainActivity : AppCompatActivity() {
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
             title.setSpan(
-                RelativeSizeSpan(0.75f),
+                RelativeSizeSpan(0.62f),
                 11,
                 title.length,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -717,18 +717,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun computeHomeTileColumns(): Int {
         val widthDp = resources.displayMetrics.widthPixels / resources.displayMetrics.density
+        val uiMode = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK
+        val isTv = uiMode == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
         return when {
-            widthDp >= 700f -> 4
-            widthDp >= 520f -> 3
-            else -> 2
+            isTv -> (widthDp / 180f).toInt().coerceIn(5, 8)
+            widthDp < 360f -> 3
+            widthDp >= 600f -> 4
+            else -> 4
         }
     }
 
     private fun bindHomeTiles(items: List<HomeTileItem>) {
         val columns = computeHomeTileColumns()
-        val spacing = dpToPx(12)
-        val availableWidth = resources.displayMetrics.widthPixels - dpToPx(48)
-        val tileWidth = ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(140))
+        val spacing = dpToPx(8)
+        val availableWidth = resources.displayMetrics.widthPixels - dpToPx(24)
+        val tileWidth = ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(118))
         val tileHeight = (tileWidth * 0.47f).toInt()
         rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
         rvHomeTiles.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
@@ -736,11 +739,13 @@ class MainActivity : AppCompatActivity() {
                 val tv = TextView(parent.context)
                 tv.setTextColor(Color.WHITE)
                 tv.gravity = Gravity.CENTER
-                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
-                tv.typeface = tv.typeface
+                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+                tv.setTypeface(tv.typeface, Typeface.BOLD)
                 tv.setBackgroundResource(R.drawable.bg_playlist_tile)
                 tv.isFocusable = true
                 tv.isFocusableInTouchMode = true
+                tv.isClickable = true
+                tv.setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6))
                 val lp = RecyclerView.LayoutParams(tileWidth, tileHeight)
                 lp.rightMargin = spacing
                 lp.bottomMargin = spacing
@@ -831,7 +836,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartSubtitle.visibility = View.GONE
         homePlaylistTilesPanel.visibility = View.VISIBLE
         tvHomeCategoryBack.visibility = View.VISIBLE
-        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории $playlistName")
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории ($playlistName)")
         tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
 
         val grouped = sourceChannels.groupBy { it.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
@@ -1318,9 +1323,9 @@ class MainActivity : AppCompatActivity() {
         epgSettingsPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
         settingsRows.forEach { it.visibility = View.VISIBLE }
-        btnExportDebugLog.visibility = View.VISIBLE
-        btnExportDebugLog.isEnabled = true
-        btnExportDebugLog.isClickable = true
+        btnExportDebugLog.visibility = View.GONE
+        btnExportDebugLog.isEnabled = false
+        btnExportDebugLog.isClickable = false
         btnPlaylistSettings.setOnClickListener { openPlaylistSettingsScreen() }
         btnEpgSelect.setOnClickListener { openEpgSettingsScreen() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
@@ -1400,16 +1405,7 @@ class MainActivity : AppCompatActivity() {
             bindInlineUserSettings(userSettingsPanel)
         }
         btnUserSettings.setOnClickListener { openUserSettingsScreen() }
-        btnExportDebugLog.setOnClickListener { exportDebugLogToDownloads() }
         configureBackButtonsForSettings("showSettingsDialog_final")
-
-        btnExportDebugLog.setOnLongClickListener {
-            val current = prefs.getBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, USE_FFMPEG_AUDIO_FOR_MPEG_L2)
-            val next = !current
-            prefs.edit().putBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, next).apply()
-            Toast.makeText(this, "FFmpeg audio mode: ${if (next) "PREFER" else "OFF"} (перезапустите поток)", Toast.LENGTH_LONG).show()
-            true
-        }
     }
 
     private fun openPlaylistSettingsScreen() {
@@ -1726,8 +1722,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSettingsPlaceholderDialog() {
         AlertDialog.Builder(this)
-            .setMessage("В данный момент ничего нет! Попробуйте посмотреть позже")
-            .setPositiveButton("ОК", null)
+            .setTitle("Дополнительные настройки")
+            .setMessage("Экспорт debug лога")
+            .setPositiveButton("Экспорт") { _, _ -> exportDebugLogToDownloads() }
+            .setNeutralButton("FFmpeg audio toggle") { _, _ ->
+                val current = prefs.getBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, USE_FFMPEG_AUDIO_FOR_MPEG_L2)
+                val next = !current
+                prefs.edit().putBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, next).apply()
+                Toast.makeText(this, "FFmpeg audio mode: ${if (next) "PREFER" else "OFF"}", Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton("Закрыть", null)
             .show()
     }
 
