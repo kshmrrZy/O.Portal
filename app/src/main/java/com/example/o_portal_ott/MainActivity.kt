@@ -823,6 +823,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCategoryTilesOnHome(playlistName: String, sourceChannels: List<Channel>) {
+        logDebug("PLAYLIST_FLOW", "OPEN_CATEGORY_SCREEN playlist=$playlistName")
         showStartPage()
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
@@ -833,6 +834,8 @@ class MainActivity : AppCompatActivity() {
 
         val grouped = sourceChannels.groupBy { it.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
             .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+        logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS count=${grouped.size}")
+        logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS names=${grouped.keys.joinToString(separator = " | ")}")
         val categoryNames = grouped.keys.toList()
         bindHomeTiles(categoryNames.map { category -> HomeTileItem(category) {
             selectedCategoryName = category
@@ -2267,6 +2270,9 @@ class MainActivity : AppCompatActivity() {
                 currentPlaylistText = content
                 val parsedChannels = M3uParser.parse(content)
                 val parsedEpgUrls = extractEpgSourcesFromPlaylist(content)
+                val selectedPlaylist = getSelectedPlaylistName()
+                logDebug("PLAYLIST_FLOW", "PLAYLIST_CLICK selectedPlaylist=$selectedPlaylist")
+                logDebug("PLAYLIST_FLOW", "PLAYLIST_PARSED channelsCount=${parsedChannels.size}")
 
                 handler.post {
                     channels.clear()
@@ -2287,11 +2293,9 @@ class MainActivity : AppCompatActivity() {
 
                     if (channels.isEmpty()) {
                         tvEpg.text = "Каналы не найдены в плейлисте"
-                    } else if (autoPlay) {
+                    } else {
                         selectedPlaylistDisplayName = getSelectedPlaylistName()
                         showCategoryTilesOnHome(selectedPlaylistDisplayName, channels.toList())
-                    } else {
-                        tvEpg.text = "Выберите раздел на стартовой странице"
                     }
 
                     if (forceReload) {
@@ -2680,7 +2684,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun playChannel(forcePlay: Boolean = false) {
         runCatching {
-            val ch = channels.getOrNull(currentChannelIndex) ?: return
+            val ch = channels.getOrNull(currentChannelIndex) ?: run {
+                logDebug("PLAYLIST_FLOW", "OPEN_PLAYER_WITHOUT_CHANNEL blocked currentChannelIndex=$currentChannelIndex channelsCount=${channels.size}")
+                showPlaylistPageOnHome()
+                return@runCatching
+            }
             homePanel.visibility = View.GONE
             val shouldUseSoftware = !preferGpuDecoding
             if (softwareDecoderMode != shouldUseSoftware) {
