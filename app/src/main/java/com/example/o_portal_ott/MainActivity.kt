@@ -119,6 +119,7 @@ data class PlaylistProfile(
 )
 
 class MainActivity : AppCompatActivity() {
+    private enum class PlayerOpenReason { CHANNEL_CLICK, LIVE_RETRY, RECOVERY }
 
     private var mediaPlayer: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
@@ -185,6 +186,7 @@ class MainActivity : AppCompatActivity() {
     private var isLocked = false
     private var isPlaybackPaused = false
     private var currentChannelIndex = 0
+    private var hasStartedPlaybackFromChannelClick = false
     private val channels = mutableListOf<Channel>()
     private val epgData = mutableMapOf<String, MutableList<Program>>()
     private val epgDataLock = Any()
@@ -575,7 +577,7 @@ class MainActivity : AppCompatActivity() {
                     subtitle = ""
                 )
             }
-            playChannel(forcePlay = true)
+            playChannel(forcePlay = true, reason = PlayerOpenReason.LIVE_RETRY)
             logPathState("LIVE_PATH after_reload_click")
             handler.postDelayed({
                 tvReloadingStatus.visibility = View.GONE
@@ -769,9 +771,9 @@ class MainActivity : AppCompatActivity() {
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
         val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }
         bindHomeTiles(list.map { p -> HomeTileItem(p.name) {
+            logDebug("NAV", "playlist_click name=${p.name}")
+            hasStartedPlaybackFromChannelClick = false
             setSelectedPlaylistName(p.name)
-            homePlaylistTilesPanel.visibility = View.GONE
-            hideStartPage()
             loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
         } })
     }
@@ -801,9 +803,9 @@ class MainActivity : AppCompatActivity() {
             if (p.type == "group" && p.value == "third_party") {
                 showThirdPartyTilesOnHome(thirdParty)
             } else {
+                logDebug("NAV", "playlist_click name=${p.name}")
+                hasStartedPlaybackFromChannelClick = false
                 setSelectedPlaylistName(p.name)
-                homePlaylistTilesPanel.visibility = View.GONE
-                hideStartPage()
                 loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
             }
         } })
@@ -823,6 +825,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCategoryTilesOnHome(playlistName: String, sourceChannels: List<Channel>) {
+        logDebug("PLAYLIST_FLOW", "OPEN_CATEGORY_SCREEN playlist=$playlistName")
         showStartPage()
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
@@ -833,9 +836,13 @@ class MainActivity : AppCompatActivity() {
 
         val grouped = sourceChannels.groupBy { it.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
             .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+        logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS count=${grouped.size}")
+        logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS names=${grouped.keys.joinToString(separator = " | ")}")
         val categoryNames = grouped.keys.toList()
         bindHomeTiles(categoryNames.map { category -> HomeTileItem(category) {
             selectedCategoryName = category
+            logDebug("NAV", "category_click name=$category")
+            logDebug("NAV", "open_channels_screen")
             val filtered = grouped[category].orEmpty()
             channels.clear()
             channels.addAll(filtered)
@@ -1036,8 +1043,9 @@ class MainActivity : AppCompatActivity() {
                 )
 
                 val startChannel = View.OnClickListener {
+                    logDebug("NAV", "channel_click name=${channel.name}")
                     currentChannelIndex = position
-                    playChannel(forcePlay = true)
+                    playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
                     channelListDialog?.dismiss()
                 }
 
@@ -2267,6 +2275,10 @@ class MainActivity : AppCompatActivity() {
                 currentPlaylistText = content
                 val parsedChannels = M3uParser.parse(content)
                 val parsedEpgUrls = extractEpgSourcesFromPlaylist(content)
+                val selectedPlaylist = getSelectedPlaylistName()
+                logDebug("PLAYLIST_FLOW", "PLAYLIST_CLICK selectedPlaylist=$selectedPlaylist")
+                logDebug("PLAYLIST_FLOW", "PLAYLIST_PARSED channelsCount=${parsedChannels.size}")
+                logDebug("NAV", "playlist_click name=$selectedPlaylist")
 
                 handler.post {
                     channels.clear()
@@ -2287,11 +2299,10 @@ class MainActivity : AppCompatActivity() {
 
                     if (channels.isEmpty()) {
                         tvEpg.text = "Каналы не найдены в плейлисте"
-                    } else if (autoPlay) {
-                        selectedPlaylistDisplayName = getSelectedPlaylistName()
-                        showCategoryTilesOnHome(selectedPlaylistDisplayName, channels.toList())
                     } else {
-                        tvEpg.text = "Выберите раздел на стартовой странице"
+                        selectedPlaylistDisplayName = getSelectedPlaylistName()
+                        logDebug("NAV", "open_categories_screen")
+                        showCategoryTilesOnHome(selectedPlaylistDisplayName, channels.toList())
                     }
 
                     if (forceReload) {
@@ -2678,9 +2689,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun playChannel(forcePlay: Boolean = false) {
+    private fun playChannel(
+        forcePlay: Boolean = false,
+        reason: PlayerOpenReason = PlayerOpenReason.RECOVERY
+    ) {
         runCatching {
-            val ch = channels.getOrNull(currentChannelIndex) ?: return
+            if (!hasStartedPlaybackFromChannelClick && reason != PlayerOpenReason.CHANNEL_CLICK) {
+                logDebug("NAV", "ERROR unexpected_player_open_before_channel_click reason=$reason")
+                return@runCatching
+            }
+            val ch = channels.getOrNull(currentChannelIndex) ?: run {
+                logDebug("PLAYLIST_FLOW", "OPEN_PLAYER_WITHOUT_CHANNEL blocked currentChannelIndex=$currentChannelIndex channelsCount=${channels.size}")
+                showPlaylistPageOnHome()
+                return@runCatching
+            }
+            logDebug("NAV", "open_player")
             homePanel.visibility = View.GONE
             val shouldUseSoftware = !preferGpuDecoding
             if (softwareDecoderMode != shouldUseSoftware) {
@@ -2732,6 +2755,7 @@ class MainActivity : AppCompatActivity() {
             btnPlayPause.setImageResource(R.drawable.ic_pause)
 
             tvChannelName.text = "${currentChannelIndex + 1}. ${ch.name}"
+            hasStartedPlaybackFromChannelClick = true
             prefs.edit().putInt(PREF_LAST_CHANNEL, currentChannelIndex).apply()
             ensureEpgLoadedLazy()
             refreshLogo()
@@ -3803,6 +3827,7 @@ class MainActivity : AppCompatActivity() {
     private fun exitPlayerToPlaylist() {
         stopPlayback()
         resetPlaybackSessionStateOnExit()
+        hasStartedPlaybackFromChannelClick = false
         showPlaylistPageOnHome()
     }
 
