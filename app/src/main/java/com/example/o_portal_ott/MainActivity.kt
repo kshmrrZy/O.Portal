@@ -119,6 +119,7 @@ data class PlaylistProfile(
 )
 
 class MainActivity : AppCompatActivity() {
+    private enum class PlayerOpenReason { CHANNEL_CLICK, LIVE_RETRY, RECOVERY }
 
     private var mediaPlayer: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
@@ -185,6 +186,7 @@ class MainActivity : AppCompatActivity() {
     private var isLocked = false
     private var isPlaybackPaused = false
     private var currentChannelIndex = 0
+    private var hasStartedPlaybackFromChannelClick = false
     private val channels = mutableListOf<Channel>()
     private val epgData = mutableMapOf<String, MutableList<Program>>()
     private val epgDataLock = Any()
@@ -405,7 +407,7 @@ class MainActivity : AppCompatActivity() {
         startEpgTicker()
         applyLockButtonVisibility()
         val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
-        loadPlaylist(showErrors = true, autoPlay = shouldOpenLastChannelOnStart && !isAuthorizedUser)
+        loadPlaylist(showErrors = true, autoPlay = true)
         if (!shouldOpenLastChannelOnStart) {
             val hasThirdParty = getThirdPartyPlaylistProfiles().isNotEmpty()
             if (isAuthorizedUser || hasThirdParty) showPlaylistPageOnHome() else showStartPage()
@@ -487,7 +489,7 @@ class MainActivity : AppCompatActivity() {
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
             title.setSpan(
-                RelativeSizeSpan(0.75f),
+                RelativeSizeSpan(0.52f),
                 11,
                 title.length,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -575,7 +577,7 @@ class MainActivity : AppCompatActivity() {
                     subtitle = ""
                 )
             }
-            playChannel(forcePlay = true)
+            playChannel(forcePlay = true, reason = PlayerOpenReason.LIVE_RETRY)
             logPathState("LIVE_PATH after_reload_click")
             handler.postDelayed({
                 tvReloadingStatus.visibility = View.GONE
@@ -712,49 +714,98 @@ class MainActivity : AppCompatActivity() {
 
 
     private data class HomeTileItem(val title: String, val onClick: () -> Unit)
+    private var homeTilesAdapter: HomeTilesAdapter? = null
+    private var homeTilesColumnsApplied: Int = -1
+    private var homeTilesWidthApplied: Int = -1
+    private var homeTilesHeightApplied: Int = -1
+    private var currentHomeTilesItems: List<HomeTileItem> = emptyList()
+    private var cachedCategoryGroups: Map<String, List<Channel>> = emptyMap()
+    private var categoryOpenInProgress = false
 
     private fun computeHomeTileColumns(): Int {
         val widthDp = resources.displayMetrics.widthPixels / resources.displayMetrics.density
+        val uiMode = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK
+        val isTv = uiMode == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
         return when {
-            widthDp >= 700f -> 4
-            widthDp >= 520f -> 3
-            else -> 2
+            isTv -> (widthDp / 190f).toInt().coerceIn(5, 9)
+            widthDp < 360f -> 3
+            else -> 4
         }
     }
 
-    private fun bindHomeTiles(items: List<HomeTileItem>) {
-        val columns = computeHomeTileColumns()
-        val spacing = dpToPx(12)
-        val availableWidth = resources.displayMetrics.widthPixels - dpToPx(48)
-        val tileWidth = ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(140))
-        val tileHeight = (tileWidth * 0.47f).toInt()
-        rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
-        rvHomeTiles.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-                val tv = TextView(parent.context)
-                tv.setTextColor(Color.WHITE)
-                tv.gravity = Gravity.CENTER
-                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
-                tv.typeface = tv.typeface
-                tv.setBackgroundResource(R.drawable.bg_playlist_tile)
-                tv.isFocusable = true
-                tv.isFocusableInTouchMode = true
-                val lp = RecyclerView.LayoutParams(tileWidth, tileHeight)
-                lp.rightMargin = spacing
-                lp.bottomMargin = spacing
-                tv.layoutParams = lp
-                return object : RecyclerView.ViewHolder(tv) {}
-            }
+    private inner class HomeTilesAdapter(
+        private val tileWidth: Int,
+        private val tileHeight: Int,
+        private val spacing: Int
+    ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+        private var tileItems: List<HomeTileItem> = emptyList()
 
-            override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-                val tv = holder.itemView as TextView
-                val item = items[position]
-                tv.text = item.title
-                tv.setOnClickListener { item.onClick() }
-            }
-
-            override fun getItemCount(): Int = items.size
+        fun submit(list: List<HomeTileItem>) {
+            tileItems = list
+            notifyDataSetChanged()
         }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val tv = TextView(parent.context)
+            tv.setTextColor(Color.WHITE)
+            tv.gravity = Gravity.CENTER
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            tv.typeface = golosTypeface?.let { Typeface.create(it, Typeface.BOLD) } ?: Typeface.DEFAULT_BOLD
+            tv.setBackgroundResource(R.drawable.bg_playlist_tile)
+            tv.isFocusable = true
+            tv.isFocusableInTouchMode = true
+            tv.isClickable = true
+            tv.isEnabled = true
+            tv.setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6))
+            val lp = RecyclerView.LayoutParams(tileWidth, tileHeight)
+            lp.leftMargin = spacing / 2
+            lp.rightMargin = spacing / 2
+            lp.bottomMargin = spacing
+            tv.layoutParams = lp
+            return object : RecyclerView.ViewHolder(tv) {}
+        }
+
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            val tv = holder.itemView as TextView
+            val item = tileItems[position]
+            tv.text = item.title
+            tv.setOnClickListener { item.onClick() }
+        }
+
+        override fun getItemCount(): Int = tileItems.size
+    }
+
+    private fun bindHomeTiles(items: List<HomeTileItem>) {
+        currentHomeTilesItems = items
+        if (rvHomeTiles.width <= 0) {
+            rvHomeTiles.post {
+                if (currentHomeTilesItems === items || currentHomeTilesItems == items) {
+                    bindHomeTiles(currentHomeTilesItems)
+                }
+            }
+            return
+        }
+        val columns = computeHomeTileColumns()
+        val spacing = dpToPx(16)
+        val containerWidth = rvHomeTiles.width
+        val availableWidth = (containerWidth - rvHomeTiles.paddingStart - rvHomeTiles.paddingEnd).coerceAtLeast(dpToPx(320))
+        val preferredTileWidth = dpToPx(112)
+        val dynamicSpacing = ((availableWidth - preferredTileWidth * columns) / (columns - 1)).coerceIn(dpToPx(10), dpToPx(20))
+        val tileWidth = ((availableWidth - dynamicSpacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
+        val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
+        if (homeTilesColumnsApplied != columns) {
+            rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
+            homeTilesColumnsApplied = columns
+        }
+        if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
+            rvHomeTiles.setHasFixedSize(true)
+            rvHomeTiles.itemAnimator = null
+            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, dynamicSpacing)
+            homeTilesWidthApplied = tileWidth
+            homeTilesHeightApplied = tileHeight
+            rvHomeTiles.adapter = homeTilesAdapter
+        }
+        homeTilesAdapter?.submit(items)
     }
 
     private fun showThirdPartyTilesOnHome(thirdParty: List<PlaylistProfile>) {
@@ -769,9 +820,9 @@ class MainActivity : AppCompatActivity() {
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
         val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }
         bindHomeTiles(list.map { p -> HomeTileItem(p.name) {
+            logDebug("NAV", "playlist_click name=${p.name}")
+            hasStartedPlaybackFromChannelClick = false
             setSelectedPlaylistName(p.name)
-            homePlaylistTilesPanel.visibility = View.GONE
-            hideStartPage()
             loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
         } })
     }
@@ -801,9 +852,9 @@ class MainActivity : AppCompatActivity() {
             if (p.type == "group" && p.value == "third_party") {
                 showThirdPartyTilesOnHome(thirdParty)
             } else {
+                logDebug("NAV", "playlist_click name=${p.name}")
+                hasStartedPlaybackFromChannelClick = false
                 setSelectedPlaylistName(p.name)
-                homePlaylistTilesPanel.visibility = View.GONE
-                hideStartPage()
                 loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
             }
         } })
@@ -823,25 +874,65 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCategoryTilesOnHome(playlistName: String, sourceChannels: List<Channel>) {
+        val grouped = sourceChannels.groupBy { it.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
+            .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+            .filterKeys { it != "{region_name}" }
+        showCategoryTilesOnHome(playlistName, grouped)
+    }
+
+    private fun showCategoryTilesOnHome(
+        playlistName: String,
+        groupedCategories: Map<String, List<Channel>>
+    ) {
+        logDebug("PLAYLIST_FLOW", "OPEN_CATEGORY_SCREEN playlist=$playlistName")
         showStartPage()
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         homePlaylistTilesPanel.visibility = View.VISIBLE
         tvHomeCategoryBack.visibility = View.VISIBLE
-        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории $playlistName")
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории ($playlistName)")
         tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
 
-        val grouped = sourceChannels.groupBy { it.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
-            .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+        val allChannels = groupedCategories.values.flatten()
+        fun categoryGroupOrder(name: String): Int {
+            val ch = name.firstOrNull() ?: return 2
+            return when {
+                ch in 'А'..'я' || ch == 'Ё' || ch == 'ё' -> 0
+                ch in 'A'..'Z' || ch in 'a'..'z' -> 1
+                else -> 2
+            }
+        }
+        val grouped = linkedMapOf<String, List<Channel>>()
+        grouped["Все каналы"] = allChannels
+        groupedCategories
+            .filterKeys { it != "Все каналы" }
+            .entries
+            .sortedWith(compareBy<Map.Entry<String, List<Channel>>> { categoryGroupOrder(it.key) }
+                .thenBy { it.key.lowercase(Locale.getDefault()) })
+            .forEach { (key, value) -> grouped[key] = value }
+        cachedCategoryGroups = grouped
+        logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS count=${grouped.size}")
+        logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS names=${grouped.keys.joinToString(separator = " | ")}")
         val categoryNames = grouped.keys.toList()
         bindHomeTiles(categoryNames.map { category -> HomeTileItem(category) {
+            logDebug("NAV", "CATEGORY_TILE_CLICK_RECEIVED name=$category")
+            if (categoryOpenInProgress) {
+                logDebug("NAV", "CLICK_BLOCKED reason=category_open_in_progress")
+                return@HomeTileItem
+            }
+            categoryOpenInProgress = true
             selectedCategoryName = category
-            val filtered = grouped[category].orEmpty()
+            logDebug("NAV", "CATEGORY_OPEN_CHANNELS_START name=$category")
+            showReloadingStatus("Открываем раздел...", category)
+            val filtered = cachedCategoryGroups[category].orEmpty()
             channels.clear()
             channels.addAll(filtered)
             homePlaylistTilesPanel.visibility = View.GONE
             hideStartPage()
             showChannelList()
+            tvReloadingStatus.visibility = View.GONE
+            logDebug("NAV", "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}")
+            categoryOpenInProgress = false
         } })
     }
 
@@ -1036,8 +1127,9 @@ class MainActivity : AppCompatActivity() {
                 )
 
                 val startChannel = View.OnClickListener {
+                    logDebug("NAV", "channel_click name=${channel.name}")
                     currentChannelIndex = position
-                    playChannel(forcePlay = true)
+                    playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
                     channelListDialog?.dismiss()
                 }
 
@@ -1310,9 +1402,9 @@ class MainActivity : AppCompatActivity() {
         epgSettingsPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
         settingsRows.forEach { it.visibility = View.VISIBLE }
-        btnExportDebugLog.visibility = View.VISIBLE
-        btnExportDebugLog.isEnabled = true
-        btnExportDebugLog.isClickable = true
+        btnExportDebugLog.visibility = View.GONE
+        btnExportDebugLog.isEnabled = false
+        btnExportDebugLog.isClickable = false
         btnPlaylistSettings.setOnClickListener { openPlaylistSettingsScreen() }
         btnEpgSelect.setOnClickListener { openEpgSettingsScreen() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
@@ -1392,16 +1484,7 @@ class MainActivity : AppCompatActivity() {
             bindInlineUserSettings(userSettingsPanel)
         }
         btnUserSettings.setOnClickListener { openUserSettingsScreen() }
-        btnExportDebugLog.setOnClickListener { exportDebugLogToDownloads() }
         configureBackButtonsForSettings("showSettingsDialog_final")
-
-        btnExportDebugLog.setOnLongClickListener {
-            val current = prefs.getBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, USE_FFMPEG_AUDIO_FOR_MPEG_L2)
-            val next = !current
-            prefs.edit().putBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, next).apply()
-            Toast.makeText(this, "FFmpeg audio mode: ${if (next) "PREFER" else "OFF"} (перезапустите поток)", Toast.LENGTH_LONG).show()
-            true
-        }
     }
 
     private fun openPlaylistSettingsScreen() {
@@ -1589,6 +1672,9 @@ class MainActivity : AppCompatActivity() {
             exitPlayerToPlaylist()
         }
         if (settingsOpenedFromPlayer) {
+            logDebug("NAV", "SETTINGS_CLOSED_FROM_PLAYER")
+            playerSettingsOverlay.visibility = View.GONE
+            homeSettingsScreen.visibility = View.GONE
             homePanel.visibility = View.GONE
             showUI()
             return
@@ -1611,12 +1697,18 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun restoreDefaultSettingsRows() {
+        val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
+        (tvSettingsBack.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.topMargin = dpToPx(4)
+            lp.marginStart = 0
+            tvSettingsBack.layoutParams = lp
+        }
         val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings)
         rowIds.forEachIndexed { i, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
             lp.height = dpToPx(46)
-            lp.topMargin = if (i == 0) dpToPx(4) else dpToPx(8)
+            lp.topMargin = if (i == 0) dpToPx(6) else dpToPx(8)
             row.layoutParams = lp
         }
     }
@@ -1718,8 +1810,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSettingsPlaceholderDialog() {
         AlertDialog.Builder(this)
-            .setMessage("В данный момент ничего нет! Попробуйте посмотреть позже")
-            .setPositiveButton("ОК", null)
+            .setTitle("Дополнительные настройки")
+            .setMessage("Экспорт debug лога")
+            .setPositiveButton("Экспорт") { _, _ -> exportDebugLogToDownloads() }
+            .setNeutralButton("FFmpeg audio toggle") { _, _ ->
+                val current = prefs.getBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, USE_FFMPEG_AUDIO_FOR_MPEG_L2)
+                val next = !current
+                prefs.edit().putBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, next).apply()
+                Toast.makeText(this, "FFmpeg audio mode: ${if (next) "PREFER" else "OFF"}", Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton("Закрыть", null)
             .show()
     }
 
@@ -2266,7 +2366,14 @@ class MainActivity : AppCompatActivity() {
                 val content = URL(playlistUrl).readText()
                 currentPlaylistText = content
                 val parsedChannels = M3uParser.parse(content)
+                val groupedCategories = parsedChannels
+                    .groupBy { ch -> ch.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
+                    .filterKeys { key -> key != "{region_name}" }
                 val parsedEpgUrls = extractEpgSourcesFromPlaylist(content)
+                val selectedPlaylist = getSelectedPlaylistName()
+                logDebug("PLAYLIST_FLOW", "PLAYLIST_CLICK selectedPlaylist=$selectedPlaylist")
+                logDebug("PLAYLIST_FLOW", "PLAYLIST_PARSED channelsCount=${parsedChannels.size}")
+                logDebug("NAV", "playlist_click name=$selectedPlaylist")
 
                 handler.post {
                     channels.clear()
@@ -2287,11 +2394,12 @@ class MainActivity : AppCompatActivity() {
 
                     if (channels.isEmpty()) {
                         tvEpg.text = "Каналы не найдены в плейлисте"
-                    } else if (autoPlay) {
+                    } else if (!autoPlay) {
                         selectedPlaylistDisplayName = getSelectedPlaylistName()
-                        showCategoryTilesOnHome(selectedPlaylistDisplayName, channels.toList())
+                        logDebug("NAV", "open_categories_screen")
+                        showCategoryTilesOnHome(selectedPlaylistDisplayName, groupedCategories)
                     } else {
-                        tvEpg.text = "Выберите раздел на стартовой странице"
+                        logDebug("NAV", "startup_load_ready_without_autonavigation")
                     }
 
                     if (forceReload) {
@@ -2678,9 +2786,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun playChannel(forcePlay: Boolean = false) {
+    private fun playChannel(
+        forcePlay: Boolean = false,
+        reason: PlayerOpenReason = PlayerOpenReason.RECOVERY
+    ) {
         runCatching {
-            val ch = channels.getOrNull(currentChannelIndex) ?: return
+            if (!hasStartedPlaybackFromChannelClick && reason != PlayerOpenReason.CHANNEL_CLICK) {
+                logDebug("NAV", "ERROR unexpected_player_open_before_channel_click reason=$reason")
+                return@runCatching
+            }
+            val ch = channels.getOrNull(currentChannelIndex) ?: run {
+                logDebug("PLAYLIST_FLOW", "OPEN_PLAYER_WITHOUT_CHANNEL blocked currentChannelIndex=$currentChannelIndex channelsCount=${channels.size}")
+                showPlaylistPageOnHome()
+                return@runCatching
+            }
+            logDebug("NAV", "open_player")
             homePanel.visibility = View.GONE
             val shouldUseSoftware = !preferGpuDecoding
             if (softwareDecoderMode != shouldUseSoftware) {
@@ -2732,6 +2852,7 @@ class MainActivity : AppCompatActivity() {
             btnPlayPause.setImageResource(R.drawable.ic_pause)
 
             tvChannelName.text = "${currentChannelIndex + 1}. ${ch.name}"
+            hasStartedPlaybackFromChannelClick = true
             prefs.edit().putInt(PREF_LAST_CHANNEL, currentChannelIndex).apply()
             ensureEpgLoadedLazy()
             refreshLogo()
@@ -3801,9 +3922,34 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun exitPlayerToPlaylist() {
+        logDebug("NAV", "EXIT_PLAYER_TO_PLAYLIST_START")
         stopPlayback()
         resetPlaybackSessionStateOnExit()
+        hasStartedPlaybackFromChannelClick = false
+        showHomePlaylistTilesClean()
+    }
+
+    private fun showHomePlaylistTilesClean() {
+        logDebug("NAV", "SHOW_HOME_PLAYLIST_TILES_CLEAN")
+        isSettingsModalVisible = false
+        settingsOpenedFromPlayer = false
+        playerSettingsOverlay.visibility = View.GONE
+        homeSettingsScreen.visibility = View.GONE
+        findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
+        tvReloadingStatus.visibility = View.GONE
+        listBackgroundOverlay.visibility = View.GONE
+        timerWarningPanel.visibility = View.GONE
+        homePanel.setBackgroundResource(R.drawable.bg_home_screen)
+        topInfoPanel.visibility = View.GONE
+        topGradientOverlay.visibility = View.GONE
+        controlsPanel.visibility = View.GONE
         showPlaylistPageOnHome()
+        val homeTilesVisible = homePanel.visibility == View.VISIBLE && homePlaylistTilesPanel.visibility == View.VISIBLE
+        logDebug("NAV", "HOME_TILES_VISIBLE=$homeTilesVisible")
+        logDebug("NAV", "SETTINGS_VISIBLE=${homeSettingsScreen.visibility == View.VISIBLE}")
+        logDebug("NAV", "PLAYER_VISIBLE=${topInfoPanel.visibility == View.VISIBLE || controlsPanel.visibility == View.VISIBLE}")
     }
 
     private fun showLockedMessage() {
