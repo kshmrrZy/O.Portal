@@ -748,15 +748,16 @@ class MainActivity : AppCompatActivity() {
             val tv = TextView(parent.context)
             tv.setTextColor(Color.WHITE)
             tv.gravity = Gravity.CENTER
-            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
             tv.setTypeface(tv.typeface, Typeface.BOLD)
             tv.setBackgroundResource(R.drawable.bg_playlist_tile)
             tv.isFocusable = true
             tv.isFocusableInTouchMode = true
             tv.isClickable = true
-            tv.setPadding(dpToPx(8), dpToPx(5), dpToPx(8), dpToPx(5))
+            tv.setPadding(dpToPx(6), dpToPx(4), dpToPx(6), dpToPx(4))
             val lp = RecyclerView.LayoutParams(tileWidth, tileHeight)
-            lp.rightMargin = spacing
+            lp.leftMargin = spacing / 2
+            lp.rightMargin = spacing / 2
             lp.bottomMargin = spacing
             tv.layoutParams = lp
             return object : RecyclerView.ViewHolder(tv) {}
@@ -774,10 +775,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindHomeTiles(items: List<HomeTileItem>) {
         val columns = computeHomeTileColumns()
-        val spacing = dpToPx(6)
-        val availableWidth = resources.displayMetrics.widthPixels - dpToPx(16)
-        val tileWidth = ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(104))
-        val tileHeight = (tileWidth * 0.43f).toInt().coerceAtLeast(dpToPx(44))
+        val spacing = dpToPx(4)
+        val availableWidth = resources.displayMetrics.widthPixels - dpToPx(10)
+        val tileWidth = ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(92))
+        val tileHeight = (tileWidth * 0.40f).toInt().coerceAtLeast(dpToPx(40))
         if (homeTilesColumnsApplied != columns) {
             rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
             homeTilesColumnsApplied = columns
@@ -878,7 +879,12 @@ class MainActivity : AppCompatActivity() {
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории ($playlistName)")
         tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
 
-        val grouped = groupedCategories.toSortedMap(String.CASE_INSENSITIVE_ORDER)
+        val allChannels = groupedCategories.values.flatten()
+        val grouped = linkedMapOf<String, List<Channel>>()
+        grouped["Все каналы"] = allChannels
+        groupedCategories.toSortedMap(String.CASE_INSENSITIVE_ORDER).forEach { (key, value) ->
+            if (key != "Все каналы") grouped[key] = value
+        }
         cachedCategoryGroups = grouped
         logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS count=${grouped.size}")
         logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS names=${grouped.keys.joinToString(separator = " | ")}")
@@ -2345,10 +2351,12 @@ class MainActivity : AppCompatActivity() {
 
                     if (channels.isEmpty()) {
                         tvEpg.text = "Каналы не найдены в плейлисте"
-                    } else {
+                    } else if (!autoPlay) {
                         selectedPlaylistDisplayName = getSelectedPlaylistName()
                         logDebug("NAV", "open_categories_screen")
                         showCategoryTilesOnHome(selectedPlaylistDisplayName, groupedCategories)
+                    } else {
+                        logDebug("NAV", "startup_load_ready_without_autonavigation")
                     }
 
                     if (forceReload) {
