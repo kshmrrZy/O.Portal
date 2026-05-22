@@ -461,17 +461,20 @@
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:visibility="gone"
-            android:layout_marginTop="25dp"
+            android:layout_marginTop="36dp"
             android:layout_marginStart="0dp"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
-            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintEnd_toEndOf="@id/ivHomePower"
             app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
             app:layout_constraintBottom_toBottomOf="parent">
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rvHomeTiles"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:paddingEnd="16dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
                 android:clipToPadding="false"
                 android:overScrollMode="never"/>
         </ScrollView>
