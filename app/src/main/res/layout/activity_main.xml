@@ -461,7 +461,7 @@
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:visibility="gone"
-            android:layout_marginTop="36dp"
+            android:layout_marginTop="31dp"
             android:layout_marginStart="0dp"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
             app:layout_constraintEnd_toEndOf="@id/ivHomePower"

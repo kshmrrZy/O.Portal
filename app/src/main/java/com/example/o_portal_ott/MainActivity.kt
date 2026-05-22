@@ -720,6 +720,7 @@ class MainActivity : AppCompatActivity() {
     private var homeTilesHeightApplied: Int = -1
     private var currentHomeTilesItems: List<HomeTileItem> = emptyList()
     private var cachedCategoryGroups: Map<String, List<Channel>> = emptyMap()
+    private var categoryOpenInProgress = false
 
     private fun computeHomeTileColumns(): Int {
         val widthDp = resources.displayMetrics.widthPixels / resources.displayMetrics.density
@@ -788,7 +789,9 @@ class MainActivity : AppCompatActivity() {
         val spacing = dpToPx(16)
         val containerWidth = rvHomeTiles.width
         val availableWidth = (containerWidth - rvHomeTiles.paddingStart - rvHomeTiles.paddingEnd).coerceAtLeast(dpToPx(320))
-        val tileWidth = ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
+        val preferredTileWidth = dpToPx(112)
+        val dynamicSpacing = ((availableWidth - preferredTileWidth * columns) / (columns - 1)).coerceIn(dpToPx(10), dpToPx(20))
+        val tileWidth = ((availableWidth - dynamicSpacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
         val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
         if (homeTilesColumnsApplied != columns) {
             rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
@@ -797,7 +800,7 @@ class MainActivity : AppCompatActivity() {
         if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
             rvHomeTiles.setHasFixedSize(true)
             rvHomeTiles.itemAnimator = null
-            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, spacing)
+            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, dynamicSpacing)
             homeTilesWidthApplied = tileWidth
             homeTilesHeightApplied = tileHeight
             rvHomeTiles.adapter = homeTilesAdapter
@@ -891,25 +894,45 @@ class MainActivity : AppCompatActivity() {
         tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
 
         val allChannels = groupedCategories.values.flatten()
+        fun categoryGroupOrder(name: String): Int {
+            val ch = name.firstOrNull() ?: return 2
+            return when {
+                ch in 'А'..'я' || ch == 'Ё' || ch == 'ё' -> 0
+                ch in 'A'..'Z' || ch in 'a'..'z' -> 1
+                else -> 2
+            }
+        }
         val grouped = linkedMapOf<String, List<Channel>>()
         grouped["Все каналы"] = allChannels
-        groupedCategories.toSortedMap(String.CASE_INSENSITIVE_ORDER).forEach { (key, value) ->
-            if (key != "Все каналы") grouped[key] = value
-        }
+        groupedCategories
+            .filterKeys { it != "Все каналы" }
+            .entries
+            .sortedWith(compareBy<Map.Entry<String, List<Channel>>> { categoryGroupOrder(it.key) }
+                .thenBy { it.key.lowercase(Locale.getDefault()) })
+            .forEach { (key, value) -> grouped[key] = value }
         cachedCategoryGroups = grouped
         logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS count=${grouped.size}")
         logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS names=${grouped.keys.joinToString(separator = " | ")}")
         val categoryNames = grouped.keys.toList()
         bindHomeTiles(categoryNames.map { category -> HomeTileItem(category) {
+            logDebug("NAV", "CATEGORY_TILE_CLICK_RECEIVED name=$category")
+            if (categoryOpenInProgress) {
+                logDebug("NAV", "CLICK_BLOCKED reason=category_open_in_progress")
+                return@HomeTileItem
+            }
+            categoryOpenInProgress = true
             selectedCategoryName = category
-            logDebug("NAV", "category_click name=$category")
-            logDebug("NAV", "open_channels_screen")
+            logDebug("NAV", "CATEGORY_OPEN_CHANNELS_START name=$category")
+            showReloadingStatus("Открываем раздел...", category)
             val filtered = cachedCategoryGroups[category].orEmpty()
             channels.clear()
             channels.addAll(filtered)
             homePlaylistTilesPanel.visibility = View.GONE
             hideStartPage()
             showChannelList()
+            tvReloadingStatus.visibility = View.GONE
+            logDebug("NAV", "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}")
+            categoryOpenInProgress = false
         } })
     }
 
@@ -1671,12 +1694,18 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun restoreDefaultSettingsRows() {
+        val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
+        (tvSettingsBack.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.topMargin = dpToPx(4)
+            lp.marginStart = 0
+            tvSettingsBack.layoutParams = lp
+        }
         val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings)
         rowIds.forEachIndexed { i, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
             lp.height = dpToPx(46)
-            lp.topMargin = if (i == 0) dpToPx(4) else dpToPx(8)
+            lp.topMargin = if (i == 0) dpToPx(6) else dpToPx(8)
             row.layoutParams = lp
         }
     }
