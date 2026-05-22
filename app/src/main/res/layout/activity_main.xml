@@ -461,7 +461,7 @@
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:visibility="gone"
-            android:layout_marginTop="25dp"
+            android:layout_marginTop="10dp"
             android:layout_marginStart="0dp"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
             app:layout_constraintEnd_toEndOf="parent"
@@ -471,7 +471,8 @@
                 android:id="@+id/rvHomeTiles"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:paddingEnd="16dp"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
                 android:clipToPadding="false"
                 android:overScrollMode="never"/>
         </ScrollView>
