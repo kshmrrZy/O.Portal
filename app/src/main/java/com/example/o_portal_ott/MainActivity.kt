@@ -1672,6 +1672,9 @@ class MainActivity : AppCompatActivity() {
             exitPlayerToPlaylist()
         }
         if (settingsOpenedFromPlayer) {
+            logDebug("NAV", "SETTINGS_CLOSED_FROM_PLAYER")
+            playerSettingsOverlay.visibility = View.GONE
+            homeSettingsScreen.visibility = View.GONE
             homePanel.visibility = View.GONE
             showUI()
             return
@@ -3919,10 +3922,34 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun exitPlayerToPlaylist() {
+        logDebug("NAV", "EXIT_PLAYER_TO_PLAYLIST_START")
         stopPlayback()
         resetPlaybackSessionStateOnExit()
         hasStartedPlaybackFromChannelClick = false
+        showHomePlaylistTilesClean()
+    }
+
+    private fun showHomePlaylistTilesClean() {
+        logDebug("NAV", "SHOW_HOME_PLAYLIST_TILES_CLEAN")
+        isSettingsModalVisible = false
+        settingsOpenedFromPlayer = false
+        playerSettingsOverlay.visibility = View.GONE
+        homeSettingsScreen.visibility = View.GONE
+        findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
+        tvReloadingStatus.visibility = View.GONE
+        listBackgroundOverlay.visibility = View.GONE
+        timerWarningPanel.visibility = View.GONE
+        homePanel.setBackgroundResource(R.drawable.bg_home_screen)
+        topInfoPanel.visibility = View.GONE
+        topGradientOverlay.visibility = View.GONE
+        controlsPanel.visibility = View.GONE
         showPlaylistPageOnHome()
+        val homeTilesVisible = homePanel.visibility == View.VISIBLE && homePlaylistTilesPanel.visibility == View.VISIBLE
+        logDebug("NAV", "HOME_TILES_VISIBLE=$homeTilesVisible")
+        logDebug("NAV", "SETTINGS_VISIBLE=${homeSettingsScreen.visibility == View.VISIBLE}")
+        logDebug("NAV", "PLAYER_VISIBLE=${topInfoPanel.visibility == View.VISIBLE || controlsPanel.visibility == View.VISIBLE}")
     }
 
     private fun showLockedMessage() {
