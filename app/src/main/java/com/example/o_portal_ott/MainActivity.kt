@@ -583,10 +583,7 @@ class MainActivity : AppCompatActivity() {
                 tvReloadingStatus.visibility = View.GONE
             }, 1200)
         }
-        findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
-            logDebug("PLAYER_UI", "back button returns to playlist, not app exit")
-            exitPlayerToPlaylist()
-        }
+        bindRealPlayerExitButtonListener()
         sbTimeline.max = 1000
         sbTimeline.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {}
@@ -1668,9 +1665,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnBackToMenu).visibility = View.VISIBLE
         findViewById<View>(R.id.btnBackToMenu).isEnabled = true
         findViewById<View>(R.id.btnBackToMenu).isClickable = true
-        findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
-            exitPlayerToPlaylist()
-        }
+        bindRealPlayerExitButtonListener()
         if (settingsOpenedFromPlayer) {
             logDebug("NAV", "SETTINGS_CLOSED_FROM_PLAYER")
             playerSettingsOverlay.visibility = View.GONE
@@ -3922,11 +3917,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun exitPlayerToPlaylist() {
-        logDebug("NAV", "EXIT_PLAYER_TO_PLAYLIST_START")
+        logDebug("NAV", "EXIT_PLAYER_TO_PLAYLIST_ENTERED")
         stopPlayback()
         resetPlaybackSessionStateOnExit()
         hasStartedPlaybackFromChannelClick = false
         showHomePlaylistTilesClean()
+    }
+
+    private fun bindRealPlayerExitButtonListener() {
+        findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
+            logDebug("NAV", "PLAYER_EXIT_BUTTON_CLICKED_REAL_LISTENER")
+            exitPlayerToPlaylist()
+        }
     }
 
     private fun showHomePlaylistTilesClean() {
@@ -3946,10 +3948,25 @@ class MainActivity : AppCompatActivity() {
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         showPlaylistPageOnHome()
-        val homeTilesVisible = homePanel.visibility == View.VISIBLE && homePlaylistTilesPanel.visibility == View.VISIBLE
-        logDebug("NAV", "HOME_TILES_VISIBLE=$homeTilesVisible")
-        logDebug("NAV", "SETTINGS_VISIBLE=${homeSettingsScreen.visibility == View.VISIBLE}")
-        logDebug("NAV", "PLAYER_VISIBLE=${topInfoPanel.visibility == View.VISIBLE || controlsPanel.visibility == View.VISIBLE}")
+        val recycler = findViewById<RecyclerView>(R.id.rvHomeTiles)
+        var tilesCount = recycler.adapter?.itemCount ?: 0
+        if (tilesCount <= 0) {
+            logDebug("NAV", "CLICK_BLOCKED reason=home_tiles_empty_rebind")
+            showPlaylistPageOnHome()
+            tilesCount = recycler.adapter?.itemCount ?: 0
+        }
+        val homeVisible = homePanel.visibility == View.VISIBLE
+        val tilesVisible = homePlaylistTilesPanel.visibility == View.VISIBLE && recycler.visibility == View.VISIBLE
+        val settingsVisible = homeSettingsScreen.visibility == View.VISIBLE ||
+            findViewById<View>(R.id.playlistSettingsPanel).visibility == View.VISIBLE ||
+            findViewById<View>(R.id.epgSettingsPanel).visibility == View.VISIBLE ||
+            findViewById<View>(R.id.userSettingsPanel).visibility == View.VISIBLE
+        val playerVisible = topInfoPanel.visibility == View.VISIBLE || controlsPanel.visibility == View.VISIBLE
+        val backgroundVisible = homePanel.visibility == View.VISIBLE
+        logDebug(
+            "NAV",
+            "HOME_CLEAN_FINAL_STATE homeVisible=$homeVisible tilesVisible=$tilesVisible tilesCount=$tilesCount settingsVisible=$settingsVisible playerVisible=$playerVisible backgroundVisible=$backgroundVisible"
+        )
     }
 
     private fun showLockedMessage() {
