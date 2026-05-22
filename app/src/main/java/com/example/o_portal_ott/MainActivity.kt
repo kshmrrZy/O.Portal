@@ -295,6 +295,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val EXTRA_OPEN_HOME_PLAYLISTS_FRESH = "extra_open_home_playlists_fresh"
         private const val USE_FFMPEG_AUDIO_FOR_MPEG_L2 = true
         private const val PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2 = "pref_use_ffmpeg_audio_for_mpeg_l2"
         private const val PREF_PLAYLISTS = "playlist_profiles"
