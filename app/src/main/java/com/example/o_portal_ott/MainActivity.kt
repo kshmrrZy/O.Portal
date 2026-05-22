@@ -718,6 +718,7 @@ class MainActivity : AppCompatActivity() {
     private var homeTilesColumnsApplied: Int = -1
     private var homeTilesWidthApplied: Int = -1
     private var homeTilesHeightApplied: Int = -1
+    private var currentHomeTilesItems: List<HomeTileItem> = emptyList()
     private var cachedCategoryGroups: Map<String, List<Channel>> = emptyMap()
 
     private fun computeHomeTileColumns(): Int {
@@ -748,11 +749,12 @@ class MainActivity : AppCompatActivity() {
             tv.setTextColor(Color.WHITE)
             tv.gravity = Gravity.CENTER
             tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            tv.typeface = Typeface.DEFAULT_BOLD
+            tv.typeface = golosTypeface?.let { Typeface.create(it, Typeface.BOLD) } ?: Typeface.DEFAULT_BOLD
             tv.setBackgroundResource(R.drawable.bg_playlist_tile)
             tv.isFocusable = true
             tv.isFocusableInTouchMode = true
             tv.isClickable = true
+            tv.isEnabled = true
             tv.setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6))
             val lp = RecyclerView.LayoutParams(tileWidth, tileHeight)
             lp.leftMargin = spacing / 2
@@ -773,12 +775,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindHomeTiles(items: List<HomeTileItem>) {
+        currentHomeTilesItems = items
+        if (rvHomeTiles.width <= 0) {
+            rvHomeTiles.post {
+                if (currentHomeTilesItems === items || currentHomeTilesItems == items) {
+                    bindHomeTiles(currentHomeTilesItems)
+                }
+            }
+            return
+        }
         val columns = computeHomeTileColumns()
-        val spacing = dpToPx(24)
-        val containerWidth = rvHomeTiles.width.takeIf { it > 0 } ?: (resources.displayMetrics.widthPixels - dpToPx(200))
+        val spacing = dpToPx(16)
+        val containerWidth = rvHomeTiles.width
         val availableWidth = (containerWidth - rvHomeTiles.paddingStart - rvHomeTiles.paddingEnd).coerceAtLeast(dpToPx(320))
-        val tileWidth = ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(90))
-        val tileHeight = (tileWidth * 0.38f).toInt().coerceAtLeast(dpToPx(40))
+        val tileWidth = ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
+        val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
         if (homeTilesColumnsApplied != columns) {
             rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
             homeTilesColumnsApplied = columns
