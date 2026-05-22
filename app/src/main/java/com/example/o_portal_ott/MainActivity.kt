@@ -409,12 +409,7 @@ class MainActivity : AppCompatActivity() {
         applyLockButtonVisibility()
         val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
         loadPlaylist(showErrors = true, autoPlay = true)
-        val forceHomePlaylists = intent?.getBooleanExtra(EXTRA_OPEN_HOME_PLAYLISTS_FRESH, false) == true
-        if (forceHomePlaylists) {
-            logDebug("NAV", "OPEN_HOME_PLAYLISTS_FRESH_START")
-            showPlaylistPageOnHome()
-            logDebug("NAV", "OPEN_HOME_PLAYLISTS_FRESH_DONE homeVisible=${homePanel.visibility == View.VISIBLE} tilesVisible=${homePlaylistTilesPanel.visibility == View.VISIBLE}")
-        } else if (!shouldOpenLastChannelOnStart) {
+        if (!shouldOpenLastChannelOnStart) {
             val hasThirdParty = getThirdPartyPlaylistProfiles().isNotEmpty()
             if (isAuthorizedUser || hasThirdParty) showPlaylistPageOnHome() else showStartPage()
         }
@@ -3927,14 +3922,9 @@ class MainActivity : AppCompatActivity() {
         stopPlayback()
         resetPlaybackSessionStateOnExit()
         hasStartedPlaybackFromChannelClick = false
-        logDebug("NAV", "EXIT_PLAYER_USE_FRESH_HOME_NAVIGATION")
-        val restartIntent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            putExtra(EXTRA_OPEN_HOME_PLAYLISTS_FRESH, true)
-        }
-        logDebug("NAV", "RECREATE_ACTIVITY_TO_HOME_PLAYLISTS")
-        startActivity(restartIntent)
-        finish()
+        logDebug("NAV", "EXIT_PLAYER_LOCAL_HOME_RESET")
+        resetSettingsOverlayState()
+        showHomeOnly()
     }
 
     private fun bindRealPlayerExitButtonListener() {
@@ -3944,8 +3934,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showHomePlaylistTilesClean() {
-        logDebug("NAV", "SHOW_HOME_PLAYLIST_TILES_CLEAN")
+    private fun resetSettingsOverlayState() {
         isSettingsModalVisible = false
         settingsOpenedFromPlayer = false
         playerSettingsOverlay.visibility = View.GONE
@@ -3953,6 +3942,11 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
+    }
+
+    private fun showHomeOnly() {
+        logDebug("NAV", "SHOW_HOME_ONLY_START")
+        resetSettingsOverlayState()
         tvReloadingStatus.visibility = View.GONE
         listBackgroundOverlay.visibility = View.GONE
         timerWarningPanel.visibility = View.GONE
@@ -3976,10 +3970,7 @@ class MainActivity : AppCompatActivity() {
             findViewById<View>(R.id.userSettingsPanel).visibility == View.VISIBLE
         val playerVisible = topInfoPanel.visibility == View.VISIBLE || controlsPanel.visibility == View.VISIBLE
         val backgroundVisible = homePanel.visibility == View.VISIBLE
-        logDebug(
-            "NAV",
-            "HOME_CLEAN_FINAL_STATE homeVisible=$homeVisible tilesVisible=$tilesVisible tilesCount=$tilesCount settingsVisible=$settingsVisible playerVisible=$playerVisible backgroundVisible=$backgroundVisible"
-        )
+        logDebug("NAV", "SHOW_HOME_ONLY_DONE currentScreen=HOME_PLAYLISTS homeVisible=$homeVisible tilesVisible=$tilesVisible tilesCount=$tilesCount playerVisible=$playerVisible settingsVisible=$settingsVisible backgroundVisible=$backgroundVisible")
     }
 
     private fun showLockedMessage() {
