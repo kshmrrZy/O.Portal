@@ -295,6 +295,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val EXTRA_OPEN_HOME_PLAYLISTS_FRESH = "extra_open_home_playlists_fresh"
         private const val USE_FFMPEG_AUDIO_FOR_MPEG_L2 = true
         private const val PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2 = "pref_use_ffmpeg_audio_for_mpeg_l2"
         private const val PREF_PLAYLISTS = "playlist_profiles"
@@ -408,7 +409,12 @@ class MainActivity : AppCompatActivity() {
         applyLockButtonVisibility()
         val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
         loadPlaylist(showErrors = true, autoPlay = true)
-        if (!shouldOpenLastChannelOnStart) {
+        val forceHomePlaylists = intent?.getBooleanExtra(EXTRA_OPEN_HOME_PLAYLISTS_FRESH, false) == true
+        if (forceHomePlaylists) {
+            logDebug("NAV", "OPEN_HOME_PLAYLISTS_FRESH_START")
+            showPlaylistPageOnHome()
+            logDebug("NAV", "OPEN_HOME_PLAYLISTS_FRESH_DONE homeVisible=${homePanel.visibility == View.VISIBLE} tilesVisible=${homePlaylistTilesPanel.visibility == View.VISIBLE}")
+        } else if (!shouldOpenLastChannelOnStart) {
             val hasThirdParty = getThirdPartyPlaylistProfiles().isNotEmpty()
             if (isAuthorizedUser || hasThirdParty) showPlaylistPageOnHome() else showStartPage()
         }
@@ -3921,7 +3927,14 @@ class MainActivity : AppCompatActivity() {
         stopPlayback()
         resetPlaybackSessionStateOnExit()
         hasStartedPlaybackFromChannelClick = false
-        showHomePlaylistTilesClean()
+        logDebug("NAV", "EXIT_PLAYER_USE_FRESH_HOME_NAVIGATION")
+        val restartIntent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra(EXTRA_OPEN_HOME_PLAYLISTS_FRESH, true)
+        }
+        logDebug("NAV", "RECREATE_ACTIVITY_TO_HOME_PLAYLISTS")
+        startActivity(restartIntent)
+        finish()
     }
 
     private fun bindRealPlayerExitButtonListener() {
