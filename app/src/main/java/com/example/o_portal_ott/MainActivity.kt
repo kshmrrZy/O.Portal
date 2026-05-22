@@ -744,30 +744,44 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val root = FrameLayout(parent.context)
+            root.isFocusable = true
+            root.isFocusableInTouchMode = true
+            root.isClickable = true
+            root.isEnabled = true
+            root.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
             val tv = TextView(parent.context)
             tv.setTextColor(Color.WHITE)
             tv.gravity = Gravity.CENTER
             tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             tv.typeface = golosTypeface?.let { Typeface.create(it, Typeface.BOLD) } ?: Typeface.DEFAULT_BOLD
-            tv.setBackgroundResource(R.drawable.bg_playlist_tile)
-            tv.isFocusable = true
-            tv.isFocusableInTouchMode = true
-            tv.isClickable = true
-            tv.isEnabled = true
+            tv.isFocusable = false
+            tv.isFocusableInTouchMode = false
+            tv.isClickable = false
+            tv.isEnabled = false
             tv.setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6))
+            root.setBackgroundResource(R.drawable.bg_playlist_tile)
+            root.addView(
+                tv,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
             val lp = RecyclerView.LayoutParams(tileWidth, tileHeight)
             lp.leftMargin = spacing / 2
             lp.rightMargin = spacing / 2
             lp.bottomMargin = spacing
-            tv.layoutParams = lp
-            return object : RecyclerView.ViewHolder(tv) {}
+            root.layoutParams = lp
+            return object : RecyclerView.ViewHolder(root) {}
         }
 
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-            val tv = holder.itemView as TextView
+            val root = holder.itemView as FrameLayout
+            val tv = root.getChildAt(0) as TextView
             val item = tileItems[position]
             tv.text = item.title
-            tv.setOnClickListener {
+            root.setOnClickListener {
                 logDebug("NAV", "HOME_TILE_ROOT_CLICK_RECEIVED name=${item.title}")
                 item.onClick()
             }
@@ -3988,6 +4002,11 @@ class MainActivity : AppCompatActivity() {
         controlsPanel.isFocusable = false
         controlsPanel.isEnabled = false
         showPlaylistPageOnHome()
+        tvHomeBack.visibility = View.GONE
+        tvHomeBack.isClickable = false
+        tvHomeBack.isFocusable = false
+        tvHomeBack.isEnabled = false
+        tvHomeBack.setOnClickListener(null)
         val recycler = findViewById<RecyclerView>(R.id.rvHomeTiles)
         recycler.visibility = View.VISIBLE
         recycler.isEnabled = true
@@ -4014,7 +4033,7 @@ class MainActivity : AppCompatActivity() {
             val rootFocus = window.decorView.findFocus()?.javaClass?.simpleName ?: "null"
             logDebug(
                 "NAV",
-                "HOME_INPUT_STATE recyclerShown=${recycler.isShown} recyclerVisibility=${recycler.visibility} recyclerEnabled=${recycler.isEnabled} recyclerClickable=${recycler.isClickable} recyclerFocusable=${recycler.isFocusable} recyclerHasFocus=${recycler.hasFocus()} recyclerFocusedChild=$focusedChild adapterCount=${recycler.adapter?.itemCount ?: 0} rootFindFocus=$rootFocus currentScreen=HOME_PLAYLISTS settingsOpenedFromPlayer=$settingsOpenedFromPlayer loadingOverlayVisible=${tvReloadingStatus.visibility == View.VISIBLE} loadingOverlayClickable=${tvReloadingStatus.isClickable} playerOverlayVisible=${topInfoPanel.visibility == View.VISIBLE || controlsPanel.visibility == View.VISIBLE || topGradientOverlay.visibility == View.VISIBLE} playerOverlayClickable=${topInfoPanel.isClickable || controlsPanel.isClickable || topGradientOverlay.isClickable} categoryOverlayVisible=${tvHomeCategoryBack.visibility == View.VISIBLE} categoryOverlayClickable=${tvHomeCategoryBack.isClickable} channelOverlayVisible=${listBackgroundOverlay.visibility == View.VISIBLE} channelOverlayClickable=${listBackgroundOverlay.isClickable}"
+                "HOME_INPUT_STATE recyclerShown=${recycler.isShown} recyclerVisibility=${recycler.visibility} recyclerEnabled=${recycler.isEnabled} recyclerClickable=${recycler.isClickable} recyclerFocusable=${recycler.isFocusable} recyclerHasFocus=${recycler.hasFocus()} recyclerFocusedChild=$focusedChild adapterCount=${recycler.adapter?.itemCount ?: 0} rootFindFocus=$rootFocus currentScreen=HOME_PLAYLISTS settingsOpenedFromPlayer=$settingsOpenedFromPlayer loadingOverlayVisible=${tvReloadingStatus.visibility == View.VISIBLE} loadingOverlayClickable=${tvReloadingStatus.isClickable} playerOverlayVisible=${topInfoPanel.visibility == View.VISIBLE || controlsPanel.visibility == View.VISIBLE || topGradientOverlay.visibility == View.VISIBLE} playerOverlayClickable=${topInfoPanel.isClickable || controlsPanel.isClickable || topGradientOverlay.isClickable} categoryOverlayVisible=${tvHomeCategoryBack.visibility == View.VISIBLE} categoryOverlayClickable=${tvHomeCategoryBack.isClickable} channelOverlayVisible=${listBackgroundOverlay.visibility == View.VISIBLE} channelOverlayClickable=${listBackgroundOverlay.isClickable} settingsClickable=${homeSettingsScreen.isClickable || findViewById<View>(R.id.playlistSettingsPanel).isClickable || findViewById<View>(R.id.epgSettingsPanel).isClickable || findViewById<View>(R.id.userSettingsPanel).isClickable}"
             )
         }
         val homeVisible = homePanel.visibility == View.VISIBLE
