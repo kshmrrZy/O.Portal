@@ -852,16 +852,6 @@ class MainActivity : AppCompatActivity() {
             val lastRight = last?.right?.plus(rvHomeTiles.left) ?: -1
             logDebug("NAV", "HOME_GRID_GEOMETRY source=$source leftAnchor=$leftAnchor rightAnchor=$safeRight availableWidth=$availableWidth columns=$columns tileWidth=$tileWidth spacing=$dynamicSpacing firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=$rootWidth")
         }
-        val tileWidth = if (columns > 1) {
-            ((availableWidth - dynamicSpacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
-        } else {
-            availableWidth
-        }
-        val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
-        if (homeTilesColumnsApplied != columns) {
-            rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
-            homeTilesColumnsApplied = columns
-        }
         if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
             rvHomeTiles.setHasFixedSize(true)
             rvHomeTiles.itemAnimator = null
