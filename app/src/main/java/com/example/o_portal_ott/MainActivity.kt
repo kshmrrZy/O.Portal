@@ -803,12 +803,26 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val columns = computeHomeTileColumns()
-        val spacing = dpToPx(16)
-        val containerWidth = rvHomeTiles.width
-        val availableWidth = (containerWidth - rvHomeTiles.paddingStart - rvHomeTiles.paddingEnd).coerceAtLeast(dpToPx(320))
+        val rvX = rvHomeTiles.x
+        val rvW = rvHomeTiles.width.toFloat()
+        val leftEdge = tvHomeAppTitle.x
+        val rightEdge = ivHomePower.x + ivHomePower.width
+        val leftInset = (leftEdge - rvX).toInt().coerceAtLeast(0)
+        val rightInset = ((rvX + rvW) - rightEdge).toInt().coerceAtLeast(0)
+        rvHomeTiles.setPadding(leftInset, rvHomeTiles.paddingTop, rightInset, rvHomeTiles.paddingBottom)
+
+        val availableWidth = (rvHomeTiles.width - leftInset - rightInset).coerceAtLeast(dpToPx(320))
         val preferredTileWidth = dpToPx(112)
-        val dynamicSpacing = ((availableWidth - preferredTileWidth * columns) / (columns - 1)).coerceIn(dpToPx(10), dpToPx(20))
-        val tileWidth = ((availableWidth - dynamicSpacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
+        val dynamicSpacing = if (columns > 1) {
+            ((availableWidth - preferredTileWidth * columns) / (columns - 1)).coerceIn(dpToPx(10), dpToPx(20))
+        } else {
+            0
+        }
+        val tileWidth = if (columns > 1) {
+            ((availableWidth - dynamicSpacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
+        } else {
+            availableWidth
+        }
         val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
         if (homeTilesColumnsApplied != columns) {
             rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
