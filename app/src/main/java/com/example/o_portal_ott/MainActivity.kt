@@ -29,6 +29,7 @@ import android.content.Intent
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.GridView
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -296,6 +297,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val EXTRA_OPEN_HOME_PLAYLISTS_FRESH = "extra_open_home_playlists_fresh"
         private const val USE_FFMPEG_AUDIO_FOR_MPEG_L2 = true
         private const val PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2 = "pref_use_ffmpeg_audio_for_mpeg_l2"
         private const val PREF_PLAYLISTS = "playlist_profiles"
@@ -927,6 +929,24 @@ class MainActivity : AppCompatActivity() {
             logDebug("NAV", "HOME_GRID_GEOMETRY source=$source leftAnchor=$leftAnchor rightAnchor=$safeRight availableWidth=$availableWidth columns=$columns tileWidth=$tileWidth spacing=$dynamicSpacing firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=$rootWidth")
             logHomeGridRealCoords(source, tileWidth)
         }
+        val tileWidth = if (columns > 1) {
+            ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
+        } else {
+            availableWidth
+        }
+        val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
+        return HomeGridGeometry(
+            columns = columns,
+            rootWidth = rootWidth,
+            leftAnchor = leftAnchor,
+            safeRight = safeRight,
+            availableWidth = availableWidth,
+            spacing = spacing,
+            tileWidth = tileWidth,
+            tileHeight = tileHeight,
+            leftInset = leftInset,
+            rightInset = rightInset
+        )
     }
 
 
