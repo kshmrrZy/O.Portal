@@ -28,6 +28,7 @@ import android.content.Intent
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.GridView
 import android.widget.ImageButton
 import android.widget.ImageView
