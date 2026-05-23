@@ -898,6 +898,38 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val geometry = computeHomeGridGeometry()
+        val columns = geometry.columns
+        val availableWidth = geometry.availableWidth
+        val dynamicSpacing = geometry.spacing
+        val leftAnchor = geometry.leftAnchor
+        val safeRight = geometry.safeRight
+        val rootWidth = geometry.rootWidth
+        val tileWidth = geometry.tileWidth
+        val tileHeight = geometry.tileHeight
+
+        rvHomeTiles.setPadding(geometry.leftInset, rvHomeTiles.paddingTop, geometry.rightInset, rvHomeTiles.paddingBottom)
+        if (homeTilesColumnsApplied != columns) {
+            rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
+            homeTilesColumnsApplied = columns
+        }
+        if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
+            rvHomeTiles.setHasFixedSize(true)
+            rvHomeTiles.itemAnimator = null
+            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, dynamicSpacing, columns)
+            homeTilesWidthApplied = tileWidth
+            homeTilesHeightApplied = tileHeight
+            rvHomeTiles.adapter = homeTilesAdapter
+        }
+        homeTilesAdapter?.submit(items)
+        rvHomeTiles.post {
+            val first = rvHomeTiles.getChildAt(0)
+            val last = rvHomeTiles.getChildAt((rvHomeTiles.childCount - 1).coerceAtLeast(0))
+            val firstLeft = first?.left?.plus(rvHomeTiles.left) ?: -1
+            val lastRight = last?.right?.plus(rvHomeTiles.left) ?: -1
+            logDebug("NAV", "HOME_GRID_GEOMETRY source=$source leftAnchor=$leftAnchor rightAnchor=$safeRight availableWidth=$availableWidth columns=$columns tileWidth=$tileWidth spacing=$dynamicSpacing firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=$rootWidth")
+            logHomeGridRealCoords(source, tileWidth)
+        }
+        val geometry = computeHomeGridGeometry()
         rvHomeTiles.setPadding(geometry.leftInset, rvHomeTiles.paddingTop, geometry.rightInset, rvHomeTiles.paddingBottom)
         if (homeTilesColumnsApplied != geometry.columns) {
             rvHomeTiles.layoutManager = GridLayoutManager(this, geometry.columns)
