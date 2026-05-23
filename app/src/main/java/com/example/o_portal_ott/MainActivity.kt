@@ -24,6 +24,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.graphics.Rect
 import android.content.Intent
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -4003,12 +4004,21 @@ class MainActivity : AppCompatActivity() {
         controlsPanel.isFocusable = false
         controlsPanel.isEnabled = false
         showPlaylistPageOnHome()
+        homePanel.alpha = 1f
+        homePanel.translationX = 0f
+        homePanel.translationY = 0f
+        homePlaylistTilesPanel.alpha = 1f
+        homePlaylistTilesPanel.translationX = 0f
+        homePlaylistTilesPanel.translationY = 0f
         disableHomeCategoryBack("showHomeOnly_post_showPlaylistPageOnHome")
         val recycler = findViewById<RecyclerView>(R.id.rvHomeTiles)
         recycler.visibility = View.VISIBLE
         recycler.isEnabled = true
         recycler.isClickable = true
         recycler.isFocusable = true
+        recycler.alpha = 1f
+        recycler.translationX = 0f
+        recycler.translationY = 0f
         recycler.requestFocus()
         var tilesCount = recycler.adapter?.itemCount ?: 0
         if (tilesCount <= 0) {
@@ -4016,6 +4026,10 @@ class MainActivity : AppCompatActivity() {
             showPlaylistPageOnHome()
             tilesCount = recycler.adapter?.itemCount ?: 0
         }
+        recycler.adapter?.notifyDataSetChanged()
+        recycler.requestLayout()
+        homePlaylistTilesPanel.requestLayout()
+        homePanel.requestLayout()
         recycler.post {
             recycler.requestFocus()
             val firstTile = recycler.getChildAt(0)
@@ -4034,7 +4048,22 @@ class MainActivity : AppCompatActivity() {
                 "NAV",
                 "HOME_INPUT_STATE recyclerShown=${recycler.isShown} recyclerVisibility=${recycler.visibility} recyclerEnabled=${recycler.isEnabled} recyclerClickable=${recycler.isClickable} recyclerFocusable=${recycler.isFocusable} recyclerHasFocus=${recycler.hasFocus()} recyclerFocusedChild=$focusedChild adapterCount=${recycler.adapter?.itemCount ?: 0} rootFindFocus=$rootFocus currentScreen=HOME_PLAYLISTS settingsOpenedFromPlayer=$settingsOpenedFromPlayer loadingOverlayVisible=${tvReloadingStatus.visibility == View.VISIBLE} loadingOverlayClickable=${tvReloadingStatus.isClickable} playerOverlayVisible=${topInfoPanel.visibility == View.VISIBLE || controlsPanel.visibility == View.VISIBLE || topGradientOverlay.visibility == View.VISIBLE} playerOverlayClickable=${topInfoPanel.isClickable || controlsPanel.isClickable || topGradientOverlay.isClickable} categoryOverlayViewId=$categoryOverlayViewId categoryOverlayClass=${categoryOverlay.javaClass.simpleName} categoryOverlayVisibility=${categoryOverlay.visibility} categoryOverlayVisible=${categoryOverlay.visibility == View.VISIBLE} categoryOverlayClickable=${categoryOverlay.isClickable} categoryOverlayEnabled=${categoryOverlay.isEnabled} categoryOverlayFocusable=${categoryOverlay.isFocusable} categoryOverlayAlpha=${categoryOverlay.alpha} categoryOverlayElevation=${categoryOverlay.elevation} channelOverlayVisible=${listBackgroundOverlay.visibility == View.VISIBLE} channelOverlayClickable=${listBackgroundOverlay.isClickable} settingsClickable=${homeSettingsScreen.isClickable || findViewById<View>(R.id.playlistSettingsPanel).isClickable || findViewById<View>(R.id.epgSettingsPanel).isClickable || findViewById<View>(R.id.userSettingsPanel).isClickable}"
             )
+            logHomeLayoutState("HOME_LAYOUT_STATE_INITIAL")
+            logRootChildrenState()
         }
+        recycler.postDelayed({
+            logHomeLayoutState("HOME_LAYOUT_STATE_POST_250MS")
+            val childCount = recycler.childCount
+            val firstTile = recycler.getChildAt(0)
+            val firstRect = Rect()
+            val firstVisible = firstTile?.getGlobalVisibleRect(firstRect) ?: false
+            logDebug(
+                "NAV",
+                "FIRST_TILE_POST_LAYOUT_STATE childCount=$childCount firstExists=${firstTile != null} firstWidth=${firstTile?.width ?: -1} firstHeight=${firstTile?.height ?: -1} firstIsShown=${firstTile?.isShown ?: false} firstAlpha=${firstTile?.alpha ?: -1f} firstGlobalVisible=$firstVisible firstRect=$firstRect parentVisible=${(firstTile?.parent as? View)?.visibility ?: -1} parentAlpha=${(firstTile?.parent as? View)?.alpha ?: -1f}"
+            )
+            recycler.scrollToPosition(0)
+            recycler.requestFocus()
+        }, 250)
         val homeVisible = homePanel.visibility == View.VISIBLE
         val tilesVisible = homePlaylistTilesPanel.visibility == View.VISIBLE && recycler.visibility == View.VISIBLE
         val settingsVisible = homeSettingsScreen.visibility == View.VISIBLE ||
@@ -4048,6 +4077,50 @@ class MainActivity : AppCompatActivity() {
             disableHomeCategoryBack("showHomeOnly_assert_fix")
         }
         logDebug("NAV", "SHOW_HOME_ONLY_DONE currentScreen=HOME_PLAYLISTS homeVisible=$homeVisible tilesVisible=$tilesVisible tilesCount=$tilesCount playerVisible=$playerVisible settingsVisible=$settingsVisible backgroundVisible=$backgroundVisible")
+    }
+
+    private fun logViewGeometry(tag: String, name: String, v: View?) {
+        if (v == null) {
+            logDebug(tag, "$name=null")
+            return
+        }
+        val rect = Rect()
+        val globalVisible = v.getGlobalVisibleRect(rect)
+        val parentView = v.parent as? View
+        val idName = runCatching { resources.getResourceEntryName(v.id) }.getOrDefault("no_id")
+        logDebug(
+            tag,
+            "$name id=$idName class=${v.javaClass.simpleName} visibility=${v.visibility} shown=${v.isShown} alpha=${v.alpha} w=${v.width} h=${v.height} x=${v.x} y=${v.y} tx=${v.translationX} ty=${v.translationY} elevation=${v.elevation} z=${v.z} globalVisible=$globalVisible rect=$rect attached=${v.isAttachedToWindow} parentClass=${parentView?.javaClass?.simpleName} parentVisibility=${parentView?.visibility ?: -1} parentAlpha=${parentView?.alpha ?: -1f} parentW=${parentView?.width ?: -1} parentH=${parentView?.height ?: -1}"
+        )
+    }
+
+    private fun logHomeLayoutState(tag: String) {
+        val recycler = findViewById<RecyclerView>(R.id.rvHomeTiles)
+        val root = findViewById<View>(android.R.id.content)
+        logViewGeometry(tag, "homePanel", homePanel)
+        logViewGeometry(tag, "homePlaylistTilesPanel", homePlaylistTilesPanel)
+        logViewGeometry(tag, "rvHomeTiles", recycler)
+        logViewGeometry(tag, "firstTile", recycler.getChildAt(0))
+        logViewGeometry(tag, "rootContent", root)
+        logViewGeometry(tag, "topGradientOverlay", topGradientOverlay)
+        logViewGeometry(tag, "topInfoPanel", topInfoPanel)
+        logViewGeometry(tag, "controlsPanel", controlsPanel)
+        logViewGeometry(tag, "playerSettingsOverlay", playerSettingsOverlay)
+        logViewGeometry(tag, "homeSettingsScreen", homeSettingsScreen)
+        logViewGeometry(tag, "listBackgroundOverlay", listBackgroundOverlay)
+        logViewGeometry(tag, "tvReloadingStatus", tvReloadingStatus)
+    }
+
+    private fun logRootChildrenState() {
+        val root = findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as? ViewGroup ?: return
+        for (i in 0 until root.childCount) {
+            val child = root.getChildAt(i)
+            val idName = runCatching { resources.getResourceEntryName(child.id) }.getOrDefault("no_id")
+            logDebug(
+                "NAV",
+                "ROOT_CHILDREN_STATE idx=$i id=$idName class=${child.javaClass.simpleName} visibility=${child.visibility} shown=${child.isShown} alpha=${child.alpha} clickable=${child.isClickable} enabled=${child.isEnabled} w=${child.width} h=${child.height} elevation=${child.elevation} z=${child.z}"
+            )
+        }
     }
 
     private fun disableHomeCategoryBack(source: String) {
