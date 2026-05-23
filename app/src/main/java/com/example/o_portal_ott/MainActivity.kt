@@ -703,6 +703,10 @@ class MainActivity : AppCompatActivity() {
         homePanel.visibility = View.VISIBLE
         homePlaylistTilesPanel.visibility = View.GONE
         tvHomeCategoryBack.visibility = View.GONE
+        tvHomeCategoryBack.isClickable = false
+        tvHomeCategoryBack.isFocusable = false
+        tvHomeCategoryBack.isEnabled = false
+        tvHomeCategoryBack.setOnClickListener(null)
         homePanel.post { applyHomeScreenScale(force = true) }
         topInfoPanel.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
@@ -4031,9 +4035,11 @@ class MainActivity : AppCompatActivity() {
             }
             val focusedChild = recycler.focusedChild?.javaClass?.simpleName ?: "null"
             val rootFocus = window.decorView.findFocus()?.javaClass?.simpleName ?: "null"
+            val categoryOverlay = findViewById<View>(R.id.tvHomeCategoryBack)
+            val categoryOverlayViewId = runCatching { resources.getResourceEntryName(categoryOverlay.id) }.getOrDefault("no_id")
             logDebug(
                 "NAV",
-                "HOME_INPUT_STATE recyclerShown=${recycler.isShown} recyclerVisibility=${recycler.visibility} recyclerEnabled=${recycler.isEnabled} recyclerClickable=${recycler.isClickable} recyclerFocusable=${recycler.isFocusable} recyclerHasFocus=${recycler.hasFocus()} recyclerFocusedChild=$focusedChild adapterCount=${recycler.adapter?.itemCount ?: 0} rootFindFocus=$rootFocus currentScreen=HOME_PLAYLISTS settingsOpenedFromPlayer=$settingsOpenedFromPlayer loadingOverlayVisible=${tvReloadingStatus.visibility == View.VISIBLE} loadingOverlayClickable=${tvReloadingStatus.isClickable} playerOverlayVisible=${topInfoPanel.visibility == View.VISIBLE || controlsPanel.visibility == View.VISIBLE || topGradientOverlay.visibility == View.VISIBLE} playerOverlayClickable=${topInfoPanel.isClickable || controlsPanel.isClickable || topGradientOverlay.isClickable} categoryOverlayVisible=${tvHomeCategoryBack.visibility == View.VISIBLE} categoryOverlayClickable=${tvHomeCategoryBack.isClickable} channelOverlayVisible=${listBackgroundOverlay.visibility == View.VISIBLE} channelOverlayClickable=${listBackgroundOverlay.isClickable} settingsClickable=${homeSettingsScreen.isClickable || findViewById<View>(R.id.playlistSettingsPanel).isClickable || findViewById<View>(R.id.epgSettingsPanel).isClickable || findViewById<View>(R.id.userSettingsPanel).isClickable}"
+                "HOME_INPUT_STATE recyclerShown=${recycler.isShown} recyclerVisibility=${recycler.visibility} recyclerEnabled=${recycler.isEnabled} recyclerClickable=${recycler.isClickable} recyclerFocusable=${recycler.isFocusable} recyclerHasFocus=${recycler.hasFocus()} recyclerFocusedChild=$focusedChild adapterCount=${recycler.adapter?.itemCount ?: 0} rootFindFocus=$rootFocus currentScreen=HOME_PLAYLISTS settingsOpenedFromPlayer=$settingsOpenedFromPlayer loadingOverlayVisible=${tvReloadingStatus.visibility == View.VISIBLE} loadingOverlayClickable=${tvReloadingStatus.isClickable} playerOverlayVisible=${topInfoPanel.visibility == View.VISIBLE || controlsPanel.visibility == View.VISIBLE || topGradientOverlay.visibility == View.VISIBLE} playerOverlayClickable=${topInfoPanel.isClickable || controlsPanel.isClickable || topGradientOverlay.isClickable} categoryOverlayViewId=$categoryOverlayViewId categoryOverlayClass=${categoryOverlay.javaClass.simpleName} categoryOverlayVisibility=${categoryOverlay.visibility} categoryOverlayVisible=${categoryOverlay.visibility == View.VISIBLE} categoryOverlayClickable=${categoryOverlay.isClickable} categoryOverlayEnabled=${categoryOverlay.isEnabled} categoryOverlayFocusable=${categoryOverlay.isFocusable} categoryOverlayAlpha=${categoryOverlay.alpha} categoryOverlayElevation=${categoryOverlay.elevation} channelOverlayVisible=${listBackgroundOverlay.visibility == View.VISIBLE} channelOverlayClickable=${listBackgroundOverlay.isClickable} settingsClickable=${homeSettingsScreen.isClickable || findViewById<View>(R.id.playlistSettingsPanel).isClickable || findViewById<View>(R.id.epgSettingsPanel).isClickable || findViewById<View>(R.id.userSettingsPanel).isClickable}"
             )
         }
         val homeVisible = homePanel.visibility == View.VISIBLE
