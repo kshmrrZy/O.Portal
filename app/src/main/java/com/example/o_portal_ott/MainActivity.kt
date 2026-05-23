@@ -897,40 +897,6 @@ class MainActivity : AppCompatActivity() {
             }
             return
         }
-        run {
-            val geometry = computeHomeGridGeometry()
-            val columns = geometry.columns
-            val availableWidth = geometry.availableWidth
-            val dynamicSpacing = geometry.spacing
-            val leftAnchor = geometry.leftAnchor
-            val safeRight = geometry.safeRight
-            val rootWidth = geometry.rootWidth
-            val tileWidth = geometry.tileWidth
-            val tileHeight = geometry.tileHeight
-
-            rvHomeTiles.setPadding(geometry.leftInset, rvHomeTiles.paddingTop, geometry.rightInset, rvHomeTiles.paddingBottom)
-            if (homeTilesColumnsApplied != columns) {
-                rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
-                homeTilesColumnsApplied = columns
-            }
-            if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
-                rvHomeTiles.setHasFixedSize(true)
-                rvHomeTiles.itemAnimator = null
-                homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, dynamicSpacing, columns)
-                homeTilesWidthApplied = tileWidth
-                homeTilesHeightApplied = tileHeight
-                rvHomeTiles.adapter = homeTilesAdapter
-            }
-            homeTilesAdapter?.submit(items)
-            rvHomeTiles.post {
-                val first = rvHomeTiles.getChildAt(0)
-                val last = rvHomeTiles.getChildAt((rvHomeTiles.childCount - 1).coerceAtLeast(0))
-                val firstLeft = first?.left?.plus(rvHomeTiles.left) ?: -1
-                val lastRight = last?.right?.plus(rvHomeTiles.left) ?: -1
-                logDebug("NAV", "HOME_GRID_GEOMETRY source=$source leftAnchor=$leftAnchor rightAnchor=$safeRight availableWidth=$availableWidth columns=$columns tileWidth=$tileWidth spacing=$dynamicSpacing firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=$rootWidth")
-                logHomeGridRealCoords(source, tileWidth)
-            }
-        }
         val geometry = computeHomeGridGeometry()
         val columns = geometry.columns
         val availableWidth = geometry.availableWidth
@@ -963,64 +929,24 @@ class MainActivity : AppCompatActivity() {
             logDebug("NAV", "HOME_GRID_GEOMETRY source=$source leftAnchor=$leftAnchor rightAnchor=$safeRight availableWidth=$availableWidth columns=$columns tileWidth=$tileWidth spacing=$dynamicSpacing firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=$rootWidth")
             logHomeGridRealCoords(source, tileWidth)
         }
-        val geometry = computeHomeGridGeometry()
-        rvHomeTiles.setPadding(geometry.leftInset, rvHomeTiles.paddingTop, geometry.rightInset, rvHomeTiles.paddingBottom)
-        if (homeTilesColumnsApplied != geometry.columns) {
-            rvHomeTiles.layoutManager = GridLayoutManager(this, geometry.columns)
-            homeTilesColumnsApplied = geometry.columns
-        }
-        if (homeTilesAdapter == null || homeTilesWidthApplied != geometry.tileWidth || homeTilesHeightApplied != geometry.tileHeight) {
-            rvHomeTiles.setHasFixedSize(true)
-            rvHomeTiles.itemAnimator = null
-            homeTilesAdapter = HomeTilesAdapter(geometry.tileWidth, geometry.tileHeight, geometry.spacing, geometry.columns)
-            homeTilesWidthApplied = geometry.tileWidth
-            homeTilesHeightApplied = geometry.tileHeight
-            rvHomeTiles.adapter = homeTilesAdapter
-        }
-        homeTilesAdapter?.submit(items)
-        rvHomeTiles.post {
-            val first = rvHomeTiles.getChildAt(0)
-            val last = rvHomeTiles.getChildAt((rvHomeTiles.childCount - 1).coerceAtLeast(0))
-            val firstLeft = first?.left?.plus(rvHomeTiles.left) ?: -1
-            val lastRight = last?.right?.plus(rvHomeTiles.left) ?: -1
-            logDebug("NAV", "HOME_GRID_GEOMETRY source=$source leftAnchor=${geometry.leftAnchor} rightAnchor=${geometry.safeRight} availableWidth=${geometry.availableWidth} columns=${geometry.columns} tileWidth=${geometry.tileWidth} spacing=${geometry.spacing} firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=${geometry.rootWidth}")
-            logHomeGridRealCoords(source, geometry.tileWidth)
-        }
         val tileWidth = if (columns > 1) {
-            ((availableWidth - dynamicSpacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
+            ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
         } else {
             availableWidth
         }
         val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
-        if (homeTilesColumnsApplied != columns) {
-            rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
-            homeTilesColumnsApplied = columns
-        }
-        if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
-            rvHomeTiles.setHasFixedSize(true)
-            rvHomeTiles.itemAnimator = null
-            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, dynamicSpacing, columns)
-            homeTilesWidthApplied = tileWidth
-            homeTilesHeightApplied = tileHeight
-            rvHomeTiles.adapter = homeTilesAdapter
-        }
-        homeTilesAdapter?.submit(items)
-        rvHomeTiles.post {
-            val first = rvHomeTiles.getChildAt(0)
-            val last = rvHomeTiles.getChildAt((rvHomeTiles.childCount - 1).coerceAtLeast(0))
-            val firstLeft = first?.left?.plus(rvHomeTiles.left) ?: -1
-            val lastRight = last?.right?.plus(rvHomeTiles.left) ?: -1
-            logDebug("NAV", "HOME_GRID_GEOMETRY source=$source leftAnchor=$leftAnchor rightAnchor=$safeRight availableWidth=$availableWidth columns=$columns tileWidth=$tileWidth spacing=$dynamicSpacing firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=$rootWidth")
-        }
-        if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
-            rvHomeTiles.setHasFixedSize(true)
-            rvHomeTiles.itemAnimator = null
-            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, dynamicSpacing, columns)
-            homeTilesWidthApplied = tileWidth
-            homeTilesHeightApplied = tileHeight
-            rvHomeTiles.adapter = homeTilesAdapter
-        }
-        homeTilesAdapter?.submit(items)
+        return HomeGridGeometry(
+            columns = columns,
+            rootWidth = rootWidth,
+            leftAnchor = leftAnchor,
+            safeRight = safeRight,
+            availableWidth = availableWidth,
+            spacing = spacing,
+            tileWidth = tileWidth,
+            tileHeight = tileHeight,
+            leftInset = leftInset,
+            rightInset = rightInset
+        )
     }
 
 
