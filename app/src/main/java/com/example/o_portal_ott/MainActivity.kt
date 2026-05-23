@@ -4051,15 +4051,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun disableHomeCategoryBack(source: String) {
-        tvHomeCategoryBack.visibility = View.GONE
-        tvHomeCategoryBack.isClickable = false
-        tvHomeCategoryBack.isFocusable = false
-        tvHomeCategoryBack.isEnabled = false
-        tvHomeCategoryBack.setOnClickListener(null)
-        tvHomeCategoryBack.onFocusChangeListener = null
         logDebug(
             "NAV",
-            "DISABLE_HOME_CATEGORY_BACK_DONE source=$source visibility=${tvHomeCategoryBack.visibility} clickable=${tvHomeCategoryBack.isClickable} enabled=${tvHomeCategoryBack.isEnabled} focusable=${tvHomeCategoryBack.isFocusable}"
+            "DISABLE_HOME_CATEGORY_BACK_BEFORE source=$source visibility=${tvHomeCategoryBack.visibility} clickable=${tvHomeCategoryBack.isClickable} enabled=${tvHomeCategoryBack.isEnabled} focusable=${tvHomeCategoryBack.isFocusable} hasOnClickListeners=${tvHomeCategoryBack.hasOnClickListeners()}"
+        )
+        tvHomeCategoryBack.setOnClickListener(null)
+        tvHomeCategoryBack.setOnLongClickListener(null)
+        tvHomeCategoryBack.onFocusChangeListener = null
+        tvHomeCategoryBack.isClickable = false
+        tvHomeCategoryBack.isLongClickable = false
+        tvHomeCategoryBack.isFocusable = false
+        tvHomeCategoryBack.isFocusableInTouchMode = false
+        tvHomeCategoryBack.isEnabled = false
+        tvHomeCategoryBack.visibility = View.GONE
+
+        if (tvHomeCategoryBack.isClickable) {
+            tvHomeCategoryBack.clearFocus()
+            tvHomeCategoryBack.clearAnimation()
+            tvHomeCategoryBack.cancelPendingInputEvents()
+            tvHomeCategoryBack.setOnTouchListener { _, _ -> false }
+            tvHomeCategoryBack.isClickable = false
+            tvHomeCategoryBack.isLongClickable = false
+        }
+        logDebug(
+            "NAV",
+            "DISABLE_HOME_CATEGORY_BACK_AFTER source=$source visibility=${tvHomeCategoryBack.visibility} clickable=${tvHomeCategoryBack.isClickable} enabled=${tvHomeCategoryBack.isEnabled} focusable=${tvHomeCategoryBack.isFocusable} hasOnClickListeners=${tvHomeCategoryBack.hasOnClickListeners()}"
         )
     }
 
