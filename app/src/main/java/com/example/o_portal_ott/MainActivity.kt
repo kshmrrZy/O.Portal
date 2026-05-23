@@ -4003,6 +4003,10 @@ class MainActivity : AppCompatActivity() {
         controlsPanel.isClickable = false
         controlsPanel.isFocusable = false
         controlsPanel.isEnabled = false
+        tvHomeAppTitle.visibility = View.VISIBLE
+        tvHomeSystemTime.visibility = View.VISIBLE
+        ivHomeSettings.visibility = View.VISIBLE
+        ivHomePower.visibility = View.VISIBLE
         showPlaylistPageOnHome()
         homePanel.alpha = 1f
         homePanel.translationX = 0f
@@ -4010,8 +4014,21 @@ class MainActivity : AppCompatActivity() {
         homePlaylistTilesPanel.alpha = 1f
         homePlaylistTilesPanel.translationX = 0f
         homePlaylistTilesPanel.translationY = 0f
+        (homePlaylistTilesPanel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.width = 0
+            lp.height = 0
+            lp.startToStart = ConstraintSet.PARENT_ID
+            lp.endToEnd = ConstraintSet.PARENT_ID
+            lp.topToBottom = R.id.tvHomeAppTitle
+            lp.bottomToBottom = ConstraintSet.PARENT_ID
+            homePlaylistTilesPanel.layoutParams = lp
+        }
         disableHomeCategoryBack("showHomeOnly_post_showPlaylistPageOnHome")
         val recycler = findViewById<RecyclerView>(R.id.rvHomeTiles)
+        (recycler.layoutParams as? ViewGroup.LayoutParams)?.let { lp ->
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            recycler.layoutParams = lp
+        }
         recycler.visibility = View.VISIBLE
         recycler.isEnabled = true
         recycler.isClickable = true
