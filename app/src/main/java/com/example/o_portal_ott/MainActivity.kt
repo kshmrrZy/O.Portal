@@ -837,6 +837,56 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private data class HomeGridGeometry(
+        val columns: Int,
+        val rootWidth: Int,
+        val leftAnchor: Int,
+        val safeRight: Int,
+        val availableWidth: Int,
+        val spacing: Int,
+        val tileWidth: Int,
+        val tileHeight: Int,
+        val leftInset: Int,
+        val rightInset: Int
+    )
+
+    private fun computeHomeGridGeometry(): HomeGridGeometry {
+        val columns = computeHomeTileColumns()
+        val rootWidth = (findViewById<View>(android.R.id.content).width).coerceAtLeast(resources.displayMetrics.widthPixels)
+        val screenRightPadding = dpToPx(8)
+        val leftAnchor = tvHomeAppTitle.left
+        val safeRight = minOf(ivHomePower.right, rootWidth - screenRightPadding)
+        val rvLeft = rvHomeTiles.left
+        val rvRight = rvHomeTiles.right
+        val leftInset = (leftAnchor - rvLeft).coerceAtLeast(0)
+        val rightInset = (rvRight - safeRight).coerceAtLeast(0)
+        val availableWidth = (safeRight - leftAnchor).coerceAtLeast(dpToPx(320))
+        val preferredTileWidth = dpToPx(112)
+        val spacing = if (columns > 1) {
+            ((availableWidth - preferredTileWidth * columns) / (columns - 1)).coerceIn(dpToPx(10), dpToPx(20))
+        } else {
+            0
+        }
+        val tileWidth = if (columns > 1) {
+            ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
+        } else {
+            availableWidth
+        }
+        val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
+        return HomeGridGeometry(
+            columns = columns,
+            rootWidth = rootWidth,
+            leftAnchor = leftAnchor,
+            safeRight = safeRight,
+            availableWidth = availableWidth,
+            spacing = spacing,
+            tileWidth = tileWidth,
+            tileHeight = tileHeight,
+            leftInset = leftInset,
+            rightInset = rightInset
+        )
+    }
+
     private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic") {
         currentHomeTilesItems = items
         if (rvHomeTiles.width <= 0) {
@@ -847,40 +897,18 @@ class MainActivity : AppCompatActivity() {
             }
             return
         }
-        val columns = computeHomeTileColumns()
-        val rootWidth = (findViewById<View>(android.R.id.content).width).coerceAtLeast(resources.displayMetrics.widthPixels)
-        val screenRightPadding = dpToPx(8)
-        val leftAnchor = tvHomeAppTitle.left
-        val safeRight = minOf(ivHomePower.right, rootWidth - screenRightPadding)
-        val rvLeft = rvHomeTiles.left
-        val rvRight = rvHomeTiles.right
-        val leftInset = (leftAnchor - rvLeft).coerceAtLeast(0)
-        val rightInset = (rvRight - safeRight).coerceAtLeast(0)
-        rvHomeTiles.setPadding(leftInset, rvHomeTiles.paddingTop, rightInset, rvHomeTiles.paddingBottom)
-
-        val availableWidth = (safeRight - leftAnchor).coerceAtLeast(dpToPx(320))
-        val preferredTileWidth = dpToPx(112)
-        val dynamicSpacing = if (columns > 1) {
-            ((availableWidth - preferredTileWidth * columns) / (columns - 1)).coerceIn(dpToPx(10), dpToPx(20))
-        } else {
-            0
+        val geometry = computeHomeGridGeometry()
+        rvHomeTiles.setPadding(geometry.leftInset, rvHomeTiles.paddingTop, geometry.rightInset, rvHomeTiles.paddingBottom)
+        if (homeTilesColumnsApplied != geometry.columns) {
+            rvHomeTiles.layoutManager = GridLayoutManager(this, geometry.columns)
+            homeTilesColumnsApplied = geometry.columns
         }
-        val tileWidth = if (columns > 1) {
-            ((availableWidth - dynamicSpacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
-        } else {
-            availableWidth
-        }
-        val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
-        if (homeTilesColumnsApplied != columns) {
-            rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
-            homeTilesColumnsApplied = columns
-        }
-        if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
+        if (homeTilesAdapter == null || homeTilesWidthApplied != geometry.tileWidth || homeTilesHeightApplied != geometry.tileHeight) {
             rvHomeTiles.setHasFixedSize(true)
             rvHomeTiles.itemAnimator = null
-            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, dynamicSpacing, columns)
-            homeTilesWidthApplied = tileWidth
-            homeTilesHeightApplied = tileHeight
+            homeTilesAdapter = HomeTilesAdapter(geometry.tileWidth, geometry.tileHeight, geometry.spacing, geometry.columns)
+            homeTilesWidthApplied = geometry.tileWidth
+            homeTilesHeightApplied = geometry.tileHeight
             rvHomeTiles.adapter = homeTilesAdapter
         }
         homeTilesAdapter?.submit(items)
@@ -889,26 +917,8 @@ class MainActivity : AppCompatActivity() {
             val last = rvHomeTiles.getChildAt((rvHomeTiles.childCount - 1).coerceAtLeast(0))
             val firstLeft = first?.left?.plus(rvHomeTiles.left) ?: -1
             val lastRight = last?.right?.plus(rvHomeTiles.left) ?: -1
-            logDebug("NAV", "HOME_GRID_GEOMETRY source=$source leftAnchor=$leftAnchor rightAnchor=$safeRight availableWidth=$availableWidth columns=$columns tileWidth=$tileWidth spacing=$dynamicSpacing firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=$rootWidth")
-            logHomeGridRealCoords(source, tileWidth)
-        }
-        val columns = computeHomeTileColumns()
-        val rootWidth = (findViewById<View>(android.R.id.content).width).coerceAtLeast(resources.displayMetrics.widthPixels)
-        val screenRightPadding = dpToPx(8)
-        val leftAnchor = tvHomeAppTitle.left
-        val safeRight = minOf(ivHomePower.right, rootWidth - screenRightPadding)
-        val rvLeft = rvHomeTiles.left
-        val rvRight = rvHomeTiles.right
-        val leftInset = (leftAnchor - rvLeft).coerceAtLeast(0)
-        val rightInset = (rvRight - safeRight).coerceAtLeast(0)
-        rvHomeTiles.setPadding(leftInset, rvHomeTiles.paddingTop, rightInset, rvHomeTiles.paddingBottom)
-
-        val availableWidth = (safeRight - leftAnchor).coerceAtLeast(dpToPx(320))
-        val preferredTileWidth = dpToPx(112)
-        val dynamicSpacing = if (columns > 1) {
-            ((availableWidth - preferredTileWidth * columns) / (columns - 1)).coerceIn(dpToPx(10), dpToPx(20))
-        } else {
-            0
+            logDebug("NAV", "HOME_GRID_GEOMETRY source=$source leftAnchor=${geometry.leftAnchor} rightAnchor=${geometry.safeRight} availableWidth=${geometry.availableWidth} columns=${geometry.columns} tileWidth=${geometry.tileWidth} spacing=${geometry.spacing} firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=${geometry.rootWidth}")
+            logHomeGridRealCoords(source, geometry.tileWidth)
         }
         val tileWidth = if (columns > 1) {
             ((availableWidth - dynamicSpacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
