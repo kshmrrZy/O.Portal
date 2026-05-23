@@ -736,7 +736,8 @@ class MainActivity : AppCompatActivity() {
     private inner class HomeTilesAdapter(
         private val tileWidth: Int,
         private val tileHeight: Int,
-        private val spacing: Int
+        private val spacing: Int,
+        private val columns: Int
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         private var tileItems: List<HomeTileItem> = emptyList()
 
@@ -771,8 +772,8 @@ class MainActivity : AppCompatActivity() {
                 )
             )
             val lp = RecyclerView.LayoutParams(tileWidth, tileHeight)
-            lp.leftMargin = spacing / 2
-            lp.rightMargin = spacing / 2
+            lp.leftMargin = 0
+            lp.rightMargin = 0
             lp.bottomMargin = spacing
             root.layoutParams = lp
             return object : RecyclerView.ViewHolder(root) {}
@@ -783,6 +784,11 @@ class MainActivity : AppCompatActivity() {
             val tv = root.getChildAt(0) as TextView
             val item = tileItems[position]
             tv.text = item.title
+            val col = if (columns > 0) position % columns else 0
+            val lp = root.layoutParams as RecyclerView.LayoutParams
+            lp.leftMargin = if (col == 0) 0 else spacing / 2
+            lp.rightMargin = if (col == columns - 1) 0 else spacing / 2
+            root.layoutParams = lp
             root.setOnClickListener {
                 logDebug("NAV", "HOME_TILE_ROOT_CLICK_RECEIVED name=${item.title}")
                 item.onClick()
@@ -811,7 +817,7 @@ class MainActivity : AppCompatActivity() {
         val rightInset = ((rvX + rvW) - rightEdge).toInt().coerceAtLeast(0)
         rvHomeTiles.setPadding(leftInset, rvHomeTiles.paddingTop, rightInset, rvHomeTiles.paddingBottom)
 
-        val availableWidth = (rvHomeTiles.width - leftInset - rightInset).coerceAtLeast(dpToPx(320))
+        val availableWidth = (rightEdge - leftEdge).toInt().coerceAtLeast(dpToPx(320))
         val preferredTileWidth = dpToPx(112)
         val dynamicSpacing = if (columns > 1) {
             ((availableWidth - preferredTileWidth * columns) / (columns - 1)).coerceIn(dpToPx(10), dpToPx(20))
@@ -831,7 +837,7 @@ class MainActivity : AppCompatActivity() {
         if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
             rvHomeTiles.setHasFixedSize(true)
             rvHomeTiles.itemAnimator = null
-            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, dynamicSpacing)
+            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, dynamicSpacing, columns)
             homeTilesWidthApplied = tileWidth
             homeTilesHeightApplied = tileHeight
             rvHomeTiles.adapter = homeTilesAdapter
