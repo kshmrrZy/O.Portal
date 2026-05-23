@@ -413,7 +413,7 @@ class MainActivity : AppCompatActivity() {
         loadPlaylist(showErrors = true, autoPlay = true)
         if (!shouldOpenLastChannelOnStart) {
             val hasThirdParty = getThirdPartyPlaylistProfiles().isNotEmpty()
-            if (isAuthorizedUser || hasThirdParty) showPlaylistPageOnHome() else showStartPage()
+            if (isAuthorizedUser || hasThirdParty) showPlaylistPageOnHome(source = "cold_start") else showStartPage()
         }
     }
 
@@ -798,6 +798,45 @@ class MainActivity : AppCompatActivity() {
         override fun getItemCount(): Int = tileItems.size
     }
 
+    private fun logHomeGridRealCoords(source: String, tileWidth: Int) {
+        rvHomeTiles.post {
+            val rootView = findViewById<View>(android.R.id.content)
+            fun View.globalLeft(): Int {
+                val loc = IntArray(2)
+                getLocationOnScreen(loc)
+                return loc[0]
+            }
+            fun View.globalRight(): Int {
+                val loc = IntArray(2)
+                getLocationOnScreen(loc)
+                return loc[0] + width
+            }
+            val portalLeft = tvHomeAppTitle.globalLeft()
+            val powerRight = ivHomePower.globalRight()
+            val recyclerLeft = rvHomeTiles.globalLeft()
+            val recyclerRight = rvHomeTiles.globalRight()
+            val first = rvHomeTiles.getChildAt(0)
+            val last = rvHomeTiles.getChildAt((rvHomeTiles.childCount - 1).coerceAtLeast(0))
+            val firstLeft = first?.globalLeft() ?: -1
+            val firstRight = first?.globalRight() ?: -1
+            val lastLeft = last?.globalLeft() ?: -1
+            val lastRight = last?.globalRight() ?: -1
+
+            val rowChildren = (0 until rvHomeTiles.childCount)
+                .mapNotNull { rvHomeTiles.getChildAt(it) }
+                .filter { it.top == (first?.top ?: Int.MIN_VALUE) }
+                .sortedBy { it.left }
+            val gap1 = if (rowChildren.size >= 2) rowChildren[1].left - rowChildren[0].right else -1
+            val gap2 = if (rowChildren.size >= 3) rowChildren[2].left - rowChildren[1].right else -1
+            val gap3 = if (rowChildren.size >= 4) rowChildren[3].left - rowChildren[2].right else -1
+
+            logDebug(
+                "NAV",
+                "HOME_GRID_REAL_COORDS source=$source rootWidth=${rootView.width} portalLeft=$portalLeft powerRight=$powerRight recyclerLeft=$recyclerLeft recyclerRight=$recyclerRight recyclerWidth=${rvHomeTiles.width} paddingLeft=${rvHomeTiles.paddingLeft} paddingRight=${rvHomeTiles.paddingRight} firstTileLeft=$firstLeft firstTileRight=$firstRight lastTileLeft=$lastLeft lastTileRight=$lastRight tileWidth=$tileWidth gap1=$gap1 gap2=$gap2 gap3=$gap3"
+            )
+        }
+    }
+
     private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic") {
         currentHomeTilesItems = items
         if (rvHomeTiles.width <= 0) {
@@ -807,6 +846,51 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             return
+        }
+        val columns = computeHomeTileColumns()
+        val rootWidth = (findViewById<View>(android.R.id.content).width).coerceAtLeast(resources.displayMetrics.widthPixels)
+        val screenRightPadding = dpToPx(8)
+        val leftAnchor = tvHomeAppTitle.left
+        val safeRight = minOf(ivHomePower.right, rootWidth - screenRightPadding)
+        val rvLeft = rvHomeTiles.left
+        val rvRight = rvHomeTiles.right
+        val leftInset = (leftAnchor - rvLeft).coerceAtLeast(0)
+        val rightInset = (rvRight - safeRight).coerceAtLeast(0)
+        rvHomeTiles.setPadding(leftInset, rvHomeTiles.paddingTop, rightInset, rvHomeTiles.paddingBottom)
+
+        val availableWidth = (safeRight - leftAnchor).coerceAtLeast(dpToPx(320))
+        val preferredTileWidth = dpToPx(112)
+        val dynamicSpacing = if (columns > 1) {
+            ((availableWidth - preferredTileWidth * columns) / (columns - 1)).coerceIn(dpToPx(10), dpToPx(20))
+        } else {
+            0
+        }
+        val tileWidth = if (columns > 1) {
+            ((availableWidth - dynamicSpacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
+        } else {
+            availableWidth
+        }
+        val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
+        if (homeTilesColumnsApplied != columns) {
+            rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
+            homeTilesColumnsApplied = columns
+        }
+        if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
+            rvHomeTiles.setHasFixedSize(true)
+            rvHomeTiles.itemAnimator = null
+            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, dynamicSpacing, columns)
+            homeTilesWidthApplied = tileWidth
+            homeTilesHeightApplied = tileHeight
+            rvHomeTiles.adapter = homeTilesAdapter
+        }
+        homeTilesAdapter?.submit(items)
+        rvHomeTiles.post {
+            val first = rvHomeTiles.getChildAt(0)
+            val last = rvHomeTiles.getChildAt((rvHomeTiles.childCount - 1).coerceAtLeast(0))
+            val firstLeft = first?.left?.plus(rvHomeTiles.left) ?: -1
+            val lastRight = last?.right?.plus(rvHomeTiles.left) ?: -1
+            logDebug("NAV", "HOME_GRID_GEOMETRY source=$source leftAnchor=$leftAnchor rightAnchor=$safeRight availableWidth=$availableWidth columns=$columns tileWidth=$tileWidth spacing=$dynamicSpacing firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=$rootWidth")
+            logHomeGridRealCoords(source, tileWidth)
         }
         val columns = computeHomeTileColumns()
         val rootWidth = (findViewById<View>(android.R.id.content).width).coerceAtLeast(resources.displayMetrics.widthPixels)
@@ -884,7 +968,7 @@ class MainActivity : AppCompatActivity() {
         } }, source = "third_party")
     }
 
-    private fun showPlaylistPageOnHome() {
+    private fun showPlaylistPageOnHome(source: String = "playlist_page") {
         showStartPage()
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
@@ -915,7 +999,7 @@ class MainActivity : AppCompatActivity() {
                 setSelectedPlaylistName(p.name)
                 loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
             }
-        } }, source = "home_playlists")
+        } }, source = source)
     }
 
 
@@ -4045,7 +4129,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeSystemTime.visibility = View.VISIBLE
         ivHomeSettings.visibility = View.VISIBLE
         ivHomePower.visibility = View.VISIBLE
-        showPlaylistPageOnHome()
+        showPlaylistPageOnHome(source = "exit_player")
         homePanel.alpha = 1f
         homePanel.translationX = 0f
         homePanel.translationY = 0f
@@ -4078,7 +4162,7 @@ class MainActivity : AppCompatActivity() {
         var tilesCount = recycler.adapter?.itemCount ?: 0
         if (tilesCount <= 0) {
             logDebug("NAV", "CLICK_BLOCKED reason=home_tiles_empty_rebind")
-            showPlaylistPageOnHome()
+            showPlaylistPageOnHome(source = "exit_player")
             tilesCount = recycler.adapter?.itemCount ?: 0
         }
         recycler.adapter?.notifyDataSetChanged()
