@@ -798,31 +798,59 @@ class MainActivity : AppCompatActivity() {
         override fun getItemCount(): Int = tileItems.size
     }
 
-    private fun bindHomeTiles(items: List<HomeTileItem>) {
+    private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic") {
         currentHomeTilesItems = items
         if (rvHomeTiles.width <= 0) {
             rvHomeTiles.post {
                 if (currentHomeTilesItems === items || currentHomeTilesItems == items) {
-                    bindHomeTiles(currentHomeTilesItems)
+                    bindHomeTiles(currentHomeTilesItems, source)
                 }
             }
             return
         }
         val columns = computeHomeTileColumns()
-        val rvX = rvHomeTiles.x
-        val rvW = rvHomeTiles.width.toFloat()
-        val leftEdge = tvHomeAppTitle.x
-        val rightEdge = ivHomePower.x + ivHomePower.width
-        val leftInset = (leftEdge - rvX).toInt().coerceAtLeast(0)
-        val rightInset = ((rvX + rvW) - rightEdge).toInt().coerceAtLeast(0)
+        val rootWidth = (findViewById<View>(android.R.id.content).width).coerceAtLeast(resources.displayMetrics.widthPixels)
+        val screenRightPadding = dpToPx(8)
+        val leftAnchor = tvHomeAppTitle.left
+        val safeRight = minOf(ivHomePower.right, rootWidth - screenRightPadding)
+        val rvLeft = rvHomeTiles.left
+        val rvRight = rvHomeTiles.right
+        val leftInset = (leftAnchor - rvLeft).coerceAtLeast(0)
+        val rightInset = (rvRight - safeRight).coerceAtLeast(0)
         rvHomeTiles.setPadding(leftInset, rvHomeTiles.paddingTop, rightInset, rvHomeTiles.paddingBottom)
 
-        val availableWidth = (rightEdge - leftEdge).toInt().coerceAtLeast(dpToPx(320))
+        val availableWidth = (safeRight - leftAnchor).coerceAtLeast(dpToPx(320))
         val preferredTileWidth = dpToPx(112)
         val dynamicSpacing = if (columns > 1) {
             ((availableWidth - preferredTileWidth * columns) / (columns - 1)).coerceIn(dpToPx(10), dpToPx(20))
         } else {
             0
+        }
+        val tileWidth = if (columns > 1) {
+            ((availableWidth - dynamicSpacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
+        } else {
+            availableWidth
+        }
+        val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
+        if (homeTilesColumnsApplied != columns) {
+            rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
+            homeTilesColumnsApplied = columns
+        }
+        if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
+            rvHomeTiles.setHasFixedSize(true)
+            rvHomeTiles.itemAnimator = null
+            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, dynamicSpacing, columns)
+            homeTilesWidthApplied = tileWidth
+            homeTilesHeightApplied = tileHeight
+            rvHomeTiles.adapter = homeTilesAdapter
+        }
+        homeTilesAdapter?.submit(items)
+        rvHomeTiles.post {
+            val first = rvHomeTiles.getChildAt(0)
+            val last = rvHomeTiles.getChildAt((rvHomeTiles.childCount - 1).coerceAtLeast(0))
+            val firstLeft = first?.left?.plus(rvHomeTiles.left) ?: -1
+            val lastRight = last?.right?.plus(rvHomeTiles.left) ?: -1
+            logDebug("NAV", "HOME_GRID_GEOMETRY source=$source leftAnchor=$leftAnchor rightAnchor=$safeRight availableWidth=$availableWidth columns=$columns tileWidth=$tileWidth spacing=$dynamicSpacing firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=$rootWidth")
         }
         val tileWidth = if (columns > 1) {
             ((availableWidth - dynamicSpacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
@@ -863,7 +891,7 @@ class MainActivity : AppCompatActivity() {
             hasStartedPlaybackFromChannelClick = false
             setSelectedPlaylistName(p.name)
             loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
-        } })
+        } }, source = "third_party")
     }
 
     private fun showPlaylistPageOnHome() {
@@ -897,7 +925,7 @@ class MainActivity : AppCompatActivity() {
                 setSelectedPlaylistName(p.name)
                 loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
             }
-        } })
+        } }, source = "home_playlists")
     }
 
 
@@ -975,7 +1003,7 @@ class MainActivity : AppCompatActivity() {
             tvReloadingStatus.visibility = View.GONE
             logDebug("NAV", "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}")
             categoryOpenInProgress = false
-        } })
+        } }, source = "categories")
     }
 
     private fun hideStartPage() {
