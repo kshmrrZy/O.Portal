@@ -76,32 +76,15 @@ object M3uParser {
         return channels
     }
 
-    private fun extractGroupTitle(extInfLine: String): String {
-        val patterns = listOf(
-            Regex("""group-title\s*=\s*"([^"]*)""", RegexOption.IGNORE_CASE),
-            Regex("""group-title\s*=\s*'([^']*)'""", RegexOption.IGNORE_CASE),
-            Regex("""group-title\s*=\s*([^,\s]+)""", RegexOption.IGNORE_CASE)
-        )
-        for (pattern in patterns) {
-            val match = pattern.find(extInfLine) ?: continue
-            val value = match.groupValues.getOrNull(1)?.trim()?.trim('"', '\'') ?: continue
-            if (value.isNotBlank()) return value
-        }
-        return ""
+    private fun extractGroupTitle(extinf: String): String {
+        val quotedDouble = Regex("""group-title\s*=\s*"([^"]*)"""", RegexOption.IGNORE_CASE)
+        val quotedSingle = Regex("""group-title\s*=\s*'([^']*)'""", RegexOption.IGNORE_CASE)
+        val unquoted = Regex("""group-title\s*=\s*([^, ]+)""", RegexOption.IGNORE_CASE)
+
+        val groupTitle = quotedDouble.find(extinf)?.groupValues?.getOrNull(1)
+            ?: quotedSingle.find(extinf)?.groupValues?.getOrNull(1)
+            ?: unquoted.find(extinf)?.groupValues?.getOrNull(1)
+
+        return groupTitle?.trim().takeUnless { it.isNullOrEmpty() } ?: "Без категории"
     }
 }
-
-
-    private fun extractGroupTitle(extInfLine: String): String {
-        val patterns = listOf(
-            Regex("""group-title\s*=\s*"([^"]*)"""", RegexOption.IGNORE_CASE),
-            Regex("""group-title\s*=\s*'([^']*)'""", RegexOption.IGNORE_CASE),
-            Regex("""group-title\s*=\s*([^,\s]+)""", RegexOption.IGNORE_CASE)
-        )
-        for (pattern in patterns) {
-            val match = pattern.find(extInfLine) ?: continue
-            val value = match.groupValues.getOrNull(1)?.trim()?.trim('"', ''') ?: continue
-            if (value.isNotBlank()) return value
-        }
-        return ""
-    }
