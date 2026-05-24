@@ -718,6 +718,8 @@ class MainActivity : AppCompatActivity() {
     private var homeTilesColumnsApplied: Int = -1
     private var homeTilesWidthApplied: Int = -1
     private var homeTilesHeightApplied: Int = -1
+    private var homeTilesSpacingApplied: Int = -1
+    private var homeTilesSpacingDecoration: RecyclerView.ItemDecoration? = null
     private var currentHomeTilesItems: List<HomeTileItem> = emptyList()
     private var cachedCategoryGroups: Map<String, List<Channel>> = emptyMap()
     private var categoryOpenInProgress = false
