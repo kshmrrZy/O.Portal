@@ -792,7 +792,7 @@ class MainActivity : AppCompatActivity() {
                     FrameLayout.LayoutParams.MATCH_PARENT
                 )
             )
-            val lp = RecyclerView.LayoutParams(tileWidth, tileHeight)
+            val lp = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, tileHeight)
             lp.leftMargin = 0
             lp.rightMargin = 0
             lp.bottomMargin = 0
@@ -805,6 +805,11 @@ class MainActivity : AppCompatActivity() {
             val tv = root.getChildAt(0) as TextView
             val item = tileItems[position]
             tv.text = item.title
+            val lpDebug = root.layoutParams as RecyclerView.LayoutParams
+            logDebug(
+                "NAV",
+                "HOME_TILE_LAYOUT_DEBUG pos=$position width=${lpDebug.width} height=${lpDebug.height} marginStart=${lpDebug.marginStart} marginEnd=${lpDebug.marginEnd} leftMargin=${lpDebug.leftMargin} rightMargin=${lpDebug.rightMargin} adapterSpacing=$spacing"
+            )
             root.setOnClickListener {
                 logDebug("NAV", "HOME_TILE_ROOT_CLICK_RECEIVED name=${item.title}")
                 item.onClick()
@@ -1002,6 +1007,7 @@ class MainActivity : AppCompatActivity() {
             rvHomeTiles.addItemDecoration(homeTilesSpacingDecoration!!)
             homeTilesSpacingApplied = spacing
         }
+        logDebug("NAV", "HOME_GRID_DECORATION_COUNT source=$source count=${rvHomeTiles.itemDecorationCount} spacing=$spacing")
 
         if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
             rvHomeTiles.setHasFixedSize(true)
