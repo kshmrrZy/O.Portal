@@ -29,6 +29,7 @@ import android.content.Intent
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.GridView
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -296,6 +297,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val EXTRA_OPEN_HOME_PLAYLISTS_FRESH = "extra_open_home_playlists_fresh"
         private const val USE_FFMPEG_AUDIO_FOR_MPEG_L2 = true
         private const val PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2 = "pref_use_ffmpeg_audio_for_mpeg_l2"
         private const val PREF_PLAYLISTS = "playlist_profiles"
@@ -935,7 +937,89 @@ class MainActivity : AppCompatActivity() {
             )
             logHomeGridRealCoords(source, tileWidth)
         }
+        val tileWidth = if (columns > 1) {
+            ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
+        } else {
+            availableWidth
+        }
+        val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
+        return HomeGridGeometry(
+            columns = columns,
+            rootWidth = rootWidth,
+            leftAnchor = leftAnchor,
+            safeRight = safeRight,
+            availableWidth = availableWidth,
+            spacing = spacing,
+            tileWidth = tileWidth,
+            tileHeight = tileHeight,
+            leftInset = leftInset,
+            rightInset = rightInset
+        )
     }
+
+    private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic") {
+        currentHomeTilesItems = items
+        if (rvHomeTiles.width <= 0) {
+            rvHomeTiles.post {
+                if (currentHomeTilesItems === items || currentHomeTilesItems == items) {
+                    bindHomeTiles(currentHomeTilesItems, source)
+                }
+            }
+            return
+        }
+        val geometry = computeHomeGridGeometry()
+        val columns = geometry.columns
+        val availableWidth = geometry.availableWidth
+        val spacing = geometry.spacing
+        val leftAnchor = geometry.leftAnchor
+        val safeRight = geometry.safeRight
+        val rootWidth = geometry.rootWidth
+        val tileWidth = geometry.tileWidth
+        val tileHeight = geometry.tileHeight
+
+        rvHomeTiles.setPadding(geometry.leftInset, rvHomeTiles.paddingTop, geometry.rightInset, rvHomeTiles.paddingBottom)
+        rvHomeTiles.clipToPadding = false
+        if (homeTilesColumnsApplied != columns) {
+            rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
+            homeTilesColumnsApplied = columns
+        }
+        if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
+            rvHomeTiles.setHasFixedSize(true)
+            rvHomeTiles.itemAnimator = null
+            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, spacing, columns)
+            homeTilesWidthApplied = tileWidth
+            homeTilesHeightApplied = tileHeight
+            rvHomeTiles.adapter = homeTilesAdapter
+        }
+        homeTilesAdapter?.submit(items)
+        rvHomeTiles.post {
+            val first = rvHomeTiles.getChildAt(0)
+            val last = rvHomeTiles.getChildAt((rvHomeTiles.childCount - 1).coerceAtLeast(0))
+            val firstLeft = first?.left?.plus(rvHomeTiles.left) ?: -1
+            val lastRight = last?.right?.plus(rvHomeTiles.left) ?: -1
+            logDebug("NAV", "HOME_GRID_GEOMETRY source=$source leftAnchor=$leftAnchor rightAnchor=$safeRight availableWidth=$availableWidth columns=$columns tileWidth=$tileWidth spacing=$spacing firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=$rootWidth")
+            logHomeGridRealCoords(source, tileWidth)
+        }
+        val tileWidth = if (columns > 1) {
+            ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
+        } else {
+            availableWidth
+        }
+        val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
+        return HomeGridGeometry(
+            columns = columns,
+            rootWidth = rootWidth,
+            leftAnchor = leftAnchor,
+            safeRight = safeRight,
+            availableWidth = availableWidth,
+            spacing = spacing,
+            tileWidth = tileWidth,
+            tileHeight = tileHeight,
+            leftInset = leftInset,
+            rightInset = rightInset
+        )
+    }
+
 
     private fun showThirdPartyTilesOnHome(thirdParty: List<PlaylistProfile>) {
         showStartPage()
