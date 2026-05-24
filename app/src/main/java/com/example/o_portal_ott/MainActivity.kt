@@ -873,28 +873,11 @@ class MainActivity : AppCompatActivity() {
         val rootWidth = (findViewById<View>(android.R.id.content).width)
             .coerceAtLeast(resources.displayMetrics.widthPixels)
         val screenRightPadding = dpToPx(8)
-        val rootLoc = IntArray(2)
-        findViewById<View>(android.R.id.content).getLocationOnScreen(rootLoc)
-        val rootScreenLeft = rootLoc[0]
-        val portalLoc = IntArray(2)
-        tvHomeAppTitle.getLocationOnScreen(portalLoc)
-        val powerLoc = IntArray(2)
-        ivHomePower.getLocationOnScreen(powerLoc)
-        val rvLoc = IntArray(2)
-        rvHomeTiles.getLocationOnScreen(rvLoc)
-
-        val leftAnchorGlobal = portalLoc[0]
-        val powerRightGlobal = powerLoc[0] + ivHomePower.width
-        val safeRightGlobal = minOf(powerRightGlobal, rootScreenLeft + rootWidth - screenRightPadding)
-        val rvLeftGlobal = rvLoc[0]
-        val rvRightGlobal = rvLeftGlobal + rvHomeTiles.width
-
-        val leftInset = (leftAnchorGlobal - rvLeftGlobal).coerceAtLeast(0)
-        val rightInset = (rvRightGlobal - safeRightGlobal).coerceAtLeast(0)
-
-        val leftAnchor = leftAnchorGlobal - rootScreenLeft
-        val safeRight = safeRightGlobal - rootScreenLeft
-        val availableWidth = (safeRightGlobal - leftAnchorGlobal).coerceAtLeast(dpToPx(320))
+        val leftAnchor = tvHomeAppTitle.left
+        val safeRight = minOf(ivHomePower.right, rootWidth - screenRightPadding)
+        val availableWidth = (safeRight - leftAnchor).coerceAtLeast(dpToPx(320))
+        val leftInset = 0
+        val rightInset = 0
         val preferredTileWidth = dpToPx(112)
         val spacing = if (columns > 1) {
             ((availableWidth - preferredTileWidth * columns) / (columns - 1))
@@ -940,7 +923,17 @@ class MainActivity : AppCompatActivity() {
         val tileHeight = geometry.tileHeight
         val spacing = geometry.spacing
 
-        rvHomeTiles.setPadding(geometry.leftInset, 0, geometry.rightInset, 0)
+        (rvHomeTiles.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
+            lp.width = geometry.availableWidth
+            lp.leftMargin = 0
+            lp.rightMargin = 0
+            if (lp is ViewGroup.MarginLayoutParams) {
+                lp.marginStart = 0
+                lp.marginEnd = 0
+            }
+            rvHomeTiles.layoutParams = lp
+        }
+        rvHomeTiles.setPadding(0, rvHomeTiles.paddingTop, 0, rvHomeTiles.paddingBottom)
         rvHomeTiles.clipToPadding = false
 
         if (homeTilesColumnsApplied != columns) {
