@@ -798,7 +798,7 @@ class MainActivity : AppCompatActivity() {
         override fun getItemCount(): Int = tileItems.size
     }
 
-    private fun logHomeGridRealCoords(source: String, tileWidth: Int) {
+    private fun logHomeGridRealCoords(source: String, tileWidth: Int, columns: Int) {
         rvHomeTiles.post {
             val rootView = findViewById<View>(android.R.id.content)
             fun View.globalLeft(): Int {
@@ -812,6 +812,8 @@ class MainActivity : AppCompatActivity() {
                 return loc[0] + width
             }
             val portalLeft = tvHomeAppTitle.globalLeft()
+            val portalRight = tvHomeAppTitle.globalRight()
+            val powerLeft = ivHomePower.globalLeft()
             val powerRight = ivHomePower.globalRight()
             val recyclerLeft = rvHomeTiles.globalLeft()
             val recyclerRight = rvHomeTiles.globalRight()
@@ -832,7 +834,7 @@ class MainActivity : AppCompatActivity() {
 
             logDebug(
                 "NAV",
-                "HOME_GRID_REAL_COORDS source=$source rootWidth=${rootView.width} portalLeft=$portalLeft powerRight=$powerRight recyclerLeft=$recyclerLeft recyclerRight=$recyclerRight recyclerWidth=${rvHomeTiles.width} paddingLeft=${rvHomeTiles.paddingLeft} paddingRight=${rvHomeTiles.paddingRight} firstTileLeft=$firstLeft firstTileRight=$firstRight lastTileLeft=$lastLeft lastTileRight=$lastRight tileWidth=$tileWidth gap1=$gap1 gap2=$gap2 gap3=$gap3"
+                "HOME_GRID_REAL_COORDS source=$source rootWidth=${rootView.width} portalLeft=$portalLeft portalRight=$portalRight powerLeft=$powerLeft powerRight=$powerRight recyclerLeft=$recyclerLeft recyclerRight=$recyclerRight recyclerWidth=${rvHomeTiles.width} recyclerPaddingLeft=${rvHomeTiles.paddingLeft} recyclerPaddingRight=${rvHomeTiles.paddingRight} firstTileLeft=$firstLeft firstTileRight=$firstRight lastTileLeft=$lastLeft lastTileRight=$lastRight tileWidth=$tileWidth gap1=$gap1 gap2=$gap2 gap3=$gap3 columns=$columns adapterCount=${rvHomeTiles.adapter?.itemCount ?: -1} childCount=${rvHomeTiles.childCount}"
             )
         }
     }
@@ -935,7 +937,7 @@ class MainActivity : AppCompatActivity() {
                 "NAV",
                 "HOME_GRID_GEOMETRY source=$source leftAnchor=${geometry.leftAnchor} rightAnchor=${geometry.safeRight} availableWidth=${geometry.availableWidth} columns=${geometry.columns} tileWidth=${geometry.tileWidth} spacing=${geometry.spacing} firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=${geometry.rootWidth}"
             )
-            logHomeGridRealCoords(source, tileWidth)
+            logHomeGridRealCoords(source, tileWidth, columns)
         }
     }
 
