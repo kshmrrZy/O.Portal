@@ -731,6 +731,27 @@ class MainActivity : AppCompatActivity() {
             widthDp < 360f -> 3
             else -> 4
         }
+
+        override fun getItemCount(): Int = tileItems.size
+    }
+
+    private inner class HomeGridSpacingDecoration(
+        private val spacingPx: Int,
+        private val columns: Int
+    ) : RecyclerView.ItemDecoration() {
+        override fun getItemOffsets(
+            outRect: Rect,
+            view: View,
+            parent: RecyclerView,
+            state: RecyclerView.State
+        ) {
+            val position = parent.getChildAdapterPosition(view)
+            if (position == RecyclerView.NO_POSITION) return
+            val col = if (columns > 0) position % columns else 0
+            outRect.left = 0
+            outRect.right = if (col == columns - 1) 0 else spacingPx
+            outRect.bottom = spacingPx
+        }
     }
 
     private inner class HomeTilesAdapter(
@@ -774,7 +795,7 @@ class MainActivity : AppCompatActivity() {
             val lp = RecyclerView.LayoutParams(tileWidth, tileHeight)
             lp.leftMargin = 0
             lp.rightMargin = 0
-            lp.bottomMargin = spacing
+            lp.bottomMargin = 0
             root.layoutParams = lp
             return object : RecyclerView.ViewHolder(root) {}
         }
@@ -784,11 +805,6 @@ class MainActivity : AppCompatActivity() {
             val tv = root.getChildAt(0) as TextView
             val item = tileItems[position]
             tv.text = item.title
-            val col = if (columns > 0) position % columns else 0
-            val lp = root.layoutParams as RecyclerView.LayoutParams
-            lp.leftMargin = if (col == 0) 0 else spacing / 2
-            lp.rightMargin = if (col == columns - 1) 0 else spacing / 2
-            root.layoutParams = lp
             root.setOnClickListener {
                 logDebug("NAV", "HOME_TILE_ROOT_CLICK_RECEIVED name=${item.title}")
                 item.onClick()
@@ -915,6 +931,13 @@ class MainActivity : AppCompatActivity() {
         if (homeTilesColumnsApplied != columns) {
             rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
             homeTilesColumnsApplied = columns
+        }
+
+        if (homeTilesSpacingApplied != spacing || homeTilesSpacingDecoration == null) {
+            homeTilesSpacingDecoration?.let { rvHomeTiles.removeItemDecoration(it) }
+            homeTilesSpacingDecoration = HomeGridSpacingDecoration(spacing, columns)
+            rvHomeTiles.addItemDecoration(homeTilesSpacingDecoration!!)
+            homeTilesSpacingApplied = spacing
         }
 
         if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
