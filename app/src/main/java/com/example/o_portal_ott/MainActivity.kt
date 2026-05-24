@@ -852,7 +852,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun computeHomeGridGeometry(): HomeGridGeometry {
         val columns = computeHomeTileColumns()
-        val rootWidth = (findViewById<View>(android.R.id.content).width).coerceAtLeast(resources.displayMetrics.widthPixels)
+        val rootWidth = (findViewById<View>(android.R.id.content).width)
+            .coerceAtLeast(resources.displayMetrics.widthPixels)
         val screenRightPadding = dpToPx(8)
         val leftAnchor = tvHomeAppTitle.left
         val safeRight = minOf(ivHomePower.right, rootWidth - screenRightPadding)
@@ -863,9 +864,78 @@ class MainActivity : AppCompatActivity() {
         val availableWidth = (safeRight - leftAnchor).coerceAtLeast(dpToPx(320))
         val preferredTileWidth = dpToPx(112)
         val spacing = if (columns > 1) {
-            ((availableWidth - preferredTileWidth * columns) / (columns - 1)).coerceIn(dpToPx(10), dpToPx(20))
+            ((availableWidth - preferredTileWidth * columns) / (columns - 1))
+                .coerceIn(dpToPx(10), dpToPx(20))
         } else {
             0
+        }
+        val tileWidth = if (columns > 1) {
+            ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
+        } else {
+            availableWidth
+        }
+        val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
+
+        return HomeGridGeometry(
+            columns = columns,
+            rootWidth = rootWidth,
+            leftAnchor = leftAnchor,
+            safeRight = safeRight,
+            availableWidth = availableWidth,
+            spacing = spacing,
+            tileWidth = tileWidth,
+            tileHeight = tileHeight,
+            leftInset = leftInset,
+            rightInset = rightInset
+        )
+    }
+
+    private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic") {
+        currentHomeTilesItems = items
+        if (rvHomeTiles.width <= 0) {
+            rvHomeTiles.post {
+                if (currentHomeTilesItems === items || currentHomeTilesItems == items) {
+                    bindHomeTiles(currentHomeTilesItems, source)
+                }
+            }
+            return
+        }
+
+        val geometry = computeHomeGridGeometry()
+        val columns = geometry.columns
+        val tileWidth = geometry.tileWidth
+        val tileHeight = geometry.tileHeight
+        val spacing = geometry.spacing
+
+        rvHomeTiles.setPadding(geometry.leftInset, 0, geometry.rightInset, 0)
+        rvHomeTiles.clipToPadding = false
+
+        if (homeTilesColumnsApplied != columns) {
+            rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
+            homeTilesColumnsApplied = columns
+        }
+
+        if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
+            rvHomeTiles.setHasFixedSize(true)
+            rvHomeTiles.itemAnimator = null
+            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, spacing, columns)
+            homeTilesWidthApplied = tileWidth
+            homeTilesHeightApplied = tileHeight
+            rvHomeTiles.adapter = homeTilesAdapter
+        }
+
+        homeTilesAdapter?.submit(items)
+
+        rvHomeTiles.post {
+            val first = rvHomeTiles.getChildAt(0)
+            val last = rvHomeTiles.getChildAt((rvHomeTiles.childCount - 1).coerceAtLeast(0))
+            val firstLeft = first?.left?.plus(rvHomeTiles.left) ?: -1
+            val lastRight = last?.right?.plus(rvHomeTiles.left) ?: -1
+            logDebug(
+                "NAV",
+                "HOME_GRID_GEOMETRY source=$source leftAnchor=${geometry.leftAnchor} rightAnchor=${geometry.safeRight} availableWidth=${geometry.availableWidth} columns=${geometry.columns} tileWidth=${geometry.tileWidth} spacing=${geometry.spacing} firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=${geometry.rootWidth}"
+            )
+            logHomeGridRealCoords(source, tileWidth)
         }
         val tileWidth = if (columns > 1) {
             ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
