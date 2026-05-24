@@ -933,17 +933,27 @@ class MainActivity : AppCompatActivity() {
         val leftInset = 0
         val rightInset = 0
         val preferredTileWidth = dpToPx(112)
-        val spacing = if (columns > 1) {
+        var spacing = if (columns > 1) {
             ((availableWidth - preferredTileWidth * columns) / (columns - 1))
                 .coerceIn(dpToPx(10), dpToPx(20))
         } else {
             0
         }
-        val tileWidth = if (columns > 1) {
+        var tileWidth = if (columns > 1) {
             ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
         } else {
             availableWidth
         }
+
+        if (columns > 1) {
+            val usedWidth = tileWidth * columns + spacing * (columns - 1)
+            val remaining = availableWidth - usedWidth
+            if (remaining != 0) {
+                spacing += remaining / (columns - 1)
+                tileWidth = ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
+            }
+        }
+
         val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
 
         return HomeGridGeometry(
