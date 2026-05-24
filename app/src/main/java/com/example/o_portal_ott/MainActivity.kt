@@ -855,6 +855,55 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun applyHomeGridContainerGeometry(source: String) {
+        val root = findViewById<View>(android.R.id.content)
+        val rootLoc = IntArray(2)
+        root.getLocationOnScreen(rootLoc)
+        val rootLeft = rootLoc[0]
+        val rootWidth = root.width.coerceAtLeast(resources.displayMetrics.widthPixels)
+        val screenRightPadding = dpToPx(8)
+
+        val portalLoc = IntArray(2)
+        tvHomeAppTitle.getLocationOnScreen(portalLoc)
+        val powerLoc = IntArray(2)
+        ivHomePower.getLocationOnScreen(powerLoc)
+
+        val portalLeftGlobal = portalLoc[0]
+        val powerRightGlobal = powerLoc[0] + ivHomePower.width
+        val safeRightGlobal = minOf(powerRightGlobal, rootLeft + rootWidth - screenRightPadding)
+        val gridWidth = (safeRightGlobal - portalLeftGlobal).coerceAtLeast(dpToPx(320))
+        val startMargin = (portalLeftGlobal - rootLeft).coerceAtLeast(0)
+
+        (homePlaylistTilesPanel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.startToStart = ConstraintSet.PARENT_ID
+            lp.endToEnd = ConstraintSet.UNSET
+            lp.width = gridWidth
+            lp.marginStart = startMargin
+            homePlaylistTilesPanel.layoutParams = lp
+        }
+
+        (rvHomeTiles.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            lp.leftMargin = 0
+            lp.rightMargin = 0
+            lp.marginStart = 0
+            lp.marginEnd = 0
+            rvHomeTiles.layoutParams = lp
+        }
+
+        rvHomeTiles.setPadding(0, rvHomeTiles.paddingTop, 0, rvHomeTiles.paddingBottom)
+        rvHomeTiles.post {
+            val containerLoc = IntArray(2)
+            homePlaylistTilesPanel.getLocationOnScreen(containerLoc)
+            val rvLoc = IntArray(2)
+            rvHomeTiles.getLocationOnScreen(rvLoc)
+            logDebug(
+                "NAV",
+                "GRID_CONTAINER_STATE source=$source portalLeft=$portalLeftGlobal containerLeft=${containerLoc[0]} recyclerLeft=${rvLoc[0]} containerWidth=${homePlaylistTilesPanel.width} recyclerWidth=${rvHomeTiles.width} expectedLeft=$portalLeftGlobal expectedWidth=$gridWidth"
+            )
+        }
+    }
+
     private data class HomeGridGeometry(
         val columns: Int,
         val rootWidth: Int,
@@ -908,6 +957,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic") {
         currentHomeTilesItems = items
+        applyHomeGridContainerGeometry(source)
         if (rvHomeTiles.width <= 0) {
             rvHomeTiles.post {
                 if (currentHomeTilesItems === items || currentHomeTilesItems == items) {
@@ -923,16 +973,6 @@ class MainActivity : AppCompatActivity() {
         val tileHeight = geometry.tileHeight
         val spacing = geometry.spacing
 
-        (rvHomeTiles.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
-            lp.width = geometry.availableWidth
-            lp.leftMargin = 0
-            lp.rightMargin = 0
-            if (lp is ViewGroup.MarginLayoutParams) {
-                lp.marginStart = 0
-                lp.marginEnd = 0
-            }
-            rvHomeTiles.layoutParams = lp
-        }
         rvHomeTiles.setPadding(0, rvHomeTiles.paddingTop, 0, rvHomeTiles.paddingBottom)
         rvHomeTiles.clipToPadding = false
 
