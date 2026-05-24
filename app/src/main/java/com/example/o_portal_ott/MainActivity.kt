@@ -24,6 +24,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.graphics.Rect
 import android.content.Intent
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -119,6 +120,7 @@ data class PlaylistProfile(
 )
 
 class MainActivity : AppCompatActivity() {
+    private enum class PlayerOpenReason { CHANNEL_CLICK, LIVE_RETRY, RECOVERY }
 
     private var mediaPlayer: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
@@ -185,6 +187,7 @@ class MainActivity : AppCompatActivity() {
     private var isLocked = false
     private var isPlaybackPaused = false
     private var currentChannelIndex = 0
+    private var hasStartedPlaybackFromChannelClick = false
     private val channels = mutableListOf<Channel>()
     private val epgData = mutableMapOf<String, MutableList<Program>>()
     private val epgDataLock = Any()
@@ -405,10 +408,10 @@ class MainActivity : AppCompatActivity() {
         startEpgTicker()
         applyLockButtonVisibility()
         val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
-        loadPlaylist(showErrors = true, autoPlay = shouldOpenLastChannelOnStart && !isAuthorizedUser)
+        loadPlaylist(showErrors = true, autoPlay = true)
         if (!shouldOpenLastChannelOnStart) {
             val hasThirdParty = getThirdPartyPlaylistProfiles().isNotEmpty()
-            if (isAuthorizedUser || hasThirdParty) showPlaylistPageOnHome() else showStartPage()
+            if (isAuthorizedUser || hasThirdParty) showPlaylistPageOnHome(source = "cold_start") else showStartPage()
         }
     }
 
@@ -487,7 +490,7 @@ class MainActivity : AppCompatActivity() {
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
             title.setSpan(
-                RelativeSizeSpan(0.75f),
+                RelativeSizeSpan(0.52f),
                 11,
                 title.length,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -575,16 +578,13 @@ class MainActivity : AppCompatActivity() {
                     subtitle = ""
                 )
             }
-            playChannel(forcePlay = true)
+            playChannel(forcePlay = true, reason = PlayerOpenReason.LIVE_RETRY)
             logPathState("LIVE_PATH after_reload_click")
             handler.postDelayed({
                 tvReloadingStatus.visibility = View.GONE
             }, 1200)
         }
-        findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
-            logDebug("PLAYER_UI", "back button returns to playlist, not app exit")
-            exitPlayerToPlaylist()
-        }
+        bindRealPlayerExitButtonListener()
         sbTimeline.max = 1000
         sbTimeline.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {}
@@ -702,7 +702,7 @@ class MainActivity : AppCompatActivity() {
     private fun showStartPage() {
         homePanel.visibility = View.VISIBLE
         homePlaylistTilesPanel.visibility = View.GONE
-        tvHomeCategoryBack.visibility = View.GONE
+        disableHomeCategoryBack("showStartPage")
         homePanel.post { applyHomeScreenScale(force = true) }
         topInfoPanel.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
@@ -712,48 +712,268 @@ class MainActivity : AppCompatActivity() {
 
 
     private data class HomeTileItem(val title: String, val onClick: () -> Unit)
+    private var homeTilesAdapter: HomeTilesAdapter? = null
+    private var homeTilesColumnsApplied: Int = -1
+    private var homeTilesWidthApplied: Int = -1
+    private var homeTilesHeightApplied: Int = -1
+    private var homeTilesSpacingApplied: Int = -1
+    private var homeTilesSpacingDecoration: RecyclerView.ItemDecoration? = null
+    private var currentHomeTilesItems: List<HomeTileItem> = emptyList()
+    private var cachedCategoryGroups: Map<String, List<Channel>> = emptyMap()
+    private var categoryOpenInProgress = false
 
     private fun computeHomeTileColumns(): Int {
         val widthDp = resources.displayMetrics.widthPixels / resources.displayMetrics.density
+        val uiMode = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK
+        val isTv = uiMode == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
         return when {
-            widthDp >= 700f -> 4
-            widthDp >= 520f -> 3
-            else -> 2
+            isTv -> (widthDp / 190f).toInt().coerceIn(5, 9)
+            widthDp < 360f -> 3
+            else -> 4
         }
     }
 
-    private fun bindHomeTiles(items: List<HomeTileItem>) {
+    private inner class HomeGridSpacingDecoration(
+        private val spacingPx: Int,
+        private val columns: Int
+    ) : RecyclerView.ItemDecoration() {
+        override fun getItemOffsets(
+            outRect: Rect,
+            view: View,
+            parent: RecyclerView,
+            state: RecyclerView.State
+        ) {
+            val position = parent.getChildAdapterPosition(view)
+            if (position == RecyclerView.NO_POSITION) return
+            val col = if (columns > 0) position % columns else 0
+            outRect.left = 0
+            outRect.right = if (col == columns - 1) 0 else spacingPx
+            outRect.bottom = spacingPx
+        }
+    }
+
+    private inner class HomeTilesAdapter(
+        private val tileWidth: Int,
+        private val tileHeight: Int,
+        private val spacing: Int,
+        private val columns: Int
+    ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+        private var tileItems: List<HomeTileItem> = emptyList()
+
+        fun submit(list: List<HomeTileItem>) {
+            tileItems = list
+            notifyDataSetChanged()
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val root = FrameLayout(parent.context)
+            root.isFocusable = true
+            root.isFocusableInTouchMode = true
+            root.isClickable = true
+            root.isEnabled = true
+            root.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+            val tv = TextView(parent.context)
+            tv.setTextColor(Color.WHITE)
+            tv.gravity = Gravity.CENTER
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            tv.typeface = golosTypeface?.let { Typeface.create(it, Typeface.BOLD) } ?: Typeface.DEFAULT_BOLD
+            tv.isFocusable = false
+            tv.isFocusableInTouchMode = false
+            tv.isClickable = false
+            tv.isEnabled = false
+            tv.setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6))
+            root.setBackgroundResource(R.drawable.bg_playlist_tile)
+            root.addView(
+                tv,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+            val lp = RecyclerView.LayoutParams(tileWidth, tileHeight)
+            lp.leftMargin = 0
+            lp.rightMargin = 0
+            lp.bottomMargin = 0
+            root.layoutParams = lp
+            return object : RecyclerView.ViewHolder(root) {}
+        }
+
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            val root = holder.itemView as FrameLayout
+            val tv = root.getChildAt(0) as TextView
+            val item = tileItems[position]
+            tv.text = item.title
+            root.setOnClickListener {
+                logDebug("NAV", "HOME_TILE_ROOT_CLICK_RECEIVED name=${item.title}")
+                item.onClick()
+            }
+        }
+
+        override fun getItemCount(): Int = tileItems.size
+    }
+
+    private fun logHomeGridRealCoords(source: String, tileWidth: Int, columns: Int) {
+        rvHomeTiles.post {
+            val rootView = findViewById<View>(android.R.id.content)
+            fun View.globalLeft(): Int {
+                val loc = IntArray(2)
+                getLocationOnScreen(loc)
+                return loc[0]
+            }
+            fun View.globalRight(): Int {
+                val loc = IntArray(2)
+                getLocationOnScreen(loc)
+                return loc[0] + width
+            }
+            val portalLeft = tvHomeAppTitle.globalLeft()
+            val portalRight = tvHomeAppTitle.globalRight()
+            val powerLeft = ivHomePower.globalLeft()
+            val powerRight = ivHomePower.globalRight()
+            val recyclerLeft = rvHomeTiles.globalLeft()
+            val recyclerRight = rvHomeTiles.globalRight()
+            val first = rvHomeTiles.getChildAt(0)
+            val last = rvHomeTiles.getChildAt((rvHomeTiles.childCount - 1).coerceAtLeast(0))
+            val firstLeft = first?.globalLeft() ?: -1
+            val firstRight = first?.globalRight() ?: -1
+            val lastLeft = last?.globalLeft() ?: -1
+            val lastRight = last?.globalRight() ?: -1
+
+            val rowChildren = (0 until rvHomeTiles.childCount)
+                .mapNotNull { rvHomeTiles.getChildAt(it) }
+                .filter { it.top == (first?.top ?: Int.MIN_VALUE) }
+                .sortedBy { it.left }
+            val gap1 = if (rowChildren.size >= 2) rowChildren[1].left - rowChildren[0].right else -1
+            val gap2 = if (rowChildren.size >= 3) rowChildren[2].left - rowChildren[1].right else -1
+            val gap3 = if (rowChildren.size >= 4) rowChildren[3].left - rowChildren[2].right else -1
+
+            logDebug(
+                "NAV",
+                "HOME_GRID_REAL_COORDS source=$source rootWidth=${rootView.width} portalLeft=$portalLeft portalRight=$portalRight powerLeft=$powerLeft powerRight=$powerRight recyclerLeft=$recyclerLeft recyclerRight=$recyclerRight recyclerWidth=${rvHomeTiles.width} recyclerPaddingLeft=${rvHomeTiles.paddingLeft} recyclerPaddingRight=${rvHomeTiles.paddingRight} firstTileLeft=$firstLeft firstTileRight=$firstRight lastTileLeft=$lastLeft lastTileRight=$lastRight tileWidth=$tileWidth gap1=$gap1 gap2=$gap2 gap3=$gap3 columns=$columns adapterCount=${rvHomeTiles.adapter?.itemCount ?: -1} childCount=${rvHomeTiles.childCount}"
+            )
+        }
+    }
+
+    private data class HomeGridGeometry(
+        val columns: Int,
+        val rootWidth: Int,
+        val leftAnchor: Int,
+        val safeRight: Int,
+        val availableWidth: Int,
+        val spacing: Int,
+        val tileWidth: Int,
+        val tileHeight: Int,
+        val leftInset: Int,
+        val rightInset: Int
+    )
+
+    private fun computeHomeGridGeometry(): HomeGridGeometry {
         val columns = computeHomeTileColumns()
-        val spacing = dpToPx(12)
-        val availableWidth = resources.displayMetrics.widthPixels - dpToPx(48)
-        val tileWidth = ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(140))
-        val tileHeight = (tileWidth * 0.47f).toInt()
-        rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
-        rvHomeTiles.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-                val tv = TextView(parent.context)
-                tv.setTextColor(Color.WHITE)
-                tv.gravity = Gravity.CENTER
-                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
-                tv.typeface = tv.typeface
-                tv.setBackgroundResource(R.drawable.bg_playlist_tile)
-                tv.isFocusable = true
-                tv.isFocusableInTouchMode = true
-                val lp = RecyclerView.LayoutParams(tileWidth, tileHeight)
-                lp.rightMargin = spacing
-                lp.bottomMargin = spacing
-                tv.layoutParams = lp
-                return object : RecyclerView.ViewHolder(tv) {}
-            }
+        val rootWidth = (findViewById<View>(android.R.id.content).width)
+            .coerceAtLeast(resources.displayMetrics.widthPixels)
+        val screenRightPadding = dpToPx(8)
+        val rootLoc = IntArray(2)
+        findViewById<View>(android.R.id.content).getLocationOnScreen(rootLoc)
+        val rootScreenLeft = rootLoc[0]
+        val portalLoc = IntArray(2)
+        tvHomeAppTitle.getLocationOnScreen(portalLoc)
+        val powerLoc = IntArray(2)
+        ivHomePower.getLocationOnScreen(powerLoc)
+        val rvLoc = IntArray(2)
+        rvHomeTiles.getLocationOnScreen(rvLoc)
 
-            override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-                val tv = holder.itemView as TextView
-                val item = items[position]
-                tv.text = item.title
-                tv.setOnClickListener { item.onClick() }
-            }
+        val leftAnchorGlobal = portalLoc[0]
+        val powerRightGlobal = powerLoc[0] + ivHomePower.width
+        val safeRightGlobal = minOf(powerRightGlobal, rootScreenLeft + rootWidth - screenRightPadding)
+        val rvLeftGlobal = rvLoc[0]
+        val rvRightGlobal = rvLeftGlobal + rvHomeTiles.width
 
-            override fun getItemCount(): Int = items.size
+        val leftInset = (leftAnchorGlobal - rvLeftGlobal).coerceAtLeast(0)
+        val rightInset = (rvRightGlobal - safeRightGlobal).coerceAtLeast(0)
+
+        val leftAnchor = leftAnchorGlobal - rootScreenLeft
+        val safeRight = safeRightGlobal - rootScreenLeft
+        val availableWidth = (safeRightGlobal - leftAnchorGlobal).coerceAtLeast(dpToPx(320))
+        val preferredTileWidth = dpToPx(112)
+        val spacing = if (columns > 1) {
+            ((availableWidth - preferredTileWidth * columns) / (columns - 1))
+                .coerceIn(dpToPx(10), dpToPx(20))
+        } else {
+            0
+        }
+        val tileWidth = if (columns > 1) {
+            ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
+        } else {
+            availableWidth
+        }
+        val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
+
+        return HomeGridGeometry(
+            columns = columns,
+            rootWidth = rootWidth,
+            leftAnchor = leftAnchor,
+            safeRight = safeRight,
+            availableWidth = availableWidth,
+            spacing = spacing,
+            tileWidth = tileWidth,
+            tileHeight = tileHeight,
+            leftInset = leftInset,
+            rightInset = rightInset
+        )
+    }
+
+    private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic") {
+        currentHomeTilesItems = items
+        if (rvHomeTiles.width <= 0) {
+            rvHomeTiles.post {
+                if (currentHomeTilesItems === items || currentHomeTilesItems == items) {
+                    bindHomeTiles(currentHomeTilesItems, source)
+                }
+            }
+            return
+        }
+
+        val geometry = computeHomeGridGeometry()
+        val columns = geometry.columns
+        val tileWidth = geometry.tileWidth
+        val tileHeight = geometry.tileHeight
+        val spacing = geometry.spacing
+
+        rvHomeTiles.setPadding(geometry.leftInset, 0, geometry.rightInset, 0)
+        rvHomeTiles.clipToPadding = false
+
+        if (homeTilesColumnsApplied != columns) {
+            rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
+            homeTilesColumnsApplied = columns
+        }
+
+        if (homeTilesSpacingApplied != spacing || homeTilesSpacingDecoration == null) {
+            homeTilesSpacingDecoration?.let { rvHomeTiles.removeItemDecoration(it) }
+            homeTilesSpacingDecoration = HomeGridSpacingDecoration(spacing, columns)
+            rvHomeTiles.addItemDecoration(homeTilesSpacingDecoration!!)
+            homeTilesSpacingApplied = spacing
+        }
+
+        if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
+            rvHomeTiles.setHasFixedSize(true)
+            rvHomeTiles.itemAnimator = null
+            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, spacing, columns)
+            homeTilesWidthApplied = tileWidth
+            homeTilesHeightApplied = tileHeight
+            rvHomeTiles.adapter = homeTilesAdapter
+        }
+
+        homeTilesAdapter?.submit(items)
+
+        rvHomeTiles.post {
+            val first = rvHomeTiles.getChildAt(0)
+            val last = rvHomeTiles.getChildAt((rvHomeTiles.childCount - 1).coerceAtLeast(0))
+            val firstLeft = first?.left?.plus(rvHomeTiles.left) ?: -1
+            val lastRight = last?.right?.plus(rvHomeTiles.left) ?: -1
+            logDebug(
+                "NAV",
+                "HOME_GRID_GEOMETRY source=$source leftAnchor=${geometry.leftAnchor} rightAnchor=${geometry.safeRight} availableWidth=${geometry.availableWidth} columns=${geometry.columns} tileWidth=${geometry.tileWidth} spacing=${geometry.spacing} firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=${geometry.rootWidth}"
+            )
+            logHomeGridRealCoords(source, tileWidth, columns)
         }
     }
 
@@ -762,26 +982,29 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         homePlaylistTilesPanel.visibility = View.VISIBLE
-        tvHomeCategoryBack.visibility = View.GONE
+        disableHomeCategoryBack("showThirdPartyTilesOnHome_before_show")
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории (Плейлисты)")
         tvHomeCategoryBack.visibility = View.VISIBLE
+        logDebug("NAV", "TV_HOME_CATEGORY_BACK_MUTATION source=showThirdPartyTilesOnHome_show visibility=${tvHomeCategoryBack.visibility} clickable=${tvHomeCategoryBack.isClickable} enabled=${tvHomeCategoryBack.isEnabled} focusable=${tvHomeCategoryBack.isFocusable}")
         tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
+        logDebug("NAV", "TV_HOME_CATEGORY_BACK_MUTATION source=showThirdPartyTilesOnHome_listener visibility=${tvHomeCategoryBack.visibility} clickable=${tvHomeCategoryBack.isClickable} enabled=${tvHomeCategoryBack.isEnabled} focusable=${tvHomeCategoryBack.isFocusable}")
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
         val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }
         bindHomeTiles(list.map { p -> HomeTileItem(p.name) {
+            logDebug("NAV", "playlist_click name=${p.name}")
+            hasStartedPlaybackFromChannelClick = false
             setSelectedPlaylistName(p.name)
-            homePlaylistTilesPanel.visibility = View.GONE
-            hideStartPage()
             loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
-        } })
+        } }, source = "third_party")
     }
 
-    private fun showPlaylistPageOnHome() {
+    private fun showPlaylistPageOnHome(source: String = "playlist_page") {
         showStartPage()
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         homePlaylistTilesPanel.visibility = View.VISIBLE
         applyHomeAppTitleStyle(settingsMode = false)
+        disableHomeCategoryBack("showPlaylistPageOnHome_end")
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
         val token = (prefs.getString(PREF_USER_TOKEN, "") ?: "").trim()
         val thirdParty = getThirdPartyPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
@@ -801,12 +1024,12 @@ class MainActivity : AppCompatActivity() {
             if (p.type == "group" && p.value == "third_party") {
                 showThirdPartyTilesOnHome(thirdParty)
             } else {
+                logDebug("NAV", "playlist_click name=${p.name}")
+                hasStartedPlaybackFromChannelClick = false
                 setSelectedPlaylistName(p.name)
-                homePlaylistTilesPanel.visibility = View.GONE
-                hideStartPage()
                 loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
             }
-        } })
+        } }, source = source)
     }
 
 
@@ -823,26 +1046,68 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCategoryTilesOnHome(playlistName: String, sourceChannels: List<Channel>) {
+        val grouped = sourceChannels.groupBy { it.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
+            .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+            .filterKeys { it != "{region_name}" }
+        showCategoryTilesOnHome(playlistName, grouped)
+    }
+
+    private fun showCategoryTilesOnHome(
+        playlistName: String,
+        groupedCategories: Map<String, List<Channel>>
+    ) {
+        logDebug("PLAYLIST_FLOW", "OPEN_CATEGORY_SCREEN playlist=$playlistName")
         showStartPage()
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         homePlaylistTilesPanel.visibility = View.VISIBLE
         tvHomeCategoryBack.visibility = View.VISIBLE
-        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории $playlistName")
+        logDebug("NAV", "TV_HOME_CATEGORY_BACK_MUTATION source=showCategoryTilesOnHome_show visibility=${tvHomeCategoryBack.visibility} clickable=${tvHomeCategoryBack.isClickable} enabled=${tvHomeCategoryBack.isEnabled} focusable=${tvHomeCategoryBack.isFocusable}")
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории ($playlistName)")
         tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
+        logDebug("NAV", "TV_HOME_CATEGORY_BACK_MUTATION source=showCategoryTilesOnHome_listener visibility=${tvHomeCategoryBack.visibility} clickable=${tvHomeCategoryBack.isClickable} enabled=${tvHomeCategoryBack.isEnabled} focusable=${tvHomeCategoryBack.isFocusable}")
 
-        val grouped = sourceChannels.groupBy { it.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
-            .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+        val allChannels = groupedCategories.values.flatten()
+        fun categoryGroupOrder(name: String): Int {
+            val ch = name.firstOrNull() ?: return 2
+            return when {
+                ch in 'А'..'я' || ch == 'Ё' || ch == 'ё' -> 0
+                ch in 'A'..'Z' || ch in 'a'..'z' -> 1
+                else -> 2
+            }
+        }
+        val grouped = linkedMapOf<String, List<Channel>>()
+        grouped["Все каналы"] = allChannels
+        groupedCategories
+            .filterKeys { it != "Все каналы" }
+            .entries
+            .sortedWith(compareBy<Map.Entry<String, List<Channel>>> { categoryGroupOrder(it.key) }
+                .thenBy { it.key.lowercase(Locale.getDefault()) })
+            .forEach { (key, value) -> grouped[key] = value }
+        cachedCategoryGroups = grouped
+        logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS count=${grouped.size}")
+        logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS names=${grouped.keys.joinToString(separator = " | ")}")
         val categoryNames = grouped.keys.toList()
         bindHomeTiles(categoryNames.map { category -> HomeTileItem(category) {
+            logDebug("NAV", "CATEGORY_TILE_CLICK_RECEIVED name=$category")
+            if (categoryOpenInProgress) {
+                logDebug("NAV", "CLICK_BLOCKED reason=category_open_in_progress")
+                return@HomeTileItem
+            }
+            categoryOpenInProgress = true
             selectedCategoryName = category
-            val filtered = grouped[category].orEmpty()
+            logDebug("NAV", "CATEGORY_OPEN_CHANNELS_START name=$category")
+            showReloadingStatus("Открываем раздел...", category)
+            val filtered = cachedCategoryGroups[category].orEmpty()
             channels.clear()
             channels.addAll(filtered)
             homePlaylistTilesPanel.visibility = View.GONE
             hideStartPage()
             showChannelList()
-        } })
+            tvReloadingStatus.visibility = View.GONE
+            logDebug("NAV", "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}")
+            categoryOpenInProgress = false
+        } }, source = "categories")
     }
 
     private fun hideStartPage() {
@@ -1036,8 +1301,9 @@ class MainActivity : AppCompatActivity() {
                 )
 
                 val startChannel = View.OnClickListener {
+                    logDebug("NAV", "channel_click name=${channel.name}")
                     currentChannelIndex = position
-                    playChannel(forcePlay = true)
+                    playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
                     channelListDialog?.dismiss()
                 }
 
@@ -1310,9 +1576,9 @@ class MainActivity : AppCompatActivity() {
         epgSettingsPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
         settingsRows.forEach { it.visibility = View.VISIBLE }
-        btnExportDebugLog.visibility = View.VISIBLE
-        btnExportDebugLog.isEnabled = true
-        btnExportDebugLog.isClickable = true
+        btnExportDebugLog.visibility = View.GONE
+        btnExportDebugLog.isEnabled = false
+        btnExportDebugLog.isClickable = false
         btnPlaylistSettings.setOnClickListener { openPlaylistSettingsScreen() }
         btnEpgSelect.setOnClickListener { openEpgSettingsScreen() }
         val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
@@ -1392,16 +1658,7 @@ class MainActivity : AppCompatActivity() {
             bindInlineUserSettings(userSettingsPanel)
         }
         btnUserSettings.setOnClickListener { openUserSettingsScreen() }
-        btnExportDebugLog.setOnClickListener { exportDebugLogToDownloads() }
         configureBackButtonsForSettings("showSettingsDialog_final")
-
-        btnExportDebugLog.setOnLongClickListener {
-            val current = prefs.getBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, USE_FFMPEG_AUDIO_FOR_MPEG_L2)
-            val next = !current
-            prefs.edit().putBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, next).apply()
-            Toast.makeText(this, "FFmpeg audio mode: ${if (next) "PREFER" else "OFF"} (перезапустите поток)", Toast.LENGTH_LONG).show()
-            true
-        }
     }
 
     private fun openPlaylistSettingsScreen() {
@@ -1585,10 +1842,11 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnBackToMenu).visibility = View.VISIBLE
         findViewById<View>(R.id.btnBackToMenu).isEnabled = true
         findViewById<View>(R.id.btnBackToMenu).isClickable = true
-        findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
-            exitPlayerToPlaylist()
-        }
+        bindRealPlayerExitButtonListener()
         if (settingsOpenedFromPlayer) {
+            logDebug("NAV", "SETTINGS_CLOSED_FROM_PLAYER")
+            playerSettingsOverlay.visibility = View.GONE
+            homeSettingsScreen.visibility = View.GONE
             homePanel.visibility = View.GONE
             showUI()
             return
@@ -1611,12 +1869,18 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun restoreDefaultSettingsRows() {
+        val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
+        (tvSettingsBack.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.topMargin = dpToPx(4)
+            lp.marginStart = 0
+            tvSettingsBack.layoutParams = lp
+        }
         val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings)
         rowIds.forEachIndexed { i, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
             lp.height = dpToPx(46)
-            lp.topMargin = if (i == 0) dpToPx(4) else dpToPx(8)
+            lp.topMargin = if (i == 0) dpToPx(6) else dpToPx(8)
             row.layoutParams = lp
         }
     }
@@ -1718,8 +1982,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSettingsPlaceholderDialog() {
         AlertDialog.Builder(this)
-            .setMessage("В данный момент ничего нет! Попробуйте посмотреть позже")
-            .setPositiveButton("ОК", null)
+            .setTitle("Дополнительные настройки")
+            .setMessage("Экспорт debug лога")
+            .setPositiveButton("Экспорт") { _, _ -> exportDebugLogToDownloads() }
+            .setNeutralButton("FFmpeg audio toggle") { _, _ ->
+                val current = prefs.getBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, USE_FFMPEG_AUDIO_FOR_MPEG_L2)
+                val next = !current
+                prefs.edit().putBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, next).apply()
+                Toast.makeText(this, "FFmpeg audio mode: ${if (next) "PREFER" else "OFF"}", Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton("Закрыть", null)
             .show()
     }
 
@@ -2266,7 +2538,14 @@ class MainActivity : AppCompatActivity() {
                 val content = URL(playlistUrl).readText()
                 currentPlaylistText = content
                 val parsedChannels = M3uParser.parse(content)
+                val groupedCategories = parsedChannels
+                    .groupBy { ch -> ch.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
+                    .filterKeys { key -> key != "{region_name}" }
                 val parsedEpgUrls = extractEpgSourcesFromPlaylist(content)
+                val selectedPlaylist = getSelectedPlaylistName()
+                logDebug("PLAYLIST_FLOW", "PLAYLIST_CLICK selectedPlaylist=$selectedPlaylist")
+                logDebug("PLAYLIST_FLOW", "PLAYLIST_PARSED channelsCount=${parsedChannels.size}")
+                logDebug("NAV", "playlist_click name=$selectedPlaylist")
 
                 handler.post {
                     channels.clear()
@@ -2287,11 +2566,12 @@ class MainActivity : AppCompatActivity() {
 
                     if (channels.isEmpty()) {
                         tvEpg.text = "Каналы не найдены в плейлисте"
-                    } else if (autoPlay) {
+                    } else if (!autoPlay) {
                         selectedPlaylistDisplayName = getSelectedPlaylistName()
-                        showCategoryTilesOnHome(selectedPlaylistDisplayName, channels.toList())
+                        logDebug("NAV", "open_categories_screen")
+                        showCategoryTilesOnHome(selectedPlaylistDisplayName, groupedCategories)
                     } else {
-                        tvEpg.text = "Выберите раздел на стартовой странице"
+                        logDebug("NAV", "startup_load_ready_without_autonavigation")
                     }
 
                     if (forceReload) {
@@ -2678,9 +2958,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun playChannel(forcePlay: Boolean = false) {
+    private fun playChannel(
+        forcePlay: Boolean = false,
+        reason: PlayerOpenReason = PlayerOpenReason.RECOVERY
+    ) {
         runCatching {
-            val ch = channels.getOrNull(currentChannelIndex) ?: return
+            if (!hasStartedPlaybackFromChannelClick && reason != PlayerOpenReason.CHANNEL_CLICK) {
+                logDebug("NAV", "ERROR unexpected_player_open_before_channel_click reason=$reason")
+                return@runCatching
+            }
+            val ch = channels.getOrNull(currentChannelIndex) ?: run {
+                logDebug("PLAYLIST_FLOW", "OPEN_PLAYER_WITHOUT_CHANNEL blocked currentChannelIndex=$currentChannelIndex channelsCount=${channels.size}")
+                showPlaylistPageOnHome()
+                return@runCatching
+            }
+            logDebug("NAV", "open_player")
             homePanel.visibility = View.GONE
             val shouldUseSoftware = !preferGpuDecoding
             if (softwareDecoderMode != shouldUseSoftware) {
@@ -2732,6 +3024,7 @@ class MainActivity : AppCompatActivity() {
             btnPlayPause.setImageResource(R.drawable.ic_pause)
 
             tvChannelName.text = "${currentChannelIndex + 1}. ${ch.name}"
+            hasStartedPlaybackFromChannelClick = true
             prefs.edit().putInt(PREF_LAST_CHANNEL, currentChannelIndex).apply()
             ensureEpgLoadedLazy()
             refreshLogo()
@@ -3801,9 +4094,231 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun exitPlayerToPlaylist() {
+        logDebug("NAV", "EXIT_PLAYER_TO_PLAYLIST_ENTERED")
         stopPlayback()
         resetPlaybackSessionStateOnExit()
-        showPlaylistPageOnHome()
+        hasStartedPlaybackFromChannelClick = false
+        logDebug("NAV", "EXIT_PLAYER_LOCAL_HOME_RESET")
+        resetSettingsOverlayState()
+        showHomeOnly()
+    }
+
+    private fun bindRealPlayerExitButtonListener() {
+        findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
+            logDebug("NAV", "PLAYER_EXIT_BUTTON_CLICKED_REAL_LISTENER")
+            exitPlayerToPlaylist()
+        }
+    }
+
+    private fun resetSettingsOverlayState() {
+        isSettingsModalVisible = false
+        settingsOpenedFromPlayer = false
+        playerSettingsOverlay.visibility = View.GONE
+        homeSettingsScreen.visibility = View.GONE
+        findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
+    }
+
+    private fun showHomeOnly() {
+        logDebug("NAV", "SHOW_HOME_ONLY_START")
+        resetSettingsOverlayState()
+        val btnBackToMenu = findViewById<View>(R.id.btnBackToMenu)
+        btnBackToMenu.visibility = View.GONE
+        btnBackToMenu.isClickable = false
+        btnBackToMenu.isFocusable = false
+        btnBackToMenu.isEnabled = false
+        btnBackToMenu.setOnClickListener(null)
+        disableHomeCategoryBack("showHomeOnly_pre")
+        tvReloadingStatus.visibility = View.GONE
+        tvReloadingStatus.isClickable = false
+        tvReloadingStatus.isFocusable = false
+        tvReloadingStatus.isEnabled = false
+        listBackgroundOverlay.visibility = View.GONE
+        listBackgroundOverlay.isClickable = false
+        listBackgroundOverlay.isFocusable = false
+        listBackgroundOverlay.isEnabled = false
+        timerWarningPanel.visibility = View.GONE
+        timerWarningPanel.isClickable = false
+        timerWarningPanel.isFocusable = false
+        timerWarningPanel.isEnabled = false
+        homePanel.setBackgroundResource(R.drawable.bg_home_screen)
+        topInfoPanel.visibility = View.GONE
+        topInfoPanel.isClickable = false
+        topInfoPanel.isFocusable = false
+        topInfoPanel.isEnabled = false
+        topGradientOverlay.visibility = View.GONE
+        topGradientOverlay.isClickable = false
+        topGradientOverlay.isFocusable = false
+        topGradientOverlay.isEnabled = false
+        controlsPanel.visibility = View.GONE
+        controlsPanel.isClickable = false
+        controlsPanel.isFocusable = false
+        controlsPanel.isEnabled = false
+        tvHomeAppTitle.visibility = View.VISIBLE
+        tvHomeSystemTime.visibility = View.VISIBLE
+        ivHomeSettings.visibility = View.VISIBLE
+        ivHomePower.visibility = View.VISIBLE
+        showPlaylistPageOnHome(source = "exit_player")
+        homePanel.alpha = 1f
+        homePanel.translationX = 0f
+        homePanel.translationY = 0f
+        homePlaylistTilesPanel.alpha = 1f
+        homePlaylistTilesPanel.translationX = 0f
+        homePlaylistTilesPanel.translationY = 0f
+        (homePlaylistTilesPanel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.width = 0
+            lp.height = 0
+            lp.startToStart = ConstraintSet.PARENT_ID
+            lp.endToEnd = ConstraintSet.PARENT_ID
+            lp.topToBottom = R.id.tvHomeAppTitle
+            lp.bottomToBottom = ConstraintSet.PARENT_ID
+            homePlaylistTilesPanel.layoutParams = lp
+        }
+        disableHomeCategoryBack("showHomeOnly_post_showPlaylistPageOnHome")
+        val recycler = findViewById<RecyclerView>(R.id.rvHomeTiles)
+        (recycler.layoutParams as? ViewGroup.LayoutParams)?.let { lp ->
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            recycler.layoutParams = lp
+        }
+        recycler.visibility = View.VISIBLE
+        recycler.isEnabled = true
+        recycler.isClickable = true
+        recycler.isFocusable = true
+        recycler.alpha = 1f
+        recycler.translationX = 0f
+        recycler.translationY = 0f
+        recycler.requestFocus()
+        var tilesCount = recycler.adapter?.itemCount ?: 0
+        if (tilesCount <= 0) {
+            logDebug("NAV", "CLICK_BLOCKED reason=home_tiles_empty_rebind")
+            showPlaylistPageOnHome(source = "exit_player")
+            tilesCount = recycler.adapter?.itemCount ?: 0
+        }
+        recycler.adapter?.notifyDataSetChanged()
+        recycler.requestLayout()
+        homePlaylistTilesPanel.requestLayout()
+        homePanel.requestLayout()
+        recycler.post {
+            recycler.requestFocus()
+            val firstTile = recycler.getChildAt(0)
+            if (firstTile != null) {
+                firstTile.requestFocus()
+                logDebug(
+                    "NAV",
+                    "HOME_FIRST_TILE_STATE shown=${firstTile.isShown} enabled=${firstTile.isEnabled} clickable=${firstTile.isClickable} focusable=${firstTile.isFocusable} hasFocus=${firstTile.hasFocus()} hasOnClick=${firstTile.hasOnClickListeners()}"
+                )
+            }
+            val focusedChild = recycler.focusedChild?.javaClass?.simpleName ?: "null"
+            val rootFocus = window.decorView.findFocus()?.javaClass?.simpleName ?: "null"
+            val categoryOverlay = findViewById<View>(R.id.tvHomeCategoryBack)
+            val categoryOverlayViewId = runCatching { resources.getResourceEntryName(categoryOverlay.id) }.getOrDefault("no_id")
+            logDebug(
+                "NAV",
+                "HOME_INPUT_STATE recyclerShown=${recycler.isShown} recyclerVisibility=${recycler.visibility} recyclerEnabled=${recycler.isEnabled} recyclerClickable=${recycler.isClickable} recyclerFocusable=${recycler.isFocusable} recyclerHasFocus=${recycler.hasFocus()} recyclerFocusedChild=$focusedChild adapterCount=${recycler.adapter?.itemCount ?: 0} rootFindFocus=$rootFocus currentScreen=HOME_PLAYLISTS settingsOpenedFromPlayer=$settingsOpenedFromPlayer loadingOverlayVisible=${tvReloadingStatus.visibility == View.VISIBLE} loadingOverlayClickable=${tvReloadingStatus.isClickable} playerOverlayVisible=${topInfoPanel.visibility == View.VISIBLE || controlsPanel.visibility == View.VISIBLE || topGradientOverlay.visibility == View.VISIBLE} playerOverlayClickable=${topInfoPanel.isClickable || controlsPanel.isClickable || topGradientOverlay.isClickable} categoryOverlayViewId=$categoryOverlayViewId categoryOverlayClass=${categoryOverlay.javaClass.simpleName} categoryOverlayVisibility=${categoryOverlay.visibility} categoryOverlayVisible=${categoryOverlay.visibility == View.VISIBLE} categoryOverlayClickable=${categoryOverlay.isClickable} categoryOverlayEnabled=${categoryOverlay.isEnabled} categoryOverlayFocusable=${categoryOverlay.isFocusable} categoryOverlayAlpha=${categoryOverlay.alpha} categoryOverlayElevation=${categoryOverlay.elevation} channelOverlayVisible=${listBackgroundOverlay.visibility == View.VISIBLE} channelOverlayClickable=${listBackgroundOverlay.isClickable} settingsClickable=${homeSettingsScreen.isClickable || findViewById<View>(R.id.playlistSettingsPanel).isClickable || findViewById<View>(R.id.epgSettingsPanel).isClickable || findViewById<View>(R.id.userSettingsPanel).isClickable}"
+            )
+            logHomeLayoutState("HOME_LAYOUT_STATE_INITIAL")
+            logRootChildrenState()
+        }
+        recycler.postDelayed({
+            logHomeLayoutState("HOME_LAYOUT_STATE_POST_250MS")
+            val childCount = recycler.childCount
+            val firstTile = recycler.getChildAt(0)
+            val firstRect = Rect()
+            val firstVisible = firstTile?.getGlobalVisibleRect(firstRect) ?: false
+            logDebug(
+                "NAV",
+                "FIRST_TILE_POST_LAYOUT_STATE childCount=$childCount firstExists=${firstTile != null} firstWidth=${firstTile?.width ?: -1} firstHeight=${firstTile?.height ?: -1} firstIsShown=${firstTile?.isShown ?: false} firstAlpha=${firstTile?.alpha ?: -1f} firstGlobalVisible=$firstVisible firstRect=$firstRect parentVisible=${(firstTile?.parent as? View)?.visibility ?: -1} parentAlpha=${(firstTile?.parent as? View)?.alpha ?: -1f}"
+            )
+            recycler.scrollToPosition(0)
+            recycler.requestFocus()
+        }, 250)
+        val homeVisible = homePanel.visibility == View.VISIBLE
+        val tilesVisible = homePlaylistTilesPanel.visibility == View.VISIBLE && recycler.visibility == View.VISIBLE
+        val settingsVisible = homeSettingsScreen.visibility == View.VISIBLE ||
+            findViewById<View>(R.id.playlistSettingsPanel).visibility == View.VISIBLE ||
+            findViewById<View>(R.id.epgSettingsPanel).visibility == View.VISIBLE ||
+            findViewById<View>(R.id.userSettingsPanel).visibility == View.VISIBLE
+        val playerVisible = topInfoPanel.visibility == View.VISIBLE || controlsPanel.visibility == View.VISIBLE
+        val backgroundVisible = homePanel.visibility == View.VISIBLE
+        if (homeVisible && tvHomeCategoryBack.isClickable) {
+            logDebug("NAV", "BUG tvHomeCategoryBack still clickable on HOME_PLAYLISTS")
+            disableHomeCategoryBack("showHomeOnly_assert_fix")
+        }
+        logDebug("NAV", "SHOW_HOME_ONLY_DONE currentScreen=HOME_PLAYLISTS homeVisible=$homeVisible tilesVisible=$tilesVisible tilesCount=$tilesCount playerVisible=$playerVisible settingsVisible=$settingsVisible backgroundVisible=$backgroundVisible")
+    }
+
+    private fun logViewGeometry(tag: String, name: String, v: View?) {
+        if (v == null) {
+            logDebug(tag, "$name=null")
+            return
+        }
+        val rect = Rect()
+        val globalVisible = v.getGlobalVisibleRect(rect)
+        val parentView = v.parent as? View
+        val idName = runCatching { resources.getResourceEntryName(v.id) }.getOrDefault("no_id")
+        logDebug(
+            tag,
+            "$name id=$idName class=${v.javaClass.simpleName} visibility=${v.visibility} shown=${v.isShown} alpha=${v.alpha} w=${v.width} h=${v.height} x=${v.x} y=${v.y} tx=${v.translationX} ty=${v.translationY} elevation=${v.elevation} z=${v.z} globalVisible=$globalVisible rect=$rect attached=${v.isAttachedToWindow} parentClass=${parentView?.javaClass?.simpleName} parentVisibility=${parentView?.visibility ?: -1} parentAlpha=${parentView?.alpha ?: -1f} parentW=${parentView?.width ?: -1} parentH=${parentView?.height ?: -1}"
+        )
+    }
+
+    private fun logHomeLayoutState(tag: String) {
+        val recycler = findViewById<RecyclerView>(R.id.rvHomeTiles)
+        val root = findViewById<View>(android.R.id.content)
+        logViewGeometry(tag, "homePanel", homePanel)
+        logViewGeometry(tag, "homePlaylistTilesPanel", homePlaylistTilesPanel)
+        logViewGeometry(tag, "rvHomeTiles", recycler)
+        logViewGeometry(tag, "firstTile", recycler.getChildAt(0))
+        logViewGeometry(tag, "rootContent", root)
+        logViewGeometry(tag, "topGradientOverlay", topGradientOverlay)
+        logViewGeometry(tag, "topInfoPanel", topInfoPanel)
+        logViewGeometry(tag, "controlsPanel", controlsPanel)
+        logViewGeometry(tag, "playerSettingsOverlay", playerSettingsOverlay)
+        logViewGeometry(tag, "homeSettingsScreen", homeSettingsScreen)
+        logViewGeometry(tag, "listBackgroundOverlay", listBackgroundOverlay)
+        logViewGeometry(tag, "tvReloadingStatus", tvReloadingStatus)
+    }
+
+    private fun logRootChildrenState() {
+        val root = findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as? ViewGroup ?: return
+        for (i in 0 until root.childCount) {
+            val child = root.getChildAt(i)
+            val idName = runCatching { resources.getResourceEntryName(child.id) }.getOrDefault("no_id")
+            logDebug(
+                "NAV",
+                "ROOT_CHILDREN_STATE idx=$i id=$idName class=${child.javaClass.simpleName} visibility=${child.visibility} shown=${child.isShown} alpha=${child.alpha} clickable=${child.isClickable} enabled=${child.isEnabled} w=${child.width} h=${child.height} elevation=${child.elevation} z=${child.z}"
+            )
+        }
+    }
+
+    private fun disableHomeCategoryBack(source: String) {
+        logDebug(
+            "NAV",
+            "DISABLE_HOME_CATEGORY_BACK_BEFORE source=$source visibility=${tvHomeCategoryBack.visibility} clickable=${tvHomeCategoryBack.isClickable} enabled=${tvHomeCategoryBack.isEnabled} focusable=${tvHomeCategoryBack.isFocusable} hasOnClickListeners=${tvHomeCategoryBack.hasOnClickListeners()}"
+        )
+        tvHomeCategoryBack.setOnClickListener(null)
+        tvHomeCategoryBack.setOnLongClickListener(null)
+        tvHomeCategoryBack.onFocusChangeListener = null
+        tvHomeCategoryBack.isClickable = false
+        tvHomeCategoryBack.isLongClickable = false
+        tvHomeCategoryBack.isFocusable = false
+        tvHomeCategoryBack.isFocusableInTouchMode = false
+        tvHomeCategoryBack.isEnabled = false
+        tvHomeCategoryBack.visibility = View.GONE
+
+        if (tvHomeCategoryBack.isClickable) {
+            tvHomeCategoryBack.clearFocus()
+            tvHomeCategoryBack.clearAnimation()
+            tvHomeCategoryBack.cancelPendingInputEvents()
+            tvHomeCategoryBack.setOnTouchListener { _, _ -> false }
+            tvHomeCategoryBack.isClickable = false
+            tvHomeCategoryBack.isLongClickable = false
+        }
+        logDebug(
+            "NAV",
+            "DISABLE_HOME_CATEGORY_BACK_AFTER source=$source visibility=${tvHomeCategoryBack.visibility} clickable=${tvHomeCategoryBack.isClickable} enabled=${tvHomeCategoryBack.isEnabled} focusable=${tvHomeCategoryBack.isFocusable} hasOnClickListeners=${tvHomeCategoryBack.hasOnClickListeners()}"
+        )
     }
 
     private fun showLockedMessage() {
