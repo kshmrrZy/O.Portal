@@ -839,6 +839,9 @@ class MainActivity : AppCompatActivity() {
             val firstRight = first?.globalRight() ?: -1
             val lastLeft = last?.globalLeft() ?: -1
             val lastRight = last?.globalRight() ?: -1
+            val rowLast = if (columns > 0) rvHomeTiles.getChildAt((columns - 1).coerceAtMost((rvHomeTiles.childCount - 1).coerceAtLeast(0))) else null
+            val rowFirstTileLeft = first?.globalLeft() ?: -1
+            val rowLastTileRight = rowLast?.globalRight() ?: -1
 
             val rowChildren = (0 until rvHomeTiles.childCount)
                 .mapNotNull { rvHomeTiles.getChildAt(it) }
@@ -850,7 +853,7 @@ class MainActivity : AppCompatActivity() {
 
             logDebug(
                 "NAV",
-                "HOME_GRID_REAL_COORDS source=$source rootWidth=${rootView.width} portalLeft=$portalLeft portalRight=$portalRight powerLeft=$powerLeft powerRight=$powerRight recyclerLeft=$recyclerLeft recyclerRight=$recyclerRight recyclerWidth=${rvHomeTiles.width} recyclerPaddingLeft=${rvHomeTiles.paddingLeft} recyclerPaddingRight=${rvHomeTiles.paddingRight} firstTileLeft=$firstLeft firstTileRight=$firstRight lastTileLeft=$lastLeft lastTileRight=$lastRight tileWidth=$tileWidth gap1=$gap1 gap2=$gap2 gap3=$gap3 columns=$columns adapterCount=${rvHomeTiles.adapter?.itemCount ?: -1} childCount=${rvHomeTiles.childCount}"
+                "HOME_GRID_REAL_COORDS source=$source rootWidth=${rootView.width} portalLeft=$portalLeft portalRight=$portalRight powerLeft=$powerLeft powerRight=$powerRight recyclerLeft=$recyclerLeft recyclerRight=$recyclerRight recyclerWidth=${rvHomeTiles.width} recyclerPaddingLeft=${rvHomeTiles.paddingLeft} recyclerPaddingRight=${rvHomeTiles.paddingRight} firstTileLeft=$firstLeft firstTileRight=$firstRight lastTileLeft=$lastLeft lastTileRight=$lastRight rowFirstTileLeft=$rowFirstTileLeft rowLastTileRight=$rowLastTileRight tileWidth=$tileWidth gap1=$gap1 gap2=$gap2 gap3=$gap3 columns=$columns adapterCount=${rvHomeTiles.adapter?.itemCount ?: -1} childCount=${rvHomeTiles.childCount}"
             )
         }
     }
@@ -873,12 +876,14 @@ class MainActivity : AppCompatActivity() {
         val safeRightGlobal = minOf(powerRightGlobal, rootLeft + rootWidth - screenRightPadding)
         val gridWidth = (safeRightGlobal - portalLeftGlobal).coerceAtLeast(dpToPx(320))
         val startMargin = (portalLeftGlobal - rootLeft).coerceAtLeast(0)
+        val endMargin = (rootLeft + rootWidth - safeRightGlobal).coerceAtLeast(0)
 
         (homePlaylistTilesPanel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.startToStart = ConstraintSet.PARENT_ID
-            lp.endToEnd = ConstraintSet.UNSET
-            lp.width = gridWidth
+            lp.endToEnd = ConstraintSet.PARENT_ID
+            lp.width = 0
             lp.marginStart = startMargin
+            lp.marginEnd = endMargin
             homePlaylistTilesPanel.layoutParams = lp
         }
 
