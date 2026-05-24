@@ -733,8 +733,6 @@ class MainActivity : AppCompatActivity() {
             widthDp < 360f -> 3
             else -> 4
         }
-
-        override fun getItemCount(): Int = tileItems.size
     }
 
     private inner class HomeGridSpacingDecoration(
