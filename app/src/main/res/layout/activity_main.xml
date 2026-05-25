@@ -292,15 +292,15 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="60dp"
+            android:layout_height="56dp"
             android:layout_marginTop="10dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <ImageButton
                 android:id="@+id/btnPlayPause"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:background="@android:color/transparent"
                 android:src="@drawable/pause"
                 android:scaleType="fitCenter"
@@ -311,8 +311,8 @@
 
             <LinearLayout
                 android:id="@+id/liveButtonContainer"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:layout_marginStart="8dp"
                 android:orientation="vertical"
                 android:gravity="center"
@@ -333,8 +333,8 @@
 
             <ImageButton
                 android:id="@+id/btnBackLeft"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:layout_marginStart="8dp"
                 android:background="@android:color/transparent"
                 android:src="@drawable/backleft"
@@ -346,8 +346,8 @@
 
             <ImageButton
                 android:id="@+id/btnBackRight"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:layout_marginStart="8dp"
                 android:background="@android:color/transparent"
                 android:src="@drawable/backright"
@@ -372,8 +372,8 @@
 
             <ImageButton
                 android:id="@+id/btnEpgPlayer"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:layout_marginStart="8dp"
                 android:background="@android:color/transparent"
                 android:src="@drawable/epgplayer"
@@ -390,8 +390,8 @@
 
             <ImageButton
                 android:id="@+id/btnSettings"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:background="@android:color/transparent"
                 android:src="@drawable/settingsplayer"
                 android:scaleType="fitCenter"

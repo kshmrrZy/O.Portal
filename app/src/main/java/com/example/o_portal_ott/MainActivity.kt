@@ -651,11 +651,13 @@ class MainActivity : AppCompatActivity() {
                 mediaPlayer?.play()
                 if (!videoOnlyMinimalMode) handler.postDelayed(startupSlowStreamRunnable, 45_000L)
                 isPlaybackPaused = false
-                btnPlayPause.setImageResource(R.drawable.ic_pause)
+                btnPlayPause.alpha = 1.0f
+                btnPlayPause.isSelected = false
             } else {
                 mediaPlayer?.pause()
                 isPlaybackPaused = true
-                btnPlayPause.setImageResource(R.drawable.ic_play)
+                btnPlayPause.alpha = 0.72f
+                btnPlayPause.isSelected = true
             }
             showUI()
         }
@@ -1258,6 +1260,16 @@ class MainActivity : AppCompatActivity() {
             if (homeSettingsScreen.visibility == View.VISIBLE) {
                 hideSettingsScreen()
                 return@addCallback
+            }
+            if (homePanel.visibility == View.VISIBLE) {
+                if (tvHomeCategoryBack.visibility == View.VISIBLE && tvHomeCategoryBack.isClickable) {
+                    tvHomeCategoryBack.performClick()
+                    return@addCallback
+                }
+                if (homePlaylistTilesPanel.visibility == View.VISIBLE && tvHomeStartTitle.visibility != View.VISIBLE) {
+                    showStartPage()
+                    return@addCallback
+                }
             }
             val now = System.currentTimeMillis()
             if (now - lastBackPressAt < 2000L) {
@@ -3037,7 +3049,7 @@ class MainActivity : AppCompatActivity() {
             isArchivePlayback = true
             currentArchiveProgram = program
             archiveStreamStartMs = program.start
-            btnPlayPause.setImageResource(R.drawable.ic_pause)
+            btnPlayPause.alpha = 1.0f
             tvChannelName.text = "${currentChannelIndex + 1}. ${channel.name}"
             val stamp = SimpleDateFormat(
                 "dd.MM.yyyy HH:mm",
@@ -3113,7 +3125,7 @@ class MainActivity : AppCompatActivity() {
             isArchivePlayback = false
             currentArchiveProgram = null
             archiveStreamStartMs = 0L
-            btnPlayPause.setImageResource(R.drawable.ic_pause)
+            btnPlayPause.alpha = 1.0f
 
             tvChannelName.text = "${currentChannelIndex + 1}. ${ch.name}"
             hasStartedPlaybackFromChannelClick = true
@@ -4071,7 +4083,7 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.play()
             handler.postDelayed(startupSlowStreamRunnable, 45_000L)
             isPlaybackPaused = false
-            btnPlayPause.setImageResource(R.drawable.ic_pause)
+            btnPlayPause.alpha = 1.0f
         }
     }
 
