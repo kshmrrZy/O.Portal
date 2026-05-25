@@ -165,6 +165,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sbTimeline: SeekBar
     private lateinit var tvCurrentTime: TextView
     private lateinit var tvProgramEndTime: TextView
+    private lateinit var viewTimelineStripe: View
+    private lateinit var viewTimelineLive: View
+    private lateinit var btnBackLeft: ImageButton
+    private lateinit var btnBackRight: ImageButton
+    private lateinit var btnEpgPlayer: ImageButton
     private lateinit var tvReloadingStatus: View
     private lateinit var ivReloadingIcon: ImageView
     private lateinit var tvReloadingTitle: TextView
@@ -334,6 +339,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val hideUiRunnable = Runnable { hideUI() }
+    private var pendingSeekDeltaSec: Int = 0
+    private val applySeekDeltaRunnable = Runnable {
+        val player = mediaPlayer ?: return@Runnable
+        if (pendingSeekDeltaSec != 0) {
+            val target = (player.currentPosition + pendingSeekDeltaSec * 1000L).coerceAtLeast(0L)
+            player.seekTo(target)
+            pendingSeekDeltaSec = 0
+            showUI()
+        }
+    }
     private val channelSwitchRunnable = Runnable { processChannelNumberInput() }
     private val restoreEpgRunnable = Runnable { updateEpgDisplay() }
     private val epgTickerRunnable = object : Runnable {
@@ -444,6 +459,11 @@ class MainActivity : AppCompatActivity() {
         sbTimeline = findViewById(R.id.sbTimeline)
         tvCurrentTime = findViewById(R.id.tvCurrentTime)
         tvProgramEndTime = findViewById(R.id.tvProgramEndInfo)
+        viewTimelineStripe = findViewById(R.id.viewTimelineStripe)
+        viewTimelineLive = findViewById(R.id.viewTimelineLive)
+        btnBackLeft = findViewById(R.id.btnBackLeft)
+        btnBackRight = findViewById(R.id.btnBackRight)
+        btnEpgPlayer = findViewById(R.id.btnEpgPlayer)
         tvReloadingStatus = findViewById(R.id.tvReloadingStatus)
         ivReloadingIcon = findViewById(R.id.ivReloadingIcon)
         tvReloadingTitle = findViewById(R.id.tvReloadingTitle)
@@ -640,6 +660,23 @@ class MainActivity : AppCompatActivity() {
             showUI()
         }
 
+        btnBackLeft.setOnClickListener {
+            pendingSeekDeltaSec -= 60
+            handler.removeCallbacks(applySeekDeltaRunnable)
+            handler.postDelayed(applySeekDeltaRunnable, 350L)
+            showUI()
+        }
+        btnBackRight.setOnClickListener {
+            pendingSeekDeltaSec += 60
+            handler.removeCallbacks(applySeekDeltaRunnable)
+            handler.postDelayed(applySeekDeltaRunnable, 350L)
+            showUI()
+        }
+        btnEpgPlayer.setOnClickListener {
+            showCurrentChannelSchedule()
+            showUI()
+        }
+
         btnLock.setOnClickListener {
             isLocked = !isLocked
             btnLock.setImageResource(if (isLocked) R.drawable.ic_lock_closed else R.drawable.ic_lock_open)
@@ -687,8 +724,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (dx < -120 && abs(dx) > abs(dy)) {
-                    showCurrentChannelSchedule()
-                    return true
+                    return false
                 }
 
                 return false
@@ -3979,7 +4015,7 @@ class MainActivity : AppCompatActivity() {
                     sbTimeline.progress = (sbTimeline.progress - 20).coerceAtLeast(0)
                     return true
                 }
-                showCurrentChannelSchedule()
+                // EPG opening moved to dedicated button
                 return true
             }
         }

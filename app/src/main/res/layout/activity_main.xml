@@ -233,10 +233,12 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:layout_margin="12dp"
-        android:background="@drawable/bottom_panel_bg"
         android:orientation="vertical"
-        android:padding="8dp"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="12dp"
+        android:background="@drawable/bottom_panel_bg"
         android:visibility="gone">
 
         <LinearLayout
@@ -250,99 +252,137 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="#FFFFFF"
-                android:textSize="11sp" />
+                android:fontFamily="@font/golos_text"
+                android:textStyle="bold"
+                android:textSize="14sp" />
 
-            <SeekBar
-                android:id="@+id/sbTimeline"
+            <View
+                android:id="@+id/viewTimelineStripe"
                 android:layout_width="0dp"
-                android:layout_height="30dp"
+                android:layout_height="8dp"
                 android:layout_weight="1"
-                android:progressTint="#FFFFFF"
-                android:thumbTint="#FFFFFF" />
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="12dp"
+                android:background="#55FFFFFF" />
+
+            <View
+                android:id="@+id/viewTimelineLive"
+                android:layout_width="0dp"
+                android:layout_height="8dp"
+                android:layout_marginTop="0dp"
+                android:background="#FFFFFF" />
 
             <TextView
                 android:id="@+id/tvProgramEndInfo"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
                 android:textColor="#FFFFFF"
-                android:textSize="11sp" />
-
-            <LinearLayout
-                android:id="@+id/btnLiveReload"
-                android:layout_width="wrap_content"
-                android:layout_height="30dp"
-                android:layout_marginStart="10dp"
-                android:background="@drawable/live_btn_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:paddingHorizontal="1dp">
-                <View
-                    android:id="@+id/liveIndicator"
-                    android:layout_width="6dp"
-                    android:layout_height="6dp"
-                    android:layout_marginEnd="6dp"
-                    android:background="#FF0000" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="LIVE"
-                    android:textColor="#FFFFFF"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/tvProgramEndTime"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
-                android:textColor="#FFFFFF"
-                android:textSize="11sp" />
+                android:fontFamily="@font/golos_text"
+                android:textStyle="bold"
+                android:textSize="14sp" />
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="48dp"
+            android:layout_height="56dp"
+            android:layout_marginTop="10dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <ImageButton
                 android:id="@+id/btnPlayPause"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/live_btn_bg"
                 android:src="@drawable/ic_pause"
                 app:tint="#FFFFFF" />
 
-            <ImageButton
-                android:id="@+id/btnSettings"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+            <LinearLayout
+                android:id="@+id/btnLiveReload"
+                android:layout_width="72dp"
+                android:layout_height="44dp"
                 android:layout_marginStart="8dp"
-                android:src="@drawable/ic_settings_black_24dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:background="@drawable/live_btn_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="LIVE"
+                    android:textColor="#FFFFFF"
+                    android:fontFamily="@font/golos_text"
+                    android:textStyle="bold"
+                    android:textSize="28sp" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/btnBackLeft"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/live_btn_bg"
+                android:src="@android:drawable/ic_media_rew"
                 app:tint="#FFFFFF" />
 
             <ImageButton
-                android:id="@+id/btnSleepTimer"
-                android:layout_width="50dp"
-                android:layout_height="50dp"
+                android:id="@+id/btnBackRight"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:layout_marginStart="8dp"
-                android:src="@android:drawable/ic_lock_idle_alarm"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:background="@drawable/live_btn_bg"
+                android:src="@android:drawable/ic_media_ff"
                 app:tint="#FFFFFF" />
 
             <ImageButton
                 android:id="@+id/btnLock"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:layout_marginStart="8dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:background="@drawable/live_btn_bg"
                 android:src="@drawable/ic_lock_open"
                 app:tint="#FFFFFF" />
+
+            <ImageButton
+                android:id="@+id/btnEpgPlayer"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/live_btn_bg"
+                android:src="@android:drawable/ic_menu_agenda"
+                app:tint="#FFFFFF" />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <ImageButton
+                android:id="@+id/btnSettings"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/live_btn_bg"
+                android:src="@drawable/ic_settings_black_24dp"
+                app:tint="#FFFFFF" />
         </LinearLayout>
+
+        <SeekBar
+            android:id="@+id/sbTimeline"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:visibility="invisible" />
+
+        <TextView
+            android:id="@+id/tvProgramEndTime"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:visibility="gone" />
+
+        <ImageButton
+            android:id="@+id/btnSleepTimer"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <androidx.constraintlayout.widget.ConstraintLayout
