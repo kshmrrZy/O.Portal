@@ -310,33 +310,26 @@
                 android:padding="0dp" />
 
             <LinearLayout
-                android:id="@+id/btnLiveReload"
-                android:layout_width="72dp"
-                android:layout_height="44dp"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/live_btn_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center">
-                <ImageView
-                    android:layout_width="26dp"
-                    android:layout_height="26dp"
-                    android:src="@drawable/live"
-                    android:scaleType="centerInside" />
-            </LinearLayout>
-
-            <ImageButton
-                android:id="@+id/btnLiveReload"
+                android:id="@+id/liveButtonContainer"
                 android:layout_width="44dp"
                 android:layout_height="44dp"
                 android:layout_marginStart="8dp"
-                android:background="@android:color/transparent"
-                android:backgroundTint="@android:color/transparent"
-                android:src="@drawable/live"
-                android:scaleType="fitCenter"
-                android:padding="0dp"
-                android:focusable="true"
-                android:clickable="true" />
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@android:color/transparent">
+
+                <ImageButton
+                    android:id="@+id/btnLiveReload"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@android:color/transparent"
+                    android:backgroundTint="@android:color/transparent"
+                    android:src="@drawable/live"
+                    android:scaleType="fitCenter"
+                    android:padding="0dp"
+                    android:focusable="true"
+                    android:clickable="true" />
+            </LinearLayout>
 
             <ImageButton
                 android:id="@+id/btnBackLeft"
