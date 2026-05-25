@@ -244,42 +244,50 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/tvCurrentTime"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="#FFFFFF"
-                android:fontFamily="@font/golos_text"
-                android:textStyle="bold"
-                android:textSize="14sp" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+                <TextView
+                    android:id="@+id/tvCurrentTime"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#FFFFFF"
+                    android:fontFamily="@font/golos_text"
+                    android:textStyle="bold"
+                    android:textSize="14sp" />
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
+                <TextView
+                    android:id="@+id/tvProgramEndInfo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#FFFFFF"
+                    android:fontFamily="@font/golos_text"
+                    android:textStyle="bold"
+                    android:textSize="14sp" />
+            </LinearLayout>
 
-            <View
-                android:id="@+id/viewTimelineStripe"
-                android:layout_width="0dp"
+            <FrameLayout
+                android:layout_width="match_parent"
                 android:layout_height="8dp"
-                android:layout_weight="1"
-                android:layout_marginStart="12dp"
-                android:layout_marginEnd="12dp"
-                android:background="#55FFFFFF" />
-
-            <View
-                android:id="@+id/viewTimelineLive"
-                android:layout_width="0dp"
-                android:layout_height="8dp"
-                android:layout_marginTop="0dp"
-                android:background="#FFFFFF" />
-
-            <TextView
-                android:id="@+id/tvProgramEndInfo"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="#FFFFFF"
-                android:fontFamily="@font/golos_text"
-                android:textStyle="bold"
-                android:textSize="14sp" />
+                android:layout_marginTop="8dp">
+                <View
+                    android:id="@+id/viewTimelineStripe"
+                    android:layout_width="match_parent"
+                    android:layout_height="8dp"
+                    android:background="#4DFFFFFF" />
+                <View
+                    android:id="@+id/viewTimelineLive"
+                    android:layout_width="0dp"
+                    android:layout_height="8dp"
+                    android:background="#FFFFFFFF" />
+            </FrameLayout>
         </LinearLayout>
 
         <LinearLayout
@@ -294,7 +302,10 @@
                 android:layout_width="44dp"
                 android:layout_height="44dp"
                 android:background="@drawable/live_btn_bg"
-                android:src="@drawable/ic_pause"
+                android:src="@drawable/pause"
+                android:scaleType="centerInside"
+                android:focusable="true"
+                android:clickable="true"
                 app:tint="#FFFFFF" />
 
             <LinearLayout
@@ -306,14 +317,11 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="LIVE"
-                    android:textColor="#FFFFFF"
-                    android:fontFamily="@font/golos_text"
-                    android:textStyle="bold"
-                    android:textSize="28sp" />
+                <ImageView
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:src="@drawable/live"
+                    android:scaleType="centerInside" />
             </LinearLayout>
 
             <ImageButton
@@ -322,7 +330,10 @@
                 android:layout_height="44dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/live_btn_bg"
-                android:src="@android:drawable/ic_media_rew"
+                android:src="@drawable/backleft"
+                android:scaleType="centerInside"
+                android:focusable="true"
+                android:clickable="true"
                 app:tint="#FFFFFF" />
 
             <ImageButton
@@ -331,7 +342,10 @@
                 android:layout_height="44dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/live_btn_bg"
-                android:src="@android:drawable/ic_media_ff"
+                android:src="@drawable/backright"
+                android:scaleType="centerInside"
+                android:focusable="true"
+                android:clickable="true"
                 app:tint="#FFFFFF" />
 
             <ImageButton
@@ -340,7 +354,10 @@
                 android:layout_height="44dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/live_btn_bg"
-                android:src="@drawable/ic_lock_open"
+                android:src="@drawable/block"
+                android:scaleType="centerInside"
+                android:focusable="true"
+                android:clickable="true"
                 app:tint="#FFFFFF" />
 
             <ImageButton
@@ -349,7 +366,10 @@
                 android:layout_height="44dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/live_btn_bg"
-                android:src="@android:drawable/ic_menu_agenda"
+                android:src="@drawable/epgplayer"
+                android:scaleType="centerInside"
+                android:focusable="true"
+                android:clickable="true"
                 app:tint="#FFFFFF" />
 
             <Space
@@ -362,7 +382,10 @@
                 android:layout_width="44dp"
                 android:layout_height="44dp"
                 android:background="@drawable/live_btn_bg"
-                android:src="@drawable/ic_settings_black_24dp"
+                android:src="@drawable/settingsplayer"
+                android:scaleType="centerInside"
+                android:focusable="true"
+                android:clickable="true"
                 app:tint="#FFFFFF" />
         </LinearLayout>
 
