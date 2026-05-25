@@ -3913,6 +3913,13 @@ class MainActivity : AppCompatActivity() {
         topInfoPanel.visibility = View.VISIBLE
         topGradientOverlay.visibility = View.VISIBLE
         controlsPanel.visibility = View.VISIBLE
+        findViewById<View>(R.id.btnBackToMenu).apply {
+            visibility = View.VISIBLE
+            isEnabled = true
+            isClickable = true
+            isFocusable = true
+        }
+        bindRealPlayerExitButtonListener()
         sbTimeline.isEnabled = true
         handler.removeCallbacks(hideUiRunnable)
         handler.postDelayed(hideUiRunnable, 5000)
