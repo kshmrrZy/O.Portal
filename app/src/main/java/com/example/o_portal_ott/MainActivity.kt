@@ -161,7 +161,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnSettings: ImageButton
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnSleepTimer: ImageButton
-    private lateinit var btnLiveReload: LinearLayout
+    private lateinit var btnLiveReload: ImageButton
     private lateinit var sbTimeline: SeekBar
     private lateinit var tvCurrentTime: TextView
     private lateinit var tvProgramEndTime: TextView
@@ -679,7 +679,7 @@ class MainActivity : AppCompatActivity() {
 
         btnLock.setOnClickListener {
             isLocked = !isLocked
-            btnLock.setImageResource(if (isLocked) R.drawable.ic_lock_closed else R.drawable.ic_lock_open)
+            btnLock.alpha = if (isLocked) 0.72f else 1.0f
             tvEpg.text =
                 if (isLocked) "Управление свайпами заблокировано." else "Управление свайпами разблокировано."
             handler.removeCallbacks(restoreEpgRunnable)
