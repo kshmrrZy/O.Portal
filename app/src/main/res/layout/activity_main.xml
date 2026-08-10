@@ -310,25 +310,24 @@
 
             <LinearLayout
                 android:id="@+id/liveButtonContainer"
-                android:layout_width="wrap_content"
+                android:layout_width="84dp"
                 android:layout_height="48dp"
                 android:layout_marginStart="12dp"
-                android:minWidth="72dp"
                 android:orientation="vertical"
                 android:gravity="center"
-                android:background="@drawable/player_btn_pill_bg">
+                android:background="@android:color/transparent">
 
                 <ImageButton
                     android:id="@+id/btnLiveReload"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
                     android:background="@android:color/transparent"
                     android:backgroundTint="@android:color/transparent"
                     android:src="@drawable/live"
                     android:scaleType="fitCenter"
                     android:padding="0dp"
-                    android:focusable="false"
-                    android:clickable="false" />
+                    android:focusable="true"
+                    android:clickable="true" />
             </LinearLayout>
 
             <ImageButton
@@ -367,22 +366,20 @@
                 android:clickable="true"
                 android:padding="12dp" />
 
-            <Button
+            <TextView
                 android:id="@+id/btnEpgPlayer"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
                 android:layout_marginStart="12dp"
                 android:minWidth="72dp"
-                android:minHeight="0dp"
+                android:gravity="center"
                 android:background="@drawable/player_btn_pill_bg"
                 android:text="EPG"
-                android:textAllCaps="false"
                 android:textColor="#FFFFFF"
                 android:textSize="14sp"
                 android:textStyle="bold"
                 android:fontFamily="@font/golos_text"
                 android:paddingHorizontal="16dp"
-                android:paddingVertical="0dp"
                 android:focusable="true"
                 android:clickable="true" />
 
