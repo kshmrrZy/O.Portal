@@ -292,27 +292,28 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginTop="12dp"
+            android:layout_height="56dp"
+            android:layout_marginTop="10dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <ImageButton
                 android:id="@+id/btnPlayPause"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:background="@drawable/player_btn_square_bg"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:background="@android:color/transparent"
                 android:src="@drawable/pause"
                 android:scaleType="fitCenter"
                 android:focusable="true"
                 android:clickable="true"
-                android:padding="12dp" />
+                android:backgroundTint="@android:color/transparent"
+                android:padding="0dp" />
 
             <LinearLayout
                 android:id="@+id/liveButtonContainer"
-                android:layout_width="84dp"
-                android:layout_height="48dp"
-                android:layout_marginStart="12dp"
+                android:layout_width="66dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="8dp"
                 android:orientation="vertical"
                 android:gravity="center"
                 android:background="@android:color/transparent">
@@ -332,56 +333,55 @@
 
             <ImageButton
                 android:id="@+id/btnBackLeft"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_marginStart="12dp"
-                android:background="@drawable/player_btn_square_bg"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="8dp"
+                android:background="@android:color/transparent"
                 android:src="@drawable/backleft"
                 android:scaleType="fitCenter"
                 android:focusable="true"
                 android:clickable="true"
-                android:padding="12dp" />
+                android:backgroundTint="@android:color/transparent"
+                android:padding="0dp" />
 
             <ImageButton
                 android:id="@+id/btnBackRight"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_marginStart="12dp"
-                android:background="@drawable/player_btn_square_bg"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="8dp"
+                android:background="@android:color/transparent"
                 android:src="@drawable/backright"
                 android:scaleType="fitCenter"
                 android:focusable="true"
                 android:clickable="true"
-                android:padding="12dp" />
+                android:backgroundTint="@android:color/transparent"
+                android:padding="0dp" />
 
             <ImageButton
                 android:id="@+id/btnLock"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_marginStart="12dp"
-                android:background="@drawable/player_btn_square_bg"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="8dp"
+                android:background="@android:color/transparent"
                 android:src="@drawable/block"
                 android:scaleType="fitCenter"
                 android:focusable="true"
                 android:clickable="true"
-                android:padding="12dp" />
+                android:backgroundTint="@android:color/transparent"
+                android:padding="0dp" />
 
-            <TextView
+            <ImageButton
                 android:id="@+id/btnEpgPlayer"
-                android:layout_width="wrap_content"
-                android:layout_height="48dp"
-                android:layout_marginStart="12dp"
-                android:minWidth="72dp"
-                android:gravity="center"
-                android:background="@drawable/player_btn_pill_bg"
-                android:text="EPG"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:fontFamily="@font/golos_text"
-                android:paddingHorizontal="16dp"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="8dp"
+                android:background="@android:color/transparent"
+                android:src="@drawable/epgplayer"
+                android:scaleType="fitCenter"
                 android:focusable="true"
-                android:clickable="true" />
+                android:clickable="true"
+                android:backgroundTint="@android:color/transparent"
+                android:padding="0dp" />
 
             <Space
                 android:layout_width="0dp"
@@ -390,14 +390,15 @@
 
             <ImageButton
                 android:id="@+id/btnSettings"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:background="@drawable/player_btn_square_bg"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:background="@android:color/transparent"
                 android:src="@drawable/settingsplayer"
                 android:scaleType="fitCenter"
                 android:focusable="true"
                 android:clickable="true"
-                android:padding="12dp" />
+                android:backgroundTint="@android:color/transparent"
+                android:padding="0dp" />
         </LinearLayout>
 
         <SeekBar

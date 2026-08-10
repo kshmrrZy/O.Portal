@@ -169,7 +169,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var viewTimelineLive: View
     private lateinit var btnBackLeft: ImageButton
     private lateinit var btnBackRight: ImageButton
-    private lateinit var btnEpgPlayer: TextView
+    private lateinit var btnEpgPlayer: ImageButton
     private lateinit var tvReloadingStatus: View
     private lateinit var ivReloadingIcon: ImageView
     private lateinit var tvReloadingTitle: TextView
