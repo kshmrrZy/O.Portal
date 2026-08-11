@@ -420,6 +420,82 @@
             android:visibility="gone" />
     </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/epgPanel"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginStart="@dimen/player_top_side_margin"
+        android:layout_marginEnd="@dimen/player_top_side_margin"
+        android:layout_marginTop="104dp"
+        android:layout_marginBottom="112dp"
+        android:orientation="vertical"
+        android:background="@drawable/epg_panel_bg"
+        android:padding="16dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/btnEpgDatePrev"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:gravity="center"
+                android:background="@drawable/player_btn_pill_bg"
+                android:text="пред."
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:fontFamily="@font/golos_text"
+                android:paddingHorizontal="14dp"
+                android:focusable="true"
+                android:clickable="true" />
+
+            <HorizontalScrollView
+                android:id="@+id/hsvEpgDates"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/epgDateContainer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical" />
+            </HorizontalScrollView>
+
+            <TextView
+                android:id="@+id/btnEpgDateNext"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:gravity="center"
+                android:background="@drawable/player_btn_pill_bg"
+                android:text="след."
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:fontFamily="@font/golos_text"
+                android:paddingHorizontal="14dp"
+                android:focusable="true"
+                android:clickable="true" />
+        </LinearLayout>
+
+        <ListView
+            android:id="@+id/lvEpgPrograms"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="12dp"
+            android:divider="@null"
+            android:dividerHeight="0dp"
+            android:scrollbars="none" />
+    </LinearLayout>
+
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/homePanel"
         android:layout_width="match_parent"
