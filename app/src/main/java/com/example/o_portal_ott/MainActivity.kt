@@ -111,7 +111,7 @@ data class Channel(
     var logoFromEpg: String? = null
 )
 
-data class Program(val title: String, val start: Long, val stop: Long)
+data class Program(val title: String, val start: Long, val stop: Long, val desc: String = "")
 
 data class PlaylistProfile(
     val name: String,
@@ -140,7 +140,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var mDetector: GestureDetectorCompat
 
     private var channelListDialog: AlertDialog? = null
-    private var scheduleDialog: AlertDialog? = null
 
     // UI элементы
     private lateinit var controlsPanel: View
@@ -170,6 +169,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnBackLeft: ImageButton
     private lateinit var btnBackRight: ImageButton
     private lateinit var btnEpgPlayer: ImageButton
+    private lateinit var epgPanel: View
+    private lateinit var btnEpgDatePrev: TextView
+    private lateinit var btnEpgDateNext: TextView
+    private lateinit var hsvEpgDates: android.widget.HorizontalScrollView
+    private lateinit var epgDateContainer: LinearLayout
+    private lateinit var lvEpgPrograms: ListView
     private lateinit var tvReloadingStatus: View
     private lateinit var ivReloadingIcon: ImageView
     private lateinit var tvReloadingTitle: TextView
@@ -435,6 +440,12 @@ class MainActivity : AppCompatActivity() {
     private fun initViews() {
         controlsPanel = findViewById(R.id.controlsPanel)
         topInfoPanel = findViewById(R.id.topInfoPanel)
+        epgPanel = findViewById(R.id.epgPanel)
+        btnEpgDatePrev = findViewById(R.id.btnEpgDatePrev)
+        btnEpgDateNext = findViewById(R.id.btnEpgDateNext)
+        hsvEpgDates = findViewById(R.id.hsvEpgDates)
+        epgDateContainer = findViewById(R.id.epgDateContainer)
+        lvEpgPrograms = findViewById(R.id.lvEpgPrograms)
         tvEpg = findViewById(R.id.tvEpgInfo)
         tvChannelName = findViewById(R.id.tvChannelNameInfo)
         tvSystemTime = findViewById(R.id.tvSystemTime)
@@ -675,7 +686,7 @@ class MainActivity : AppCompatActivity() {
             showUI()
         }
         btnEpgPlayer.setOnClickListener {
-            showCurrentChannelSchedule()
+            toggleEpgPanel()
             showUI()
         }
 
@@ -1257,6 +1268,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupBackHandling() {
         onBackPressedDispatcher.addCallback(this) {
+            if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
+                hideEpgPanel()
+                return@addCallback
+            }
             if (homeSettingsScreen.visibility == View.VISIBLE) {
                 hideSettingsScreen()
                 return@addCallback
@@ -1435,137 +1450,176 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showCurrentChannelSchedule() {
+    private var epgPanelChannel: Channel? = null
+    private var epgPanelDateKeys: List<String> = emptyList()
+    private var epgPanelSelectedDate: String = ""
+    private var epgPanelProgramsByDate: Map<String, List<Program>> = emptyMap()
+
+    private fun toggleEpgPanel() {
+        if (epgPanel.visibility == View.VISIBLE) {
+            hideEpgPanel()
+        } else {
+            showEpgPanel()
+        }
+    }
+
+    private fun hideEpgPanel() {
+        epgPanel.visibility = View.GONE
+    }
+
+    private fun showEpgPanel() {
         val ch = channels.getOrNull(currentChannelIndex) ?: return
+        epgPanelChannel = ch
+
         val programs =
             getProgramsForDisplay(ch).distinctBy { Triple(it.title.trim(), it.start, it.stop) }
                 .sortedBy { it.start }
 
-        val byDate = programs.groupBy {
+        epgPanelProgramsByDate = programs.groupBy {
             SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(it.start))
         }
 
-        val view = layoutInflater.inflate(R.layout.dialog_channel_schedule, null)
-        val tvHeader = view.findViewById<TextView>(R.id.tvScheduleHeader)
-        val hsvDates = view.findViewById<android.widget.HorizontalScrollView>(R.id.hsvDates)
-        val dateContainer = view.findViewById<LinearLayout>(R.id.dateContainer)
-        val lvSchedule = view.findViewById<ListView>(R.id.lvSchedule)
-
-        val currentProgram = programs.find { System.currentTimeMillis() in it.start until it.stop }
-        tvHeader.text = "${ch.name}\nСейчас: ${currentProgram?.title ?: "Нет данных"}"
-
-        val dateKeys = byDate.keys.sortedBy { key ->
+        epgPanelDateKeys = epgPanelProgramsByDate.keys.sortedBy { key ->
             SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).parse(key)?.time ?: 0L
         }
 
-        val todayKey = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date())
-        var selectedDate = dateKeys.firstOrNull { it == todayKey } ?: dateKeys.first()
-
-        fun renderSchedule(date: String) {
-            val items = byDate[date].orEmpty().sortedBy { it.start }
-            val now = System.currentTimeMillis()
-            lvSchedule.adapter = object : ArrayAdapter<Program>(this, 0, items) {
-                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                    val row = convertView ?: layoutInflater.inflate(
-                        R.layout.item_schedule_program,
-                        parent,
-                        false
-                    )
-                    val item = getItem(position) ?: return row
-                    val tvTime = row.findViewById<TextView>(R.id.tvProgramTime)
-                    val tvTitle = row.findViewById<TextView>(R.id.tvProgramTitle)
-                    val tvBadge = row.findViewById<TextView>(R.id.tvNowOnAirBadge)
-                    val tvArchiveBadge = row.findViewById<TextView>(R.id.tvArchiveBadge)
-                    tvTime.text =
-                        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(item.start))
-                    tvTitle.text = item.title
-                    val isNow = now in item.start until item.stop
-                    val archiveAvailable = isArchiveAvailable(ch, item)
-                    tvBadge.visibility = if (isNow) View.VISIBLE else View.GONE
-                    tvArchiveBadge.visibility = if (archiveAvailable) View.VISIBLE else View.GONE
-                    row.alpha = if (isNow) 1f else 0.95f
-                    row.setOnClickListener {
-                        if (!archiveAvailable) {
-                            Toast.makeText(
-                                this@MainActivity,
-                                "Архив недоступен для этой передачи",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            return@setOnClickListener
-                        }
-                        playArchiveProgram(ch, item)
-                        scheduleDialog?.dismiss()
-                    }
-                    return row
-                }
-            }
-
-            val currentIdx = items.indexOfFirst { now in it.start until it.stop }
-            if (currentIdx >= 0) lvSchedule.post {
-                lvSchedule.setSelection(
-                    currentIdx.coerceAtLeast(
-                        0
-                    )
-                )
-            }
+        if (epgPanelDateKeys.isEmpty()) {
+            Toast.makeText(this, "Программа передач недоступна", Toast.LENGTH_SHORT).show()
+            return
         }
 
-        dateKeys.forEach { dateKey ->
+        val todayKey = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date())
+        epgPanelSelectedDate =
+            epgPanelDateKeys.firstOrNull { it == todayKey } ?: epgPanelDateKeys.first()
+
+        renderEpgDateChips()
+        renderEpgProgramsForSelectedDate()
+
+        epgPanel.visibility = View.VISIBLE
+    }
+
+    private fun renderEpgDateChips() {
+        epgDateContainer.removeAllViews()
+        epgPanelDateKeys.forEach { dateKey ->
             val chip = TextView(this).apply {
                 text = dateKey
                 setTextColor(Color.WHITE)
-                setShadowLayer(2f, 0f, 0f, Color.parseColor("#80000000"))
-                setPadding(24, 12, 24, 12)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                background = getDrawable(R.drawable.bg_date_chip)
-                isSelected = dateKey == selectedDate
+                setPadding(28, 10, 28, 10)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                typeface = Typeface.create(typeface, Typeface.BOLD)
+                background = getDrawable(R.drawable.epg_date_chip_bg)
+                isFocusable = true
+                isClickable = true
+                isSelected = dateKey == epgPanelSelectedDate
                 setOnClickListener {
-                    selectedDate = dateKey
-                    for (i in 0 until dateContainer.childCount) {
-                        dateContainer.getChildAt(i).isSelected = false
+                    epgPanelSelectedDate = dateKey
+                    for (i in 0 until epgDateContainer.childCount) {
+                        epgDateContainer.getChildAt(i).isSelected = false
                     }
                     isSelected = true
-                    renderSchedule(dateKey)
+                    renderEpgProgramsForSelectedDate()
+                    updateEpgDateNavButtons()
                 }
             }
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
-            lp.marginEnd = 12
-            dateContainer.addView(chip, lp)
+            lp.marginEnd = 10
+            epgDateContainer.addView(chip, lp)
         }
 
-        val selectedIdx = dateKeys.indexOf(selectedDate)
-        if (selectedIdx >= 0) {
-            dateContainer.post {
-                val selectedChip = dateContainer.getChildAt(selectedIdx)
-                if (selectedChip != null) {
-                    val scrollX =
-                        (selectedChip.left - (hsvDates.width - selectedChip.width) / 2).coerceAtLeast(
-                            0
-                        )
-                    hsvDates.smoothScrollTo(scrollX, 0)
+        btnEpgDatePrev.setOnClickListener { shiftEpgDate(-1) }
+        btnEpgDateNext.setOnClickListener { shiftEpgDate(1) }
+        updateEpgDateNavButtons()
+        scrollToSelectedEpgDateChip()
+    }
+
+    private fun scrollToSelectedEpgDateChip() {
+        val selectedIdx = epgPanelDateKeys.indexOf(epgPanelSelectedDate)
+        if (selectedIdx < 0) return
+        epgDateContainer.post {
+            val selectedChip = epgDateContainer.getChildAt(selectedIdx) ?: return@post
+            val scrollX =
+                (selectedChip.left - (hsvEpgDates.width - selectedChip.width) / 2).coerceAtLeast(0)
+            hsvEpgDates.smoothScrollTo(scrollX, 0)
+        }
+    }
+
+    private fun updateEpgDateNavButtons() {
+        val selectedIdx = epgPanelDateKeys.indexOf(epgPanelSelectedDate)
+        btnEpgDatePrev.alpha = if (selectedIdx <= 0) 0.4f else 1f
+        btnEpgDateNext.alpha =
+            if (selectedIdx < 0 || selectedIdx >= epgPanelDateKeys.lastIndex) 0.4f else 1f
+    }
+
+    private fun shiftEpgDate(step: Int) {
+        val currentIdx = epgPanelDateKeys.indexOf(epgPanelSelectedDate)
+        val nextIdx = currentIdx + step
+        if (nextIdx !in epgPanelDateKeys.indices) return
+        epgPanelSelectedDate = epgPanelDateKeys[nextIdx]
+        for (i in 0 until epgDateContainer.childCount) {
+            val chip = epgDateContainer.getChildAt(i) as? TextView ?: continue
+            chip.isSelected = chip.text == epgPanelSelectedDate
+        }
+        renderEpgProgramsForSelectedDate()
+        updateEpgDateNavButtons()
+        scrollToSelectedEpgDateChip()
+    }
+
+    private fun renderEpgProgramsForSelectedDate() {
+        val ch = epgPanelChannel ?: return
+        val items = epgPanelProgramsByDate[epgPanelSelectedDate].orEmpty().sortedBy { it.start }
+        val now = System.currentTimeMillis()
+        lvEpgPrograms.adapter = object : ArrayAdapter<Program>(this, 0, items) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val row = convertView ?: layoutInflater.inflate(
+                    R.layout.item_epg_program,
+                    parent,
+                    false
+                )
+                val item = getItem(position) ?: return row
+                val tvTime = row.findViewById<TextView>(R.id.tvProgramTime)
+                val tvTitle = row.findViewById<TextView>(R.id.tvProgramTitle)
+                val tvDesc = row.findViewById<TextView>(R.id.tvProgramDesc)
+                val tvBadge = row.findViewById<TextView>(R.id.tvNowOnAirBadge)
+                val tvArchiveBadge = row.findViewById<TextView>(R.id.tvArchiveBadge)
+                tvTime.text =
+                    SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(item.start))
+                tvTitle.text = item.title
+                if (item.desc.isNotBlank()) {
+                    tvDesc.text = item.desc
+                    tvDesc.visibility = View.VISIBLE
+                } else {
+                    tvDesc.visibility = View.GONE
                 }
+                val isNow = now in item.start until item.stop
+                val archiveAvailable = isArchiveAvailable(ch, item)
+                tvBadge.visibility = if (isNow) View.VISIBLE else View.GONE
+                tvArchiveBadge.visibility = if (archiveAvailable) View.VISIBLE else View.GONE
+                row.alpha = if (isNow) 1f else 0.9f
+                row.setOnClickListener {
+                    if (!archiveAvailable) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Архив недоступен для этой передачи",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@setOnClickListener
+                    }
+                    playArchiveProgram(ch, item)
+                    hideEpgPanel()
+                }
+                return row
             }
         }
 
-        renderSchedule(selectedDate)
-
-        scheduleDialog?.dismiss()
-        scheduleDialog =
-            AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
-                .setView(view)
-                .create()
-
-        scheduleDialog?.show()
-        val dm = resources.displayMetrics
-        scheduleDialog?.window?.apply {
-            setBackgroundDrawableResource(android.R.color.transparent)
-            setGravity(Gravity.CENTER)
-            setLayout((dm.widthPixels * 0.92f).toInt(), (dm.heightPixels * 0.9f).toInt())
+        val currentIdx = items.indexOfFirst { now in it.start until it.stop }
+        if (currentIdx >= 0) lvEpgPrograms.post {
+            lvEpgPrograms.setSelection(currentIdx.coerceAtLeast(0))
         }
     }
+
 
     private fun configureBackButtonsForSettings(stage: String) {
         val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
@@ -2942,16 +2996,19 @@ class MainActivity : AppCompatActivity() {
                                 0L
                             }
                             var title = ""
+                            var desc = ""
                             while (!(parser.next() == XmlPullParser.END_TAG && parser.name == "programme")) {
                                 if (parser.eventType == XmlPullParser.START_TAG && parser.name == "title") {
                                     title = parser.nextText()
+                                } else if (parser.eventType == XmlPullParser.START_TAG && parser.name == "desc") {
+                                    desc = parser.nextText()
                                 }
                             }
                             if (chId.isNotEmpty()) {
                                 synchronized(epgDataLock) {
                                     val bucket = epgData.getOrPut(chId) { mutableListOf() }
                                     if (bucket.size < MAX_PROGRAMS_PER_CHANNEL) {
-                                        bucket.add(Program(title, start, stop))
+                                        bucket.add(Program(title, start, stop, desc))
                                     }
                                 }
                             }
@@ -3938,6 +3995,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hideUI() {
+        if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
+            // Пока пользователь читает программу передач, автоскрытие интерфейса не должно её задевать.
+            return
+        }
         topInfoPanel.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
@@ -4639,6 +4700,7 @@ class MainActivity : AppCompatActivity() {
                         put("title", p.title)
                         put("start", p.start)
                         put("stop", p.stop)
+                        put("desc", p.desc)
                     })
                 }
                 cache.put(channelId, arr)
@@ -4664,7 +4726,8 @@ class MainActivity : AppCompatActivity() {
                     list += Program(
                         title = p.optString("title"),
                         start = p.optLong("start"),
-                        stop = p.optLong("stop")
+                        stop = p.optLong("stop"),
+                        desc = p.optString("desc")
                     )
                 }
                 synchronized(epgDataLock) { epgData[key] = list }
