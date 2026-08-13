@@ -169,6 +169,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var viewTimelineStripe: View
     private lateinit var viewTimelineLive: View
     private lateinit var timelineTrack: View
+    private lateinit var timelineArea: View
     private lateinit var btnBackLeft: ImageButton
     private lateinit var btnBackRight: ImageButton
     private lateinit var btnEpgPlayer: ImageButton
@@ -504,6 +505,7 @@ class MainActivity : AppCompatActivity() {
         viewTimelineStripe = findViewById(R.id.viewTimelineStripe)
         viewTimelineLive = findViewById(R.id.viewTimelineLive)
         timelineTrack = findViewById(R.id.timelineTrack)
+        timelineArea = findViewById(R.id.timelineArea)
         btnBackLeft = findViewById(R.id.btnBackLeft)
         btnBackRight = findViewById(R.id.btnBackRight)
         btnEpgPlayer = findViewById(R.id.btnEpgPlayer)
@@ -665,7 +667,7 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        timelineTrack.setOnTouchListener { view, event ->
+        timelineArea.setOnTouchListener { view, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     timelineUserSeeking = true
