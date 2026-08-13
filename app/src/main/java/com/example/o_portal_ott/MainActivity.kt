@@ -4435,6 +4435,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun exitPlayerToPlaylist() {
         logDebug("NAV", "EXIT_PLAYER_TO_PLAYLIST_ENTERED")
+        if (::epgPanel.isInitialized) {
+            epgPanel.visibility = View.GONE
+            lvEpgPrograms.adapter = null
+        }
         stopPlayback()
         resetPlaybackSessionStateOnExit()
         hasStartedPlaybackFromChannelClick = false
@@ -4446,6 +4450,10 @@ class MainActivity : AppCompatActivity() {
     private fun bindRealPlayerExitButtonListener() {
         findViewById<ImageView>(R.id.btnBackToMenu).setOnClickListener {
             logDebug("NAV", "PLAYER_EXIT_BUTTON_CLICKED_REAL_LISTENER")
+            if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
+                hideEpgPanel()
+                return@setOnClickListener
+            }
             exitPlayerToPlaylist()
         }
     }
