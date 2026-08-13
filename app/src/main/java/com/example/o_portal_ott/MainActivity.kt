@@ -1969,8 +1969,14 @@ class MainActivity : AppCompatActivity() {
             if (selectedEpgSources.isNotEmpty()) {
                 synchronized(epgDataLock) { epgData.clear() }
                 fetchEpgSources(selectedEpgSources.toList(), mutableMapOf())
+                Toast.makeText(this, "Обновление EPG запущено", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(
+                    this,
+                    "Нет выбранных источников EPG — включите переключатель и нажмите \"Сохранить\"",
+                    Toast.LENGTH_LONG
+                ).show()
             }
-            Toast.makeText(this, "Обновление EPG запущено", Toast.LENGTH_SHORT).show()
         }
 
         configureBackButtonsForSettings("openEpgSettingsScreen")
