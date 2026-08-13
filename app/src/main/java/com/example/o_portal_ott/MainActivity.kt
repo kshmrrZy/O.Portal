@@ -340,7 +340,7 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_EPG_UNPACKED_BYTES = 1800L * 1024L * 1024L
         private const val EPG_KEEP_PAST_DAYS = 7
         private const val EPG_KEEP_FUTURE_DAYS = 7
-        private const val MAX_PROGRAMS_PER_CHANNEL = 5000
+        private const val MAX_PROGRAMS_PER_CHANNEL = 500
 
         private const val HOME_BASE_WIDTH = 1280f
         private const val HOME_BASE_HEIGHT = 720f
@@ -1474,6 +1474,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun hideEpgPanel() {
         epgPanel.visibility = View.GONE
+        lvEpgPrograms.adapter = null
     }
 
     private fun syncEpgPanelBounds() {
@@ -1595,36 +1596,44 @@ class MainActivity : AppCompatActivity() {
         scrollToSelectedEpgDateChip()
     }
 
+    private class EpgProgramRowHolder(row: View) {
+        val tvTime: TextView = row.findViewById(R.id.tvProgramTime)
+        val tvTitle: TextView = row.findViewById(R.id.tvProgramTitle)
+        val tvDesc: TextView = row.findViewById(R.id.tvProgramDesc)
+        val tvBadge: TextView = row.findViewById(R.id.tvNowOnAirBadge)
+        val tvArchiveBadge: TextView = row.findViewById(R.id.tvArchiveBadge)
+    }
+
     private fun renderEpgProgramsForSelectedDate() {
         val ch = epgPanelChannel ?: return
         val items = epgPanelProgramsByDate[epgPanelSelectedDate].orEmpty().sortedBy { it.start }
         val now = System.currentTimeMillis()
+        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
         lvEpgPrograms.adapter = object : ArrayAdapter<Program>(this, 0, items) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                val row = convertView ?: layoutInflater.inflate(
-                    R.layout.item_epg_program,
-                    parent,
-                    false
-                )
-                val item = getItem(position) ?: return row
-                val tvTime = row.findViewById<TextView>(R.id.tvProgramTime)
-                val tvTitle = row.findViewById<TextView>(R.id.tvProgramTitle)
-                val tvDesc = row.findViewById<TextView>(R.id.tvProgramDesc)
-                val tvBadge = row.findViewById<TextView>(R.id.tvNowOnAirBadge)
-                val tvArchiveBadge = row.findViewById<TextView>(R.id.tvArchiveBadge)
-                tvTime.text =
-                    SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(item.start))
-                tvTitle.text = item.title
-                if (item.desc.isNotBlank()) {
-                    tvDesc.text = item.desc
-                    tvDesc.visibility = View.VISIBLE
+                val row: View
+                val holder: EpgProgramRowHolder
+                if (convertView == null) {
+                    row = layoutInflater.inflate(R.layout.item_epg_program, parent, false)
+                    holder = EpgProgramRowHolder(row)
+                    row.tag = holder
                 } else {
-                    tvDesc.visibility = View.GONE
+                    row = convertView
+                    holder = row.tag as EpgProgramRowHolder
+                }
+                val item = getItem(position) ?: return row
+                holder.tvTime.text = timeFormat.format(Date(item.start))
+                holder.tvTitle.text = item.title
+                if (item.desc.isNotBlank()) {
+                    holder.tvDesc.text = item.desc
+                    holder.tvDesc.visibility = View.VISIBLE
+                } else {
+                    holder.tvDesc.visibility = View.GONE
                 }
                 val isNow = now in item.start until item.stop
                 val archiveAvailable = isArchiveAvailable(ch, item)
-                tvBadge.visibility = if (isNow) View.VISIBLE else View.GONE
-                tvArchiveBadge.visibility = if (archiveAvailable) View.VISIBLE else View.GONE
+                holder.tvBadge.visibility = if (isNow) View.VISIBLE else View.GONE
+                holder.tvArchiveBadge.visibility = if (archiveAvailable) View.VISIBLE else View.GONE
                 row.alpha = if (isNow) 1f else 0.9f
                 row.setOnClickListener {
                     if (!archiveAvailable) {
@@ -3107,10 +3116,11 @@ class MainActivity : AppCompatActivity() {
                             }
 
                             if (chId.isNotEmpty()) {
+                                val trimmedDesc = desc.take(300)
                                 synchronized(epgDataLock) {
                                     val bucket = epgData.getOrPut(chId) { mutableListOf() }
                                     if (bucket.size < MAX_PROGRAMS_PER_CHANNEL) {
-                                        bucket.add(Program(title, start, stop, desc))
+                                        bucket.add(Program(title, start, stop, trimmedDesc))
                                     }
                                 }
                             } else {
@@ -4830,7 +4840,7 @@ class MainActivity : AppCompatActivity() {
         synchronized(epgDataLock) {
             epgData.forEach { (channelId, programs) ->
                 val arr = JSONArray()
-                programs.sortedBy { it.start }.take(2000).forEach { p ->
+                programs.sortedBy { it.start }.take(500).forEach { p ->
                     arr.put(JSONObject().apply {
                         put("title", p.title)
                         put("start", p.start)
