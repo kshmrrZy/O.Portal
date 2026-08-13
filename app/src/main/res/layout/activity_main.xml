@@ -500,6 +500,30 @@
             android:scrollbars="none" />
     </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/channelListPanel"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginStart="@dimen/player_top_side_margin"
+        android:layout_marginEnd="@dimen/player_top_side_margin"
+        android:layout_marginTop="96dp"
+        android:layout_marginBottom="96dp"
+        android:orientation="vertical"
+        android:background="@drawable/epg_panel_bg"
+        android:padding="16dp"
+        android:visibility="gone">
+
+        <GridView
+            android:id="@+id/gvChannelListPanel"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:numColumns="5"
+            android:horizontalSpacing="10dp"
+            android:verticalSpacing="10dp"
+            android:stretchMode="columnWidth"
+            android:scrollbars="none" />
+    </LinearLayout>
+
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/homePanel"
         android:layout_width="match_parent"

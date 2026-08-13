@@ -179,6 +179,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var hsvEpgDates: android.widget.HorizontalScrollView
     private lateinit var epgDateContainer: LinearLayout
     private lateinit var lvEpgPrograms: ListView
+    private lateinit var channelListPanel: View
+    private lateinit var gvChannelListPanel: GridView
     private lateinit var tvReloadingStatus: View
     private lateinit var ivReloadingIcon: ImageView
     private lateinit var tvReloadingTitle: TextView
@@ -474,10 +476,15 @@ class MainActivity : AppCompatActivity() {
         })
         val epgBoundsLayoutListener =
             View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                if (epgPanel.visibility == View.VISIBLE) syncEpgPanelBounds()
+                if (epgPanel.visibility == View.VISIBLE) syncOverlayPanelBounds(epgPanel)
+                if (channelListPanel.visibility == View.VISIBLE) syncOverlayPanelBounds(
+                    channelListPanel
+                )
             }
         topInfoPanel.addOnLayoutChangeListener(epgBoundsLayoutListener)
         controlsPanel.addOnLayoutChangeListener(epgBoundsLayoutListener)
+        channelListPanel = findViewById(R.id.channelListPanel)
+        gvChannelListPanel = findViewById(R.id.gvChannelListPanel)
         tvEpg = findViewById(R.id.tvEpgInfo)
         tvChannelName = findViewById(R.id.tvChannelNameInfo)
         tvSystemTime = findViewById(R.id.tvSystemTime)
@@ -785,7 +792,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (dx > 120 && abs(dx) > abs(dy)) {
-                    showChannelList()
+                    showChannelListPanel()
                     return true
                 }
 
@@ -1325,6 +1332,10 @@ class MainActivity : AppCompatActivity() {
                 hideEpgPanel()
                 return@addCallback
             }
+            if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
+                hideChannelListPanel()
+                return@addCallback
+            }
             if (homeSettingsScreen.visibility == View.VISIBLE) {
                 hideSettingsScreen()
                 return@addCallback
@@ -1503,7 +1514,81 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private var epgPanelChannel: Channel? = null
+    private fun toggleChannelListPanel() {
+        if (channelListPanel.visibility == View.VISIBLE) {
+            hideChannelListPanel()
+        } else {
+            showChannelListPanel()
+        }
+    }
+
+    private fun hideChannelListPanel() {
+        channelListPanel.visibility = View.GONE
+        gvChannelListPanel.adapter = null
+    }
+
+    private fun showChannelListPanel() {
+        if (channels.isEmpty()) return
+        gvChannelListPanel.adapter = object : ArrayAdapter<Channel>(this, 0, channels) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val holder: ChannelGridItemViewHolder
+                val itemView: View
+                if (convertView == null) {
+                    itemView = layoutInflater.inflate(R.layout.item_channel_grid, parent, false)
+                    holder = ChannelGridItemViewHolder(
+                        tvNumber = itemView.findViewById(R.id.itemNumber),
+                        tvName = itemView.findViewById(R.id.itemName),
+                        tvCurrentProgram = itemView.findViewById(R.id.itemCurrentProgram),
+                        ivLogo = itemView.findViewById(R.id.itemLogo)
+                    )
+                    itemView.tag = holder
+                } else {
+                    itemView = convertView
+                    holder = convertView.tag as ChannelGridItemViewHolder
+                }
+
+                val channel = channels[position]
+                holder.tvNumber.text = (position + 1).toString()
+                holder.tvName.text = channel.name
+                holder.tvName.isSelected = true
+                loadLogoWithGlide(
+                    channel.logoFromEpg ?: channel.logoFromPlaylist,
+                    holder.ivLogo
+                )
+
+                if (position == currentChannelIndex) {
+                    val cur = getProgramsForDisplay(channel).find {
+                        System.currentTimeMillis() in it.start until it.stop
+                    }
+                    if (cur != null) {
+                        val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+                        holder.tvCurrentProgram.text =
+                            "Сейчас: ${fmt.format(Date(cur.start))} - ${fmt.format(Date(cur.stop))} - ${cur.title}"
+                        holder.tvCurrentProgram.visibility = View.VISIBLE
+                    } else {
+                        holder.tvCurrentProgram.visibility = View.GONE
+                    }
+                } else {
+                    holder.tvCurrentProgram.visibility = View.GONE
+                }
+
+                itemView.setOnClickListener {
+                    logDebug("NAV", "channel_grid_click name=${channel.name}")
+                    currentChannelIndex = position
+                    playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
+                    hideChannelListPanel()
+                }
+                return itemView
+            }
+        }
+        channelListPanel.visibility = View.VISIBLE
+        channelListPanel.post {
+            syncOverlayPanelBounds(channelListPanel)
+            gvChannelListPanel.setSelection(currentChannelIndex)
+        }
+    }
+
+
     private var epgPanelDateKeys: List<String> = emptyList()
     private var epgPanelSelectedDate: String = ""
     private var epgPanelProgramsByDate: Map<String, List<Program>> = emptyMap()
@@ -1522,9 +1607,8 @@ class MainActivity : AppCompatActivity() {
         lvEpgPrograms.adapter = null
     }
 
-    private fun syncEpgPanelBounds() {
-        if (!::epgPanel.isInitialized) return
-        val lp = epgPanel.layoutParams as? FrameLayout.LayoutParams ?: return
+    private fun syncOverlayPanelBounds(panel: View) {
+        val lp = panel.layoutParams as? FrameLayout.LayoutParams ?: return
         val gap = (8 * resources.displayMetrics.density).toInt()
         val topMargin = topInfoPanel.bottom + gap
         val bottomMargin = controlsPanel.height + gap
@@ -1532,7 +1616,12 @@ class MainActivity : AppCompatActivity() {
         if (lp.topMargin == topMargin && lp.bottomMargin == bottomMargin) return
         lp.topMargin = topMargin
         lp.bottomMargin = bottomMargin
-        epgPanel.layoutParams = lp
+        panel.layoutParams = lp
+    }
+
+    private fun syncEpgPanelBounds() {
+        if (!::epgPanel.isInitialized) return
+        syncOverlayPanelBounds(epgPanel)
     }
 
     private fun showEpgPanel() {
@@ -4182,6 +4271,9 @@ class MainActivity : AppCompatActivity() {
             // Пока пользователь читает программу передач, автоскрытие интерфейса не должно её задевать.
             return
         }
+        if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
+            return
+        }
         topInfoPanel.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
@@ -4266,7 +4358,7 @@ class MainActivity : AppCompatActivity() {
                     sbTimeline.progress = (sbTimeline.progress + 20).coerceAtMost(1000)
                     return true
                 }
-                showChannelList()
+                showChannelListPanel()
                 return true
             }
 
@@ -4530,6 +4622,10 @@ class MainActivity : AppCompatActivity() {
             epgPanel.visibility = View.GONE
             lvEpgPrograms.adapter = null
         }
+        if (::channelListPanel.isInitialized) {
+            channelListPanel.visibility = View.GONE
+            gvChannelListPanel.adapter = null
+        }
         stopPlayback()
         resetPlaybackSessionStateOnExit()
         hasStartedPlaybackFromChannelClick = false
@@ -4543,6 +4639,10 @@ class MainActivity : AppCompatActivity() {
             logDebug("NAV", "PLAYER_EXIT_BUTTON_CLICKED_REAL_LISTENER")
             if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
                 hideEpgPanel()
+                return@setOnClickListener
+            }
+            if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
+                hideChannelListPanel()
                 return@setOnClickListener
             }
             exitPlayerToPlaylist()
@@ -5063,6 +5163,12 @@ class MainActivity : AppCompatActivity() {
         val tvEpgItem: TextView,
         val ivLogoItem: ImageView,
         val btnWatch: TextView
+    )
+    private data class ChannelGridItemViewHolder(
+        val tvNumber: TextView,
+        val tvName: TextView,
+        val tvCurrentProgram: TextView,
+        val ivLogo: ImageView
     )
     private fun logDebug(tag: String, message: String, tr: Throwable? = null) {
         Log.i(tag, message, tr)
