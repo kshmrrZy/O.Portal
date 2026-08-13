@@ -644,7 +644,9 @@ class MainActivity : AppCompatActivity() {
         bindRealPlayerExitButtonListener()
         sbTimeline.max = 1000
         sbTimeline.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {}
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                applyTimelineLiveWidth(progress)
+            }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {
                 timelineUserSeeking = true
             }
@@ -4323,7 +4325,9 @@ class MainActivity : AppCompatActivity() {
         if (p == null) {
             tvCurrentTime.text = "--:--"
             tvProgramEndTime.text = "--:--"
-            if (!timelineUserSeeking) sbTimeline.progress = 0
+            if (!timelineUserSeeking) {
+                sbTimeline.progress = 0
+            }
             return
         }
         tvCurrentTime.text = fmt.format(Date(p.start))
@@ -4335,6 +4339,21 @@ class MainActivity : AppCompatActivity() {
             val progress = (((currentMs - p.start).toDouble() / (p.stop - p.start).coerceAtLeast(1L)
                 .toDouble()) * 1000.0).toInt().coerceIn(0, 1000)
             sbTimeline.progress = progress
+        }
+    }
+
+    private fun applyTimelineLiveWidth(progress: Int) {
+        val trackWidth = viewTimelineStripe.width
+        if (trackWidth <= 0) {
+            // Разметка ещё не измерена — попробуем ещё раз на следующем кадре.
+            viewTimelineStripe.post { applyTimelineLiveWidth(progress) }
+            return
+        }
+        val lp = viewTimelineLive.layoutParams ?: return
+        val targetWidth = (trackWidth * (progress / 1000.0)).toInt().coerceIn(0, trackWidth)
+        if (lp.width != targetWidth) {
+            lp.width = targetWidth
+            viewTimelineLive.layoutParams = lp
         }
     }
 
