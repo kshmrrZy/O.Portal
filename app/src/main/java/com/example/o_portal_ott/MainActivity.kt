@@ -449,6 +449,21 @@ class MainActivity : AppCompatActivity() {
         hsvEpgDates = findViewById(R.id.hsvEpgDates)
         epgDateContainer = findViewById(R.id.epgDateContainer)
         lvEpgPrograms = findViewById(R.id.lvEpgPrograms)
+        lvEpgPrograms.setOnScrollListener(object : android.widget.AbsListView.OnScrollListener {
+            override fun onScrollStateChanged(view: android.widget.AbsListView, scrollState: Int) {
+                if (scrollState == android.widget.AbsListView.OnScrollListener.SCROLL_STATE_IDLE) {
+                    logMemoryStats("epg_list_scroll_idle")
+                }
+            }
+
+            override fun onScroll(
+                view: android.widget.AbsListView,
+                firstVisibleItem: Int,
+                visibleItemCount: Int,
+                totalItemCount: Int
+            ) {
+            }
+        })
         val epgBoundsLayoutListener =
             View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 if (epgPanel.visibility == View.VISIBLE) syncEpgPanelBounds()
@@ -1473,6 +1488,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hideEpgPanel() {
+        logMemoryStats("epg_panel_hide")
         epgPanel.visibility = View.GONE
         lvEpgPrograms.adapter = null
     }
@@ -1491,6 +1507,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showEpgPanel() {
+        logMemoryStats("epg_panel_show_start")
         val ch = channels.getOrNull(currentChannelIndex) ?: return
         epgPanelChannel = ch
 
@@ -1583,6 +1600,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun shiftEpgDate(step: Int) {
+        logMemoryStats("epg_shift_date")
         val currentIdx = epgPanelDateKeys.indexOf(epgPanelSelectedDate)
         val nextIdx = currentIdx + step
         if (nextIdx !in epgPanelDateKeys.indices) return
@@ -1607,6 +1625,8 @@ class MainActivity : AppCompatActivity() {
     private fun renderEpgProgramsForSelectedDate() {
         val ch = epgPanelChannel ?: return
         val items = epgPanelProgramsByDate[epgPanelSelectedDate].orEmpty().sortedBy { it.start }
+        logDebug("EPG_DEBUG", "renderEpgProgramsForSelectedDate itemsCount=${items.size} date=$epgPanelSelectedDate")
+        logMemoryStats("epg_render_list")
         val now = System.currentTimeMillis()
         val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
         lvEpgPrograms.adapter = object : ArrayAdapter<Program>(this, 0, items) {
