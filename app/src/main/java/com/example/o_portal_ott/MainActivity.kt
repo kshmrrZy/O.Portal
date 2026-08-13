@@ -226,6 +226,7 @@ class MainActivity : AppCompatActivity() {
     private var isArchivePlayback = false
     private var currentArchiveProgram: Program? = null
     private var timelineUserSeeking = false
+    private var seekStatusHoldUntilMs: Long = 0L
     private var shouldReloadStreamOnStart = false
     @Volatile
     private var epgFetchInProgress = false
@@ -356,6 +357,7 @@ class MainActivity : AppCompatActivity() {
             player.seekTo(target)
             val deltaMin = kotlin.math.abs(pendingSeekDeltaSec) / 60
             tvEpg.text = "Перематываем передачу на ${formatMinutesRu(deltaMin)}"
+            seekStatusHoldUntilMs = System.currentTimeMillis() + 2200L
             handler.removeCallbacks(restoreEpgRunnable)
             handler.postDelayed(restoreEpgRunnable, 2200L)
             pendingSeekDeltaSec = 0
@@ -720,16 +722,18 @@ class MainActivity : AppCompatActivity() {
             pendingSeekDeltaSec -= 60
             tvEpg.text =
                 "Перематываем передачу на ${formatMinutesRu(kotlin.math.abs(pendingSeekDeltaSec) / 60)}"
+            seekStatusHoldUntilMs = System.currentTimeMillis() + 2200L
             handler.removeCallbacks(applySeekDeltaRunnable)
-            handler.postDelayed(applySeekDeltaRunnable, 350L)
+            handler.postDelayed(applySeekDeltaRunnable, 2200L)
             showUI()
         }
         btnBackRight.setOnClickListener {
             pendingSeekDeltaSec += 60
             tvEpg.text =
                 "Перематываем передачу на ${formatMinutesRu(kotlin.math.abs(pendingSeekDeltaSec) / 60)}"
+            seekStatusHoldUntilMs = System.currentTimeMillis() + 2200L
             handler.removeCallbacks(applySeekDeltaRunnable)
-            handler.postDelayed(applySeekDeltaRunnable, 350L)
+            handler.postDelayed(applySeekDeltaRunnable, 2200L)
             showUI()
         }
         btnEpgPlayer.setOnClickListener {
@@ -3461,6 +3465,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateEpgDisplay() {
+        val suppressText = timelineUserSeeking || System.currentTimeMillis() < seekStatusHoldUntilMs
         if (isArchivePlayback) {
             val channel = channels.getOrNull(currentChannelIndex)
             val playbackTime = archiveStreamStartMs + (mediaPlayer?.currentPosition ?: 0L)
@@ -3471,14 +3476,16 @@ class MainActivity : AppCompatActivity() {
                 currentArchiveProgram
             }
             currentArchiveProgram = program
-            if (program != null) {
-                val stamp = SimpleDateFormat(
-                    "dd.MM.yyyy HH:mm",
-                    Locale.getDefault()
-                ).format(Date(program.start))
-                tvEpg.text = "Архив от $stamp - ${program.title}"
-            } else {
-                tvEpg.text = "Архив"
+            if (!suppressText) {
+                if (program != null) {
+                    val stamp = SimpleDateFormat(
+                        "dd.MM.yyyy HH:mm",
+                        Locale.getDefault()
+                    ).format(Date(program.start))
+                    tvEpg.text = "Архив от $stamp - ${program.title}"
+                } else {
+                    tvEpg.text = "Архив"
+                }
             }
             updateTimelineUi()
             return
@@ -3488,7 +3495,9 @@ class MainActivity : AppCompatActivity() {
         val programs = getProgramsForDisplay(ch)
 
         val cur = programs.find { now in it.start until it.stop }
-        tvEpg.text = cur?.title ?: "Загрузка программы..."
+        if (!suppressText) {
+            tvEpg.text = cur?.title ?: "Загрузка программы..."
+        }
         updateTimelineUi()
     }
 
@@ -4443,6 +4452,7 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.seekTo(offset)
         val deltaMin = kotlin.math.abs(((offset - previous) / 60_000L).toInt())
         tvEpg.text = "Перематываем передачу на ${formatMinutesRu(deltaMin)}"
+        seekStatusHoldUntilMs = System.currentTimeMillis() + 2200L
         handler.removeCallbacks(restoreEpgRunnable)
         handler.postDelayed(restoreEpgRunnable, 2200L)
         updateTimelineUi()
