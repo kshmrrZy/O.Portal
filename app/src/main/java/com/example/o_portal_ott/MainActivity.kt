@@ -3135,7 +3135,7 @@ class MainActivity : AppCompatActivity() {
                                 loggedProgrammeSamples++
                             }
 
-                            if (chId.isNotEmpty()) {
+                            if (chId.isNotEmpty() && channelLookupByKey.containsKey(chId)) {
                                 val trimmedDesc = desc.take(300)
                                 synchronized(epgDataLock) {
                                     val bucket = epgData.getOrPut(chId) { mutableListOf() }
@@ -3156,7 +3156,7 @@ class MainActivity : AppCompatActivity() {
         logDebug(
             "EPG_DEBUG",
             "PARSE SUMMARY programmeTotal=$programmeTotal programmeZeroDate=$programmeZeroDate " +
-                "programmeSkippedEmptyChannel=$programmeSkippedEmptyChannel " +
+                "programmeSkippedNotInPlaylist=$programmeSkippedEmptyChannel " +
                 "distinctChannelIdsInXml=${channelIdsSeen.size} distinctProgrammeChannelIds=${programmeChannelIdsSeen.size}"
         )
         logDebug("EPG_DEBUG", "channelIdsSeen sample=${channelIdsSeen.take(10)}")
