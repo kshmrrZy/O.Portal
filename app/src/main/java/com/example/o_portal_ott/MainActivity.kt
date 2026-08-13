@@ -1514,6 +1514,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private var epgPanelChannel: Channel? = null
+
     private fun toggleChannelListPanel() {
         if (channelListPanel.visibility == View.VISIBLE) {
             hideChannelListPanel()
