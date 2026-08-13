@@ -3026,6 +3026,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun parseEpgXml(inputStream: InputStream, totalBytes: Int, onProgress: (Int) -> Unit) {
+        var loggedChannelSamples = 0
+        var loggedProgrammeSamples = 0
+        var programmeTotal = 0
+        var programmeSkippedEmptyChannel = 0
+        var programmeZeroDate = 0
+        val channelIdsSeen = LinkedHashSet<String>()
+        val programmeChannelIdsSeen = LinkedHashSet<String>()
+
         ProgressInputStream(inputStream, totalBytes.toLong(), onProgress).use { stream ->
             val parser = Xml.newPullParser()
             parser.setInput(stream, "UTF-8")
@@ -3041,11 +3049,22 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+            logDebug(
+                "EPG_DEBUG",
+                "channelLookupByKey keys sample=${channelLookupByKey.keys.take(10)} totalKeys=${channelLookupByKey.size}"
+            )
 
             while (eventType != XmlPullParser.END_DOCUMENT) {
                 if (eventType == XmlPullParser.START_TAG) {
                     when (parser.name) {
-                        "channel" -> tempId = parser.getAttributeValue(null, "id") ?: ""
+                        "channel" -> {
+                            tempId = parser.getAttributeValue(null, "id") ?: ""
+                            if (tempId.isNotBlank()) channelIdsSeen += tempId
+                            if (loggedChannelSamples < 10) {
+                                logDebug("EPG_DEBUG", "raw <channel id=\"$tempId\">")
+                                loggedChannelSamples++
+                            }
+                        }
                         "icon" -> {
                             val src = parser.getAttributeValue(null, "src")
                             channelLookupByKey[tempId.lowercase().trim()]?.forEach {
@@ -3054,10 +3073,12 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         "programme" -> {
-                            val chId =
-                                parser.getAttributeValue(null, "channel")?.lowercase()?.trim() ?: ""
-                            val start = parseXmltvDate(parser.getAttributeValue(null, "start"))
-                            val stop = parseXmltvDate(parser.getAttributeValue(null, "stop"))
+                            val rawChannel = parser.getAttributeValue(null, "channel") ?: ""
+                            val rawStart = parser.getAttributeValue(null, "start")
+                            val rawStop = parser.getAttributeValue(null, "stop")
+                            val chId = rawChannel.lowercase().trim()
+                            val start = parseXmltvDate(rawStart)
+                            val stop = parseXmltvDate(rawStop)
                             var title = ""
                             var desc = ""
                             while (!(parser.next() == XmlPullParser.END_TAG && parser.name == "programme")) {
@@ -3067,6 +3088,18 @@ class MainActivity : AppCompatActivity() {
                                     desc = parser.nextText()
                                 }
                             }
+
+                            programmeTotal++
+                            if (chId.isNotBlank()) programmeChannelIdsSeen += chId
+                            if (start == 0L || stop == 0L) programmeZeroDate++
+                            if (loggedProgrammeSamples < 10) {
+                                logDebug(
+                                    "EPG_DEBUG",
+                                    "raw <programme channel=\"$rawChannel\" start=\"$rawStart\" stop=\"$rawStop\"> title=\"$title\" -> parsedStart=$start parsedStop=$stop"
+                                )
+                                loggedProgrammeSamples++
+                            }
+
                             if (chId.isNotEmpty()) {
                                 synchronized(epgDataLock) {
                                     val bucket = epgData.getOrPut(chId) { mutableListOf() }
@@ -3074,6 +3107,8 @@ class MainActivity : AppCompatActivity() {
                                         bucket.add(Program(title, start, stop, desc))
                                     }
                                 }
+                            } else {
+                                programmeSkippedEmptyChannel++
                             }
                         }
                     }
@@ -3081,6 +3116,21 @@ class MainActivity : AppCompatActivity() {
                 eventType = parser.next()
             }
         }
+
+        logDebug(
+            "EPG_DEBUG",
+            "PARSE SUMMARY programmeTotal=$programmeTotal programmeZeroDate=$programmeZeroDate " +
+                "programmeSkippedEmptyChannel=$programmeSkippedEmptyChannel " +
+                "distinctChannelIdsInXml=${channelIdsSeen.size} distinctProgrammeChannelIds=${programmeChannelIdsSeen.size}"
+        )
+        logDebug("EPG_DEBUG", "channelIdsSeen sample=${channelIdsSeen.take(10)}")
+        logDebug("EPG_DEBUG", "programmeChannelIdsSeen sample=${programmeChannelIdsSeen.take(10)}")
+        logDebug(
+            "EPG_DEBUG",
+            "playlist channel keys sample (tvgId/tvgName/name)=${
+                channels.take(10).map { "id=${it.tvgId} name=${it.tvgName ?: it.name}" }
+            }"
+        )
     }
 
     private fun isArchiveAvailable(channel: Channel, program: Program): Boolean {
@@ -4616,13 +4666,28 @@ class MainActivity : AppCompatActivity() {
         val now = System.currentTimeMillis()
         val windowStart = now - EPG_KEEP_PAST_DAYS * 24L * 60L * 60L * 1000L
         val windowEnd = now + EPG_KEEP_FUTURE_DAYS * 24L * 60L * 60L * 1000L
+        val channelsBefore: Int
+        val programsBefore: Int
         synchronized(epgDataLock) {
+            channelsBefore = epgData.size
+            programsBefore = epgData.values.sumOf { it.size }
             epgData.entries.forEach { (_, programs) ->
                 programs.removeAll { it.stop < windowStart || it.start > windowEnd }
                 programs.sortBy { it.start }
             }
             epgData.entries.removeAll { it.value.isEmpty() }
         }
+        val channelsAfter: Int
+        val programsAfter: Int
+        synchronized(epgDataLock) {
+            channelsAfter = epgData.size
+            programsAfter = epgData.values.sumOf { it.size }
+        }
+        logDebug(
+            "EPG_DEBUG",
+            "TRIM before: channels=$channelsBefore programs=$programsBefore -> " +
+                "after: channels=$channelsAfter programs=$programsAfter"
+        )
     }
 
     private fun nextDayAtThree(fromMillis: Long): Long {
