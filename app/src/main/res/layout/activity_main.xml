@@ -274,18 +274,23 @@
             </LinearLayout>
 
             <FrameLayout
+                android:id="@+id/timelineTrack"
                 android:layout_width="match_parent"
-                android:layout_height="8dp"
-                android:layout_marginTop="8dp">
+                android:layout_height="40dp"
+                android:layout_marginTop="4dp"
+                android:clickable="true"
+                android:focusable="true">
                 <View
                     android:id="@+id/viewTimelineStripe"
                     android:layout_width="match_parent"
                     android:layout_height="8dp"
+                    android:layout_gravity="center_vertical"
                     android:background="@drawable/player_timeline_stripe_bg" />
                 <View
                     android:id="@+id/viewTimelineLive"
                     android:layout_width="0dp"
                     android:layout_height="8dp"
+                    android:layout_gravity="center_vertical"
                     android:background="@drawable/player_timeline_live_bg" />
             </FrameLayout>
         </LinearLayout>

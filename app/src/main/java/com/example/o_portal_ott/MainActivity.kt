@@ -168,6 +168,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvProgramEndTime: TextView
     private lateinit var viewTimelineStripe: View
     private lateinit var viewTimelineLive: View
+    private lateinit var timelineTrack: View
     private lateinit var btnBackLeft: ImageButton
     private lateinit var btnBackRight: ImageButton
     private lateinit var btnEpgPlayer: ImageButton
@@ -353,6 +354,10 @@ class MainActivity : AppCompatActivity() {
         if (pendingSeekDeltaSec != 0) {
             val target = (player.currentPosition + pendingSeekDeltaSec * 1000L).coerceAtLeast(0L)
             player.seekTo(target)
+            val deltaMin = kotlin.math.abs(pendingSeekDeltaSec) / 60
+            tvEpg.text = "Перематываем передачу на ${formatMinutesRu(deltaMin)}"
+            handler.removeCallbacks(restoreEpgRunnable)
+            handler.postDelayed(restoreEpgRunnable, 2200L)
             pendingSeekDeltaSec = 0
             showUI()
         }
@@ -496,6 +501,7 @@ class MainActivity : AppCompatActivity() {
         tvProgramEndTime = findViewById(R.id.tvProgramEndInfo)
         viewTimelineStripe = findViewById(R.id.viewTimelineStripe)
         viewTimelineLive = findViewById(R.id.viewTimelineLive)
+        timelineTrack = findViewById(R.id.timelineTrack)
         btnBackLeft = findViewById(R.id.btnBackLeft)
         btnBackRight = findViewById(R.id.btnBackRight)
         btnEpgPlayer = findViewById(R.id.btnEpgPlayer)
@@ -652,25 +658,36 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                val progress = seekBar?.progress ?: 0
-                if (isArchivePlayback) {
-                    val p = currentArchiveProgram ?: run { timelineUserSeeking = false; return }
-                    val target = p.start + ((p.stop - p.start) * (progress / 1000f)).toLong()
-                    seekArchiveTo(target)
-                } else {
-                    val ch = channels.getOrNull(currentChannelIndex)
-                    val cur =
-                        ch?.let { getProgramsForDisplay(it).find { pr -> System.currentTimeMillis() in pr.start until pr.stop } }
-                    if (ch != null && cur != null && isArchiveAvailable(ch, cur)) {
-                        val target =
-                            cur.start + ((cur.stop - cur.start) * (progress / 1000f)).toLong()
-                        playArchiveProgram(ch, cur)
-                        handler.postDelayed({ seekArchiveTo(target) }, 450L)
-                    }
-                }
+                applyTimelineSeekFromProgress(seekBar?.progress ?: 0)
                 timelineUserSeeking = false
             }
         })
+
+        timelineTrack.setOnTouchListener { view, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    timelineUserSeeking = true
+                    val progress = timelineProgressFromTouchX(view, event.x)
+                    sbTimeline.progress = progress
+                    previewTimelineSeekText(progress)
+                    showUI()
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val progress = timelineProgressFromTouchX(view, event.x)
+                    sbTimeline.progress = progress
+                    previewTimelineSeekText(progress)
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val progress = timelineProgressFromTouchX(view, event.x)
+                    applyTimelineSeekFromProgress(progress)
+                    timelineUserSeeking = false
+                    true
+                }
+                else -> false
+            }
+        }
 
         btnSettings.setOnClickListener { showSettingsDialog() }
         btnSettings.setOnLongClickListener {
@@ -701,12 +718,16 @@ class MainActivity : AppCompatActivity() {
 
         btnBackLeft.setOnClickListener {
             pendingSeekDeltaSec -= 60
+            tvEpg.text =
+                "Перематываем передачу на ${formatMinutesRu(kotlin.math.abs(pendingSeekDeltaSec) / 60)}"
             handler.removeCallbacks(applySeekDeltaRunnable)
             handler.postDelayed(applySeekDeltaRunnable, 350L)
             showUI()
         }
         btnBackRight.setOnClickListener {
             pendingSeekDeltaSec += 60
+            tvEpg.text =
+                "Перематываем передачу на ${formatMinutesRu(kotlin.math.abs(pendingSeekDeltaSec) / 60)}"
             handler.removeCallbacks(applySeekDeltaRunnable)
             handler.postDelayed(applySeekDeltaRunnable, 350L)
             showUI()
@@ -4357,13 +4378,71 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun formatMinutesRu(minutes: Int): String {
+        val safeMinutes = minutes.coerceAtLeast(0)
+        val rem100 = safeMinutes % 100
+        val rem10 = safeMinutes % 10
+        val word = when {
+            rem100 in 11..14 -> "минут"
+            rem10 == 1 -> "минуту"
+            rem10 in 2..4 -> "минуты"
+            else -> "минут"
+        }
+        return "$safeMinutes $word"
+    }
+
+    private fun timelineProgressFromTouchX(view: View, x: Float): Int {
+        val width = view.width.takeIf { it > 0 } ?: return 0
+        return ((x / width) * 1000f).toInt().coerceIn(0, 1000)
+    }
+
+    /** Границы и точка отсчёта "сейчас" для текущей передачи — общие для превью и применения перемотки. */
+    private fun currentTimelineSeekableProgram(): Triple<Long, Long, Long>? {
+        return if (isArchivePlayback) {
+            val p = currentArchiveProgram ?: return null
+            Triple(p.start, p.stop, p.start + (mediaPlayer?.currentPosition ?: 0L))
+        } else {
+            val ch = channels.getOrNull(currentChannelIndex) ?: return null
+            val cur =
+                getProgramsForDisplay(ch).find { System.currentTimeMillis() in it.start until it.stop }
+                    ?: return null
+            if (!isArchiveAvailable(ch, cur)) return null
+            Triple(cur.start, cur.stop, System.currentTimeMillis())
+        }
+    }
+
+    private fun previewTimelineSeekText(progress: Int) {
+        val (programStart, programStop, currentAbsoluteMs) = currentTimelineSeekableProgram() ?: return
+        val target = programStart + ((programStop - programStart) * (progress / 1000f)).toLong()
+        val deltaMin = kotlin.math.abs((target - currentAbsoluteMs) / 60_000L).toInt()
+        tvEpg.text = "Перематываем передачу на ${formatMinutesRu(deltaMin)}"
+    }
+
+    private fun applyTimelineSeekFromProgress(progress: Int) {
+        if (isArchivePlayback) {
+            val p = currentArchiveProgram ?: return
+            val target = p.start + ((p.stop - p.start) * (progress / 1000f)).toLong()
+            seekArchiveTo(target)
+        } else {
+            val ch = channels.getOrNull(currentChannelIndex)
+            val cur =
+                ch?.let { getProgramsForDisplay(it).find { pr -> System.currentTimeMillis() in pr.start until pr.stop } }
+            if (ch != null && cur != null && isArchiveAvailable(ch, cur)) {
+                val target =
+                    cur.start + ((cur.stop - cur.start) * (progress / 1000f)).toLong()
+                playArchiveProgram(ch, cur)
+                handler.postDelayed({ seekArchiveTo(target) }, 450L)
+            }
+        }
+    }
+
     private fun seekArchiveTo(targetProgramTimeMs: Long) {
         val p = currentArchiveProgram ?: return
         val previous = mediaPlayer?.currentPosition ?: 0L
         val offset = (targetProgramTimeMs - p.start).coerceAtLeast(0L)
         mediaPlayer?.seekTo(offset)
         val deltaMin = kotlin.math.abs(((offset - previous) / 60_000L).toInt())
-        tvEpg.text = "Перемотка архива на $deltaMin минут"
+        tvEpg.text = "Перематываем передачу на ${formatMinutesRu(deltaMin)}"
         handler.removeCallbacks(restoreEpgRunnable)
         handler.postDelayed(restoreEpgRunnable, 2200L)
         updateTimelineUi()
