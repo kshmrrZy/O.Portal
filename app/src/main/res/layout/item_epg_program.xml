@@ -14,11 +14,18 @@
 
         <TextView
             android:id="@+id/tvProgramTime"
-            android:layout_width="56dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:layout_marginEnd="12dp"
+            android:minWidth="60dp"
+            android:gravity="center"
+            android:background="@drawable/epg_time_badge_bg"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="5dp"
             android:fontFamily="@font/golos_text"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:textStyle="bold"
             tools:text="20:00" />
 
@@ -36,9 +43,9 @@
 
                 <TextView
                     android:id="@+id/tvProgramTitle"
-                    android:layout_width="0dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
+                    android:maxWidth="220dp"
                     android:fontFamily="@font/golos_text"
                     android:textColor="#FFFFFF"
                     android:textSize="14sp"

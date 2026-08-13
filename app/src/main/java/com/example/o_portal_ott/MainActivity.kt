@@ -336,7 +336,8 @@ class MainActivity : AppCompatActivity() {
         private const val TOKEN_SUFFIX = ".m3u"
         private const val MAX_EPG_COMPRESSED_BYTES = 900L * 1024L * 1024L
         private const val MAX_EPG_UNPACKED_BYTES = 1800L * 1024L * 1024L
-        private const val EPG_KEEP_DAYS = 7
+        private const val EPG_KEEP_PAST_DAYS = 3
+        private const val EPG_KEEP_FUTURE_DAYS = 3
         private const val MAX_PROGRAMS_PER_CHANNEL = 5000
 
         private const val HOME_BASE_WIDTH = 1280f
@@ -446,6 +447,12 @@ class MainActivity : AppCompatActivity() {
         hsvEpgDates = findViewById(R.id.hsvEpgDates)
         epgDateContainer = findViewById(R.id.epgDateContainer)
         lvEpgPrograms = findViewById(R.id.lvEpgPrograms)
+        val epgBoundsLayoutListener =
+            View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                if (epgPanel.visibility == View.VISIBLE) syncEpgPanelBounds()
+            }
+        topInfoPanel.addOnLayoutChangeListener(epgBoundsLayoutListener)
+        controlsPanel.addOnLayoutChangeListener(epgBoundsLayoutListener)
         tvEpg = findViewById(R.id.tvEpgInfo)
         tvChannelName = findViewById(R.id.tvChannelNameInfo)
         tvSystemTime = findViewById(R.id.tvSystemTime)
@@ -1467,6 +1474,19 @@ class MainActivity : AppCompatActivity() {
         epgPanel.visibility = View.GONE
     }
 
+    private fun syncEpgPanelBounds() {
+        if (!::epgPanel.isInitialized) return
+        val lp = epgPanel.layoutParams as? FrameLayout.LayoutParams ?: return
+        val gap = (8 * resources.displayMetrics.density).toInt()
+        val topMargin = topInfoPanel.bottom + gap
+        val bottomMargin = controlsPanel.height + gap
+        if (topMargin <= 0 || bottomMargin <= 0) return
+        if (lp.topMargin == topMargin && lp.bottomMargin == bottomMargin) return
+        lp.topMargin = topMargin
+        lp.bottomMargin = bottomMargin
+        epgPanel.layoutParams = lp
+    }
+
     private fun showEpgPanel() {
         val ch = channels.getOrNull(currentChannelIndex) ?: return
         epgPanelChannel = ch
@@ -1496,15 +1516,21 @@ class MainActivity : AppCompatActivity() {
         renderEpgProgramsForSelectedDate()
 
         epgPanel.visibility = View.VISIBLE
+        epgPanel.post { syncEpgPanelBounds() }
     }
 
     private fun renderEpgDateChips() {
         epgDateContainer.removeAllViews()
+        val density = resources.displayMetrics.density
+        val paddingH = (16 * density).toInt()
+        val marginEnd = (10 * density).toInt()
+        val chipHeight = (36 * density).toInt()
         epgPanelDateKeys.forEach { dateKey ->
             val chip = TextView(this).apply {
                 text = dateKey
                 setTextColor(Color.WHITE)
-                setPadding(28, 10, 28, 10)
+                gravity = Gravity.CENTER
+                setPadding(paddingH, 0, paddingH, 0)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
                 typeface = Typeface.create(typeface, Typeface.BOLD)
                 background = getDrawable(R.drawable.epg_date_chip_bg)
@@ -1523,9 +1549,9 @@ class MainActivity : AppCompatActivity() {
             }
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+                chipHeight
             )
-            lp.marginEnd = 10
+            lp.marginEnd = marginEnd
             epgDateContainer.addView(chip, lp)
         }
 
@@ -4551,10 +4577,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun trimEpgCacheToWeek() {
         val now = System.currentTimeMillis()
-        val weekEnd = now + EPG_KEEP_DAYS * 24L * 60L * 60L * 1000L
+        val windowStart = now - EPG_KEEP_PAST_DAYS * 24L * 60L * 60L * 1000L
+        val windowEnd = now + EPG_KEEP_FUTURE_DAYS * 24L * 60L * 60L * 1000L
         synchronized(epgDataLock) {
             epgData.entries.forEach { (_, programs) ->
-                programs.removeAll { it.stop < now || it.start > weekEnd }
+                programs.removeAll { it.stop < windowStart || it.start > windowEnd }
                 programs.sortBy { it.start }
             }
             epgData.entries.removeAll { it.value.isEmpty() }
@@ -4695,7 +4722,7 @@ class MainActivity : AppCompatActivity() {
         synchronized(epgDataLock) {
             epgData.forEach { (channelId, programs) ->
                 val arr = JSONArray()
-                programs.sortedBy { it.start }.take(200).forEach { p ->
+                programs.sortedBy { it.start }.take(2000).forEach { p ->
                     arr.put(JSONObject().apply {
                         put("title", p.title)
                         put("start", p.start)
