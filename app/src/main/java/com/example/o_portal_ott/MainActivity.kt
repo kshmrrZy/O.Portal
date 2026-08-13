@@ -94,6 +94,8 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.SimpleTimeZone
+import java.util.TimeZone
 import java.util.zip.GZIPInputStream
 import kotlin.concurrent.thread
 import kotlin.math.abs
@@ -332,12 +334,12 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_USER_PLAYLIST = "pref_user_playlist"
         private const val PREF_HLS_ALLOW_NON_IDR = "pref_hls_allow_non_idr"
 
-        private const val TOKEN_PREFIX = "https://o.avff.ru/my/"
+        private const val TOKEN_PREFIX = "https://o.avff.pw/my/"
         private const val TOKEN_SUFFIX = ".m3u"
         private const val MAX_EPG_COMPRESSED_BYTES = 900L * 1024L * 1024L
         private const val MAX_EPG_UNPACKED_BYTES = 1800L * 1024L * 1024L
-        private const val EPG_KEEP_PAST_DAYS = 3
-        private const val EPG_KEEP_FUTURE_DAYS = 3
+        private const val EPG_KEEP_PAST_DAYS = 7
+        private const val EPG_KEEP_FUTURE_DAYS = 7
         private const val MAX_PROGRAMS_PER_CHANNEL = 5000
 
         private const val HOME_BASE_WIDTH = 1280f
@@ -389,12 +391,12 @@ class MainActivity : AppCompatActivity() {
     private fun buildPlaceholderPrograms(): List<Program> {
         val result = mutableListOf<Program>()
         val cal = Calendar.getInstance().apply {
-            add(Calendar.DAY_OF_YEAR, -7)
+            add(Calendar.DAY_OF_YEAR, -EPG_KEEP_PAST_DAYS)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        val end = System.currentTimeMillis() + 60L * 60L * 1000L
+        val end = System.currentTimeMillis() + EPG_KEEP_FUTURE_DAYS * 24L * 60L * 60L * 1000L
         while (cal.timeInMillis < end) {
             val start = cal.timeInMillis
             cal.add(Calendar.HOUR_OF_DAY, 1)
@@ -1988,12 +1990,12 @@ class MainActivity : AppCompatActivity() {
         val existing = getPlaylistProfiles().toMutableList()
         val thirdParty = existing.filter { it.name !in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные") }
         val portal = listOf(
-            PlaylistProfile("Wink", "url", "https://o.avff.ru/list/wink.m3u8?token=$cleanToken", true),
-            PlaylistProfile("iLook", "url", "https://o.avff.ru/list/ilook.m3u8?token=$cleanToken", true),
-            PlaylistProfile("Сервис В", "url", "https://o.avff.ru/list/servicev.m3u8?token=$cleanToken", true),
-            PlaylistProfile("Lime TV", "url", "https://o.avff.ru/list/limetv.m3u8?token=$cleanToken", true),
-            PlaylistProfile("Only4", "url", "https://o.avff.ru/list/only4.m3u8?token=$cleanToken", true),
-            PlaylistProfile("Избранные", "url", "https://o.avff.ru/my/$cleanToken.m3u", true)
+            PlaylistProfile("Wink", "url", "https://o.avff.pw/list/wink.m3u8?token=$cleanToken", true),
+            PlaylistProfile("iLook", "url", "https://o.avff.pw/list/ilook.m3u8?token=$cleanToken", true),
+            PlaylistProfile("Сервис В", "url", "https://o.avff.pw/list/servicev.m3u8?token=$cleanToken", true),
+            PlaylistProfile("Lime TV", "url", "https://o.avff.pw/list/limetv.m3u8?token=$cleanToken", true),
+            PlaylistProfile("Only4", "url", "https://o.avff.pw/list/only4.m3u8?token=$cleanToken", true),
+            PlaylistProfile("Избранные", "url", "https://o.avff.pw/my/$cleanToken.m3u", true)
         )
         savePlaylistProfiles((portal + thirdParty).distinctBy { it.name })
     }
@@ -2230,7 +2232,7 @@ class MainActivity : AppCompatActivity() {
             thread {
                 try {
                     val url =
-                        "https://o.avff.ru/api.php?module=app&login=${Uri.encode(login)}&token=${
+                        "https://o.avff.pw/api.php?module=app&login=${Uri.encode(login)}&token=${
                             Uri.encode(token)
                         }"
                     val responseText = URL(url).readText()
@@ -2328,7 +2330,7 @@ class MainActivity : AppCompatActivity() {
             thread {
                 runCatching {
                     val url =
-                        "https://o.avff.ru/api.php?module=app&login=${Uri.encode(login)}&token=${
+                        "https://o.avff.pw/api.php?module=app&login=${Uri.encode(login)}&token=${
                             Uri.encode(token)
                         }"
                     JSONObject(URL(url).readText())
@@ -2986,13 +2988,59 @@ class MainActivity : AppCompatActivity() {
         return out.toByteArray()
     }
 
+    private fun parseXmltvDate(value: String?): Long {
+        if (value.isNullOrBlank()) return 0L
+        return try {
+            val v = value.trim()
+            if (v.length < 14) return 0L
+            val year = v.substring(0, 4).toInt()
+            val month = v.substring(4, 6).toInt() - 1
+            val day = v.substring(6, 8).toInt()
+            val hour = v.substring(8, 10).toInt()
+            val minute = v.substring(10, 12).toInt()
+            val second = v.substring(12, 14).toInt()
+
+            val tz: TimeZone = if (v.length >= 20) {
+                val tzPart = v.substring(15).trim()
+                val sign = if (tzPart.startsWith("-")) -1 else 1
+                val digits = tzPart.removePrefix("+").removePrefix("-")
+                if (digits.length >= 4) {
+                    val tzHour = digits.substring(0, 2).toInt()
+                    val tzMinute = digits.substring(2, 4).toInt()
+                    val offsetMillis = sign * ((tzHour * 60 + tzMinute) * 60 * 1000)
+                    SimpleTimeZone(offsetMillis, "XMLTV")
+                } else {
+                    TimeZone.getTimeZone("UTC")
+                }
+            } else {
+                TimeZone.getTimeZone("UTC")
+            }
+
+            val cal = Calendar.getInstance(tz)
+            cal.clear()
+            cal.set(year, month, day, hour, minute, second)
+            cal.timeInMillis
+        } catch (_: Exception) {
+            0L
+        }
+    }
+
     private fun parseEpgXml(inputStream: InputStream, totalBytes: Int, onProgress: (Int) -> Unit) {
         ProgressInputStream(inputStream, totalBytes.toLong(), onProgress).use { stream ->
             val parser = Xml.newPullParser()
             parser.setInput(stream, "UTF-8")
             var eventType = parser.eventType
             var tempId = ""
-            val sdf = SimpleDateFormat("yyyyMMddHHmmss Z", Locale.US)
+
+            val channelLookupByKey = HashMap<String, MutableList<Channel>>()
+            channels.forEach { ch ->
+                listOfNotNull(ch.tvgId, ch.tvgName, ch.name).forEach { rawKey ->
+                    val key = rawKey.lowercase().trim()
+                    if (key.isNotEmpty()) {
+                        channelLookupByKey.getOrPut(key) { mutableListOf() }.add(ch)
+                    }
+                }
+            }
 
             while (eventType != XmlPullParser.END_DOCUMENT) {
                 if (eventType == XmlPullParser.START_TAG) {
@@ -3000,27 +3048,16 @@ class MainActivity : AppCompatActivity() {
                         "channel" -> tempId = parser.getAttributeValue(null, "id") ?: ""
                         "icon" -> {
                             val src = parser.getAttributeValue(null, "src")
-                            channels.filter {
-                                it.tvgId.equals(tempId, true) || it.tvgName.equals(
-                                    tempId,
-                                    true
-                                ) || it.name.equals(tempId, true)
-                            }.forEach { it.logoFromEpg = src }
+                            channelLookupByKey[tempId.lowercase().trim()]?.forEach {
+                                it.logoFromEpg = src
+                            }
                         }
 
                         "programme" -> {
                             val chId =
                                 parser.getAttributeValue(null, "channel")?.lowercase()?.trim() ?: ""
-                            val start = try {
-                                sdf.parse(parser.getAttributeValue(null, "start"))?.time ?: 0L
-                            } catch (_: Exception) {
-                                0L
-                            }
-                            val stop = try {
-                                sdf.parse(parser.getAttributeValue(null, "stop"))?.time ?: 0L
-                            } catch (_: Exception) {
-                                0L
-                            }
+                            val start = parseXmltvDate(parser.getAttributeValue(null, "start"))
+                            val stop = parseXmltvDate(parser.getAttributeValue(null, "stop"))
                             var title = ""
                             var desc = ""
                             while (!(parser.next() == XmlPullParser.END_TAG && parser.name == "programme")) {
