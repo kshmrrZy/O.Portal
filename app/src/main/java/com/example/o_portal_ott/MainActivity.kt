@@ -1122,12 +1122,12 @@ class MainActivity : AppCompatActivity() {
         val thirdParty = getThirdPartyPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
         val profiles = if (token.isNotBlank()) {
             val base = listOf(
-                PlaylistProfile("Избранные", "url", "https://o.avff.ru/my/$token.m3u", true),
-                PlaylistProfile("Wink", "url", "https://o.avff.ru/list/wink.m3u8?token=$token", true),
-                PlaylistProfile("iLook", "url", "https://o.avff.ru/list/ilook.m3u8?token=$token", true),
-                PlaylistProfile("Сервис В", "url", "https://o.avff.ru/list/servicev.m3u8?token=$token", true),
-                PlaylistProfile("Lime TV", "url", "https://o.avff.ru/list/limetv.m3u8?token=$token", true),
-                PlaylistProfile("Only4", "url", "https://o.avff.ru/list/only4.m3u8?token=$token", true)
+                PlaylistProfile("Избранные", "url", "https://o.avff.pw/my/$token.m3u", true),
+                PlaylistProfile("Wink", "url", "https://o.avff.pw/list/wink.m3u8?token=$token", true),
+                PlaylistProfile("iLook", "url", "https://o.avff.pw/list/ilook.m3u8?token=$token", true),
+                PlaylistProfile("Сервис В", "url", "https://o.avff.pw/list/servicev.m3u8?token=$token", true),
+                PlaylistProfile("Lime TV", "url", "https://o.avff.pw/list/limetv.m3u8?token=$token", true),
+                PlaylistProfile("Only4", "url", "https://o.avff.pw/list/only4.m3u8?token=$token", true)
             )
             if (thirdParty.isNotEmpty()) base + listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else base
         } else if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
