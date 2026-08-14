@@ -1531,6 +1531,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun showChannelListPanel() {
         if (channels.isEmpty()) return
+        if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
+            hideEpgPanel()
+        }
         gvChannelListPanel.adapter = object : ArrayAdapter<Channel>(this, 0, channels) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val holder: ChannelGridItemViewHolder
@@ -1558,6 +1561,11 @@ class MainActivity : AppCompatActivity() {
                     holder.ivLogo
                 )
 
+                itemView.setBackgroundResource(
+                    if (position == currentChannelIndex) R.drawable.channel_grid_tile_bg_current
+                    else R.drawable.channel_grid_tile_bg
+                )
+
                 val cur = getProgramsForDisplay(channel).find {
                     System.currentTimeMillis() in it.start until it.stop
                 }
@@ -1580,6 +1588,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         channelListPanel.visibility = View.VISIBLE
+        showUI()
         channelListPanel.post {
             syncOverlayPanelBounds(channelListPanel)
             gvChannelListPanel.setSelection(currentChannelIndex)
@@ -1624,6 +1633,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun showEpgPanel() {
         logMemoryStats("epg_panel_show_start")
+        if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
+            hideChannelListPanel()
+        }
         val ch = channels.getOrNull(currentChannelIndex) ?: return
         epgPanelChannel = ch
 
@@ -1652,6 +1664,7 @@ class MainActivity : AppCompatActivity() {
         renderEpgProgramsForSelectedDate()
 
         epgPanel.visibility = View.VISIBLE
+        showUI()
         epgPanel.post { syncEpgPanelBounds() }
     }
 
