@@ -517,9 +517,9 @@
             android:id="@+id/gvChannelListPanel"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:numColumns="5"
-            android:horizontalSpacing="10dp"
-            android:verticalSpacing="10dp"
+            android:numColumns="4"
+            android:horizontalSpacing="12dp"
+            android:verticalSpacing="12dp"
             android:stretchMode="columnWidth"
             android:scrollbars="none" />
     </LinearLayout>
