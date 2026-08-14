@@ -517,10 +517,12 @@
             android:id="@+id/gvChannelListPanel"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:numColumns="4"
+            android:numColumns="auto_fit"
+            android:columnWidth="260dp"
             android:horizontalSpacing="12dp"
             android:verticalSpacing="12dp"
             android:stretchMode="columnWidth"
+            android:gravity="start"
             android:scrollbars="none" />
     </LinearLayout>
 

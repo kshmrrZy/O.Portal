@@ -1558,18 +1558,14 @@ class MainActivity : AppCompatActivity() {
                     holder.ivLogo
                 )
 
-                if (position == currentChannelIndex) {
-                    val cur = getProgramsForDisplay(channel).find {
-                        System.currentTimeMillis() in it.start until it.stop
-                    }
-                    if (cur != null) {
-                        val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
-                        holder.tvCurrentProgram.text =
-                            "Сейчас: ${fmt.format(Date(cur.start))} - ${fmt.format(Date(cur.stop))} - ${cur.title}"
-                        holder.tvCurrentProgram.visibility = View.VISIBLE
-                    } else {
-                        holder.tvCurrentProgram.visibility = View.GONE
-                    }
+                val cur = getProgramsForDisplay(channel).find {
+                    System.currentTimeMillis() in it.start until it.stop
+                }
+                if (cur != null) {
+                    val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+                    holder.tvCurrentProgram.text =
+                        "Сейчас: ${fmt.format(Date(cur.start))} - ${fmt.format(Date(cur.stop))} - ${cur.title}"
+                    holder.tvCurrentProgram.visibility = View.VISIBLE
                 } else {
                     holder.tvCurrentProgram.visibility = View.GONE
                 }
