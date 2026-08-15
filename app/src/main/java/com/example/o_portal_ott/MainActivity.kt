@@ -27,6 +27,7 @@ import android.view.WindowManager
 import android.graphics.Rect
 import android.content.Intent
 import android.widget.ArrayAdapter
+import android.widget.BaseAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -174,6 +175,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnBackRight: ImageButton
     private lateinit var btnEpgPlayer: ImageButton
     private lateinit var epgPanel: View
+    private lateinit var epgDateRow: View
+    private lateinit var tvEpgEmptyState: TextView
     private lateinit var btnEpgDatePrev: TextView
     private lateinit var btnEpgDateNext: TextView
     private lateinit var hsvEpgDates: android.widget.HorizontalScrollView
@@ -454,6 +457,8 @@ class MainActivity : AppCompatActivity() {
         controlsPanel = findViewById(R.id.controlsPanel)
         topInfoPanel = findViewById(R.id.topInfoPanel)
         epgPanel = findViewById(R.id.epgPanel)
+        epgDateRow = findViewById(R.id.epgDateRow)
+        tvEpgEmptyState = findViewById(R.id.tvEpgEmptyState)
         btnEpgDatePrev = findViewById(R.id.btnEpgDatePrev)
         btnEpgDateNext = findViewById(R.id.btnEpgDateNext)
         hsvEpgDates = findViewById(R.id.hsvEpgDates)
@@ -1566,16 +1571,25 @@ class MainActivity : AppCompatActivity() {
                     else R.drawable.channel_grid_tile_bg
                 )
 
-                val cur = getProgramsForDisplay(channel).find {
+                val realPrograms = getProgramsForChannel(channel)
+                val cur = realPrograms.find {
                     System.currentTimeMillis() in it.start until it.stop
                 }
-                if (cur != null) {
-                    val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
-                    holder.tvCurrentProgram.text =
-                        "Сейчас: ${fmt.format(Date(cur.start))} - ${fmt.format(Date(cur.stop))} - ${cur.title}"
-                    holder.tvCurrentProgram.visibility = View.VISIBLE
-                } else {
-                    holder.tvCurrentProgram.visibility = View.GONE
+                when {
+                    cur != null -> {
+                        val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+                        holder.tvCurrentProgram.text =
+                            "Сейчас: ${fmt.format(Date(cur.start))} - ${fmt.format(Date(cur.stop))} - ${cur.title}"
+                        holder.tvCurrentProgram.visibility = View.VISIBLE
+                    }
+                    realPrograms.isEmpty() -> {
+                        holder.tvCurrentProgram.text =
+                            "Для канала отсутствует EPG. Проверьте настройки плейлиста"
+                        holder.tvCurrentProgram.visibility = View.VISIBLE
+                    }
+                    else -> {
+                        holder.tvCurrentProgram.visibility = View.GONE
+                    }
                 }
 
                 itemView.setOnClickListener {
@@ -1626,6 +1640,21 @@ class MainActivity : AppCompatActivity() {
         panel.layoutParams = lp
     }
 
+    private fun refreshOpenOverlayPanelsAfterEpgUpdate() {
+        if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
+            val keepDate = epgPanelSelectedDate
+            showEpgPanel()
+            if (keepDate.isNotEmpty() && epgPanelDateKeys.contains(keepDate)) {
+                epgPanelSelectedDate = keepDate
+                renderEpgDateChips()
+                renderEpgProgramsForSelectedDate()
+            }
+        }
+        if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
+            (gvChannelListPanel.adapter as? BaseAdapter)?.notifyDataSetChanged()
+        }
+    }
+
     private fun syncEpgPanelBounds() {
         if (!::epgPanel.isInitialized) return
         syncOverlayPanelBounds(epgPanel)
@@ -1639,8 +1668,24 @@ class MainActivity : AppCompatActivity() {
         val ch = channels.getOrNull(currentChannelIndex) ?: return
         epgPanelChannel = ch
 
+        val realPrograms = getProgramsForChannel(ch)
+        if (realPrograms.isEmpty()) {
+            epgDateRow.visibility = View.GONE
+            lvEpgPrograms.visibility = View.GONE
+            lvEpgPrograms.adapter = null
+            tvEpgEmptyState.text = "Для канала отсутствует EPG. Проверьте настройки плейлиста"
+            tvEpgEmptyState.visibility = View.VISIBLE
+            epgPanel.visibility = View.VISIBLE
+            showUI()
+            epgPanel.post { syncEpgPanelBounds() }
+            return
+        }
+        tvEpgEmptyState.visibility = View.GONE
+        epgDateRow.visibility = View.VISIBLE
+        lvEpgPrograms.visibility = View.VISIBLE
+
         val programs =
-            getProgramsForDisplay(ch).distinctBy { Triple(it.title.trim(), it.start, it.stop) }
+            realPrograms.distinctBy { Triple(it.title.trim(), it.start, it.stop) }
                 .sortedBy { it.start }
 
         epgPanelProgramsByDate = programs.groupBy {
@@ -1649,11 +1694,6 @@ class MainActivity : AppCompatActivity() {
 
         epgPanelDateKeys = epgPanelProgramsByDate.keys.sortedBy { key ->
             SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).parse(key)?.time ?: 0L
-        }
-
-        if (epgPanelDateKeys.isEmpty()) {
-            Toast.makeText(this, "Программа передач недоступна", Toast.LENGTH_SHORT).show()
-            return
         }
 
         val todayKey = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date())
@@ -3040,6 +3080,7 @@ class MainActivity : AppCompatActivity() {
                 updateEpgDisplay()
                 refreshLogo()
                 epgFetchInProgress = false
+                refreshOpenOverlayPanelsAfterEpgUpdate()
             }
         }
 

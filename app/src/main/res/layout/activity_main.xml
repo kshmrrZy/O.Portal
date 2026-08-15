@@ -438,6 +438,7 @@
         android:visibility="gone">
 
         <LinearLayout
+            android:id="@+id/epgDateRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
@@ -488,6 +489,18 @@
                 android:focusable="true"
                 android:clickable="true" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvEpgEmptyState"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="12dp"
+            android:gravity="center"
+            android:fontFamily="@font/golos_text"
+            android:textColor="#99FFFFFF"
+            android:textSize="15sp"
+            android:visibility="gone" />
 
         <ListView
             android:id="@+id/lvEpgPrograms"
