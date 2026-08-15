@@ -418,6 +418,37 @@ class MainActivity : AppCompatActivity() {
         return result
     }
 
+    /**
+     * Почасовая заглушка для каналов, у которых нет реальных данных EPG (пока не загрузились
+     * или отсутствуют), но при этом доступен архив по плейлисту. Позволяет пользователю всё
+     * равно перемотать в архив, даже без настоящей программы передач.
+     */
+    private fun buildArchivePlaceholderPrograms(ch: Channel): List<Program> {
+        if (ch.catchupDays <= 0 || ch.catchupSource.isNullOrBlank()) return emptyList()
+        val result = mutableListOf<Program>()
+        val cal = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_YEAR, -ch.catchupDays)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val end = System.currentTimeMillis()
+        val title = "Программа канала (${ch.name})"
+        while (cal.timeInMillis < end) {
+            val start = cal.timeInMillis
+            cal.add(Calendar.HOUR_OF_DAY, 1)
+            result += Program(title, start, cal.timeInMillis)
+        }
+        return result
+    }
+
+    /** Реальные данные EPG, если есть; иначе — архивная почасовая заглушка (если архив доступен). */
+    private fun getProgramsWithArchiveFallback(ch: Channel): List<Program> {
+        val real = getProgramsForChannel(ch)
+        if (real.isNotEmpty()) return real
+        return buildArchivePlaceholderPrograms(ch)
+    }
+
     private fun getProgramsForDisplay(ch: Channel): List<Program> {
         val real = getProgramsForChannel(ch)
         return if (real.isNotEmpty()) real else buildPlaceholderPrograms()
@@ -1572,7 +1603,9 @@ class MainActivity : AppCompatActivity() {
                 )
 
                 val realPrograms = getProgramsForChannel(channel)
-                val cur = realPrograms.find {
+                val displayPrograms =
+                    realPrograms.ifEmpty { buildArchivePlaceholderPrograms(channel) }
+                val cur = displayPrograms.find {
                     System.currentTimeMillis() in it.start until it.stop
                 }
                 when {
@@ -1582,7 +1615,7 @@ class MainActivity : AppCompatActivity() {
                             "Сейчас: ${fmt.format(Date(cur.start))} - ${fmt.format(Date(cur.stop))} - ${cur.title}"
                         holder.tvCurrentProgram.visibility = View.VISIBLE
                     }
-                    realPrograms.isEmpty() -> {
+                    displayPrograms.isEmpty() -> {
                         holder.tvCurrentProgram.text = epgUnavailableMessage()
                         holder.tvCurrentProgram.visibility = View.VISIBLE
                     }
@@ -1668,7 +1701,9 @@ class MainActivity : AppCompatActivity() {
         epgPanelChannel = ch
 
         val realPrograms = getProgramsForChannel(ch)
-        if (realPrograms.isEmpty()) {
+        val programsSource =
+            realPrograms.ifEmpty { buildArchivePlaceholderPrograms(ch) }
+        if (programsSource.isEmpty()) {
             epgDateRow.visibility = View.GONE
             lvEpgPrograms.visibility = View.GONE
             lvEpgPrograms.adapter = null
@@ -1684,7 +1719,7 @@ class MainActivity : AppCompatActivity() {
         lvEpgPrograms.visibility = View.VISIBLE
 
         val programs =
-            realPrograms.distinctBy { Triple(it.title.trim(), it.start, it.stop) }
+            programsSource.distinctBy { Triple(it.title.trim(), it.start, it.stop) }
                 .sortedBy { it.start }
 
         epgPanelProgramsByDate = programs.groupBy {
@@ -3667,7 +3702,7 @@ class MainActivity : AppCompatActivity() {
         }
         val ch = channels.getOrNull(currentChannelIndex) ?: return
         val now = System.currentTimeMillis()
-        val cur = getProgramsForChannel(ch).find { now in it.start until it.stop }
+        val cur = getProgramsWithArchiveFallback(ch).find { now in it.start until it.stop }
         if (!suppressText) {
             tvEpg.text = cur?.title ?: epgUnavailableMessage()
         }
