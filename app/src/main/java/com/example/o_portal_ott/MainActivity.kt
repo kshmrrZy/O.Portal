@@ -432,8 +432,8 @@ class MainActivity : AppCompatActivity() {
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        val end = System.currentTimeMillis()
-        val title = "Программа канала (${ch.name})"
+        val end = System.currentTimeMillis() + EPG_KEEP_FUTURE_DAYS * 24L * 60L * 60L * 1000L
+        val title = "Программа канала ${ch.name}"
         while (cal.timeInMillis < end) {
             val start = cal.timeInMillis
             cal.add(Calendar.HOUR_OF_DAY, 1)
@@ -3704,7 +3704,7 @@ class MainActivity : AppCompatActivity() {
         val now = System.currentTimeMillis()
         val cur = getProgramsWithArchiveFallback(ch).find { now in it.start until it.stop }
         if (!suppressText) {
-            tvEpg.text = cur?.title ?: epgUnavailableMessage()
+            tvEpg.text = cur?.title ?: "Программа канала ${ch.name}"
         }
         updateTimelineUi()
     }
