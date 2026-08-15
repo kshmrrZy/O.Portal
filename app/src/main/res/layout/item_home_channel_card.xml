@@ -4,21 +4,21 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:padding="9dp"
+    android:padding="12dp"
     android:background="@drawable/channel_grid_tile_bg"
     android:focusable="true"
     android:clickable="true">
 
     <FrameLayout
-        android:layout_width="38dp"
-        android:layout_height="38dp"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
         android:background="@drawable/channel_grid_logo_bg">
 
         <ImageView
             android:id="@+id/cardLogo"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:padding="4dp"
+            android:padding="6dp"
             android:scaleType="fitCenter" />
     </FrameLayout>
 
@@ -26,7 +26,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:layout_marginStart="9dp"
+        android:layout_marginStart="12dp"
         android:orientation="vertical">
 
         <TextView
@@ -35,7 +35,7 @@
             android:layout_height="wrap_content"
             android:fontFamily="@font/golos_text"
             android:textColor="#FFFFFF"
-            android:textSize="13sp"
+            android:textSize="15sp"
             android:textStyle="bold"
             android:singleLine="true"
             android:ellipsize="marquee"
@@ -47,10 +47,10 @@
             android:id="@+id/cardCurrentProgram"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginTop="3dp"
             android:fontFamily="@font/golos_text"
             android:textColor="#CCFFFFFF"
-            android:textSize="10.5sp"
+            android:textSize="12sp"
             android:maxLines="1"
             android:ellipsize="end"
             android:visibility="gone" />
@@ -62,7 +62,7 @@
             android:layout_marginTop="1dp"
             android:fontFamily="@font/golos_text"
             android:textColor="#80FFFFFF"
-            android:textSize="10.5sp"
+            android:textSize="12sp"
             android:maxLines="1"
             android:ellipsize="end"
             android:visibility="gone" />
