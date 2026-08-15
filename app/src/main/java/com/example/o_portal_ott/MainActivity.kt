@@ -217,6 +217,9 @@ class MainActivity : AppCompatActivity() {
     private var currentPlaylistText: String = ""
     private var selectedPlaylistDisplayName: String = ""
     private var selectedCategoryName: String = ""
+    private enum class HomeReturnTarget { PLAYLISTS, CHANNEL_LIST }
+    private var homeReturnTarget: HomeReturnTarget = HomeReturnTarget.PLAYLISTS
+    private var lastChannelListCategory: String? = null
     private var availableEpgSources: List<String> = emptyList()
     private var selectedEpgSources: MutableSet<String> = mutableSetOf()
     private val epgSourceStatus = mutableMapOf<String, String>()
@@ -1194,10 +1197,7 @@ class MainActivity : AppCompatActivity() {
         homePlaylistTilesPanel.visibility = View.VISIBLE
         disableHomeCategoryBack("showThirdPartyTilesOnHome_before_show")
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории (Плейлисты)")
-        tvHomeCategoryBack.visibility = View.VISIBLE
-        logDebug("NAV", "TV_HOME_CATEGORY_BACK_MUTATION source=showThirdPartyTilesOnHome_show visibility=${tvHomeCategoryBack.visibility} clickable=${tvHomeCategoryBack.isClickable} enabled=${tvHomeCategoryBack.isEnabled} focusable=${tvHomeCategoryBack.isFocusable}")
-        tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
-        logDebug("NAV", "TV_HOME_CATEGORY_BACK_MUTATION source=showThirdPartyTilesOnHome_listener visibility=${tvHomeCategoryBack.visibility} clickable=${tvHomeCategoryBack.isClickable} enabled=${tvHomeCategoryBack.isEnabled} focusable=${tvHomeCategoryBack.isFocusable}")
+        enableHomeCategoryBack { showPlaylistPageOnHome() }
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
         val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }
         bindHomeTiles(list.map { p -> HomeTileItem(p.name) {
@@ -1273,11 +1273,8 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         homePlaylistTilesPanel.visibility = View.VISIBLE
-        tvHomeCategoryBack.visibility = View.VISIBLE
-        logDebug("NAV", "TV_HOME_CATEGORY_BACK_MUTATION source=showCategoryTilesOnHome_show visibility=${tvHomeCategoryBack.visibility} clickable=${tvHomeCategoryBack.isClickable} enabled=${tvHomeCategoryBack.isEnabled} focusable=${tvHomeCategoryBack.isFocusable}")
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории ($playlistName)")
-        tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
-        logDebug("NAV", "TV_HOME_CATEGORY_BACK_MUTATION source=showCategoryTilesOnHome_listener visibility=${tvHomeCategoryBack.visibility} clickable=${tvHomeCategoryBack.isClickable} enabled=${tvHomeCategoryBack.isEnabled} focusable=${tvHomeCategoryBack.isFocusable}")
+        enableHomeCategoryBack { showPlaylistPageOnHome() }
 
         val allChannels = groupedCategories.values.flatten()
         fun categoryGroupOrder(name: String): Int {
@@ -1331,7 +1328,7 @@ class MainActivity : AppCompatActivity() {
         homePlaylistTilesPanel.visibility = View.VISIBLE
         val playlistName = getSelectedPlaylistName()
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории ($playlistName)")
-        tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
+        enableHomeCategoryBack { showPlaylistPageOnHome() }
         bindCategoryTilesOnHome()
     }
 
@@ -1343,8 +1340,7 @@ class MainActivity : AppCompatActivity() {
         channels.addAll(channelsForCategory)
         selectedCategoryName = category
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = category)
-        tvHomeCategoryBack.visibility = View.VISIBLE
-        tvHomeCategoryBack.setOnClickListener { returnToCategoryTilesOnHome() }
+        enableHomeCategoryBack { returnToCategoryTilesOnHome() }
         homePlaylistTilesPanel.visibility = View.GONE
         gvHomeChannelList.visibility = View.VISIBLE
 
@@ -1387,6 +1383,8 @@ class MainActivity : AppCompatActivity() {
 
                 itemView.setOnClickListener {
                     logDebug("NAV", "home_channel_card_click name=${channel.name}")
+                    homeReturnTarget = HomeReturnTarget.CHANNEL_LIST
+                    lastChannelListCategory = category
                     currentChannelIndex = position
                     playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
                 }
@@ -4834,6 +4832,14 @@ class MainActivity : AppCompatActivity() {
         logDebug("NAV", "EXIT_PLAYER_LOCAL_HOME_RESET")
         resetSettingsOverlayState()
         showHomeOnly()
+        val category = lastChannelListCategory
+        if (homeReturnTarget == HomeReturnTarget.CHANNEL_LIST && category != null &&
+            cachedCategoryGroups.containsKey(category)
+        ) {
+            returnToCategoryTilesOnHome()
+            showHomeChannelList(category, cachedCategoryGroups[category].orEmpty())
+        }
+        homeReturnTarget = HomeReturnTarget.PLAYLISTS
     }
 
     private fun bindRealPlayerExitButtonListener() {
@@ -5031,6 +5037,15 @@ class MainActivity : AppCompatActivity() {
                 "ROOT_CHILDREN_STATE idx=$i id=$idName class=${child.javaClass.simpleName} visibility=${child.visibility} shown=${child.isShown} alpha=${child.alpha} clickable=${child.isClickable} enabled=${child.isEnabled} w=${child.width} h=${child.height} elevation=${child.elevation} z=${child.z}"
             )
         }
+    }
+
+    private fun enableHomeCategoryBack(onClick: () -> Unit) {
+        tvHomeCategoryBack.visibility = View.VISIBLE
+        tvHomeCategoryBack.isEnabled = true
+        tvHomeCategoryBack.isFocusable = true
+        tvHomeCategoryBack.isFocusableInTouchMode = true
+        tvHomeCategoryBack.isClickable = true
+        tvHomeCategoryBack.setOnClickListener { onClick() }
     }
 
     private fun disableHomeCategoryBack(source: String) {

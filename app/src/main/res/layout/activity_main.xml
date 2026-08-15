@@ -680,7 +680,7 @@
             android:visibility="gone"
             android:layout_marginTop="31dp"
             android:numColumns="auto_fit"
-            android:columnWidth="290dp"
+            android:columnWidth="230dp"
             android:horizontalSpacing="12dp"
             android:verticalSpacing="12dp"
             android:stretchMode="columnWidth"
