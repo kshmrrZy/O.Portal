@@ -1213,6 +1213,8 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         homePlaylistTilesPanel.visibility = View.VISIBLE
+        gvHomeChannelList.visibility = View.GONE
+        gvHomeChannelList.adapter = null
         applyHomeAppTitleStyle(settingsMode = false)
         disableHomeCategoryBack("showPlaylistPageOnHome_end")
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
@@ -1315,7 +1317,6 @@ class MainActivity : AppCompatActivity() {
                 showReloadingStatus("Открываем раздел...", category)
                 val filtered = cachedCategoryGroups[category].orEmpty()
                 homePlaylistTilesPanel.visibility = View.GONE
-                hideStartPage()
                 showHomeChannelList(category, filtered)
                 tvReloadingStatus.visibility = View.GONE
                 logDebug("NAV", "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}")
