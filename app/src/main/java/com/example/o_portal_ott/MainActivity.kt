@@ -156,6 +156,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvHomeStartTitle: TextView
     private lateinit var tvHomeStartSubtitle: TextView
     private lateinit var homePlaylistTilesPanel: View
+    private lateinit var gvHomeChannelList: GridView
     private lateinit var rvHomeTiles: RecyclerView
     private lateinit var tvHomeCategoryBack: TextView
     private lateinit var ivLogo: ImageView
@@ -428,6 +429,7 @@ class MainActivity : AppCompatActivity() {
         val result = mutableListOf<Program>()
         val cal = Calendar.getInstance().apply {
             add(Calendar.DAY_OF_YEAR, -ch.catchupDays)
+            set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
@@ -539,6 +541,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartTitle = findViewById(R.id.tvHomeStartTitle)
         tvHomeStartSubtitle = findViewById(R.id.tvHomeStartSubtitle)
         homePlaylistTilesPanel = findViewById(R.id.homePlaylistTilesPanel)
+        gvHomeChannelList = findViewById(R.id.gvHomeChannelList)
         rvHomeTiles = findViewById(R.id.rvHomeTiles)
         tvHomeCategoryBack = findViewById(R.id.tvHomeCategoryBack)
         ivLogo = findViewById(R.id.ivChannelLogo)
@@ -1294,27 +1297,101 @@ class MainActivity : AppCompatActivity() {
         cachedCategoryGroups = grouped
         logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS count=${grouped.size}")
         logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS names=${grouped.keys.joinToString(separator = " | ")}")
-        val categoryNames = grouped.keys.toList()
-        bindHomeTiles(categoryNames.map { category -> HomeTileItem(category) {
-            logDebug("NAV", "CATEGORY_TILE_CLICK_RECEIVED name=$category")
-            if (categoryOpenInProgress) {
-                logDebug("NAV", "CLICK_BLOCKED reason=category_open_in_progress")
-                return@HomeTileItem
+        bindCategoryTilesOnHome()
+    }
+
+    private fun bindCategoryTilesOnHome() {
+        val categoryNames = cachedCategoryGroups.keys.toList()
+        bindHomeTiles(categoryNames.map { category ->
+            HomeTileItem(category) {
+                logDebug("NAV", "CATEGORY_TILE_CLICK_RECEIVED name=$category")
+                if (categoryOpenInProgress) {
+                    logDebug("NAV", "CLICK_BLOCKED reason=category_open_in_progress")
+                    return@HomeTileItem
+                }
+                categoryOpenInProgress = true
+                selectedCategoryName = category
+                logDebug("NAV", "CATEGORY_OPEN_CHANNELS_START name=$category")
+                showReloadingStatus("Открываем раздел...", category)
+                val filtered = cachedCategoryGroups[category].orEmpty()
+                homePlaylistTilesPanel.visibility = View.GONE
+                hideStartPage()
+                showHomeChannelList(category, filtered)
+                tvReloadingStatus.visibility = View.GONE
+                logDebug("NAV", "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}")
+                categoryOpenInProgress = false
             }
-            categoryOpenInProgress = true
-            selectedCategoryName = category
-            logDebug("NAV", "CATEGORY_OPEN_CHANNELS_START name=$category")
-            showReloadingStatus("Открываем раздел...", category)
-            val filtered = cachedCategoryGroups[category].orEmpty()
-            channels.clear()
-            channels.addAll(filtered)
-            homePlaylistTilesPanel.visibility = View.GONE
-            hideStartPage()
-            showChannelList()
-            tvReloadingStatus.visibility = View.GONE
-            logDebug("NAV", "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}")
-            categoryOpenInProgress = false
-        } }, source = "categories")
+        }, source = "categories")
+    }
+
+    private fun returnToCategoryTilesOnHome() {
+        gvHomeChannelList.visibility = View.GONE
+        gvHomeChannelList.adapter = null
+        homePlaylistTilesPanel.visibility = View.VISIBLE
+        val playlistName = getSelectedPlaylistName()
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории ($playlistName)")
+        tvHomeCategoryBack.setOnClickListener { showPlaylistPageOnHome() }
+        bindCategoryTilesOnHome()
+    }
+
+    private fun findNextProgram(programs: List<Program>, afterMs: Long): Program? =
+        programs.filter { it.start >= afterMs }.minByOrNull { it.start }
+
+    private fun showHomeChannelList(category: String, channelsForCategory: List<Channel>) {
+        channels.clear()
+        channels.addAll(channelsForCategory)
+        selectedCategoryName = category
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = category)
+        tvHomeCategoryBack.visibility = View.VISIBLE
+        tvHomeCategoryBack.setOnClickListener { returnToCategoryTilesOnHome() }
+        homePlaylistTilesPanel.visibility = View.GONE
+        gvHomeChannelList.visibility = View.VISIBLE
+
+        gvHomeChannelList.adapter = object : ArrayAdapter<Channel>(this, 0, channelsForCategory) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val itemView = convertView
+                    ?: layoutInflater.inflate(R.layout.item_home_channel_card, parent, false)
+                val channel = channelsForCategory[position]
+                val ivLogo = itemView.findViewById<ImageView>(R.id.cardLogo)
+                val tvName = itemView.findViewById<TextView>(R.id.cardName)
+                val tvCurrent = itemView.findViewById<TextView>(R.id.cardCurrentProgram)
+                val tvNext = itemView.findViewById<TextView>(R.id.cardNextProgram)
+
+                tvName.text = channel.name
+                tvName.isSelected = true
+                loadLogoWithGlide(channel.logoFromEpg ?: channel.logoFromPlaylist, ivLogo)
+
+                val now = System.currentTimeMillis()
+                val realPrograms = getProgramsForChannel(channel)
+                val displayPrograms = realPrograms.ifEmpty { buildArchivePlaceholderPrograms(channel) }
+                val cur = displayPrograms.find { now in it.start until it.stop }
+                val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+                if (cur != null) {
+                    tvCurrent.text =
+                        "Сейчас: ${fmt.format(Date(cur.start))} - ${fmt.format(Date(cur.stop))} - ${cur.title}"
+                    tvCurrent.visibility = View.VISIBLE
+                    val next = findNextProgram(displayPrograms, cur.stop)
+                    if (next != null) {
+                        tvNext.text =
+                            "Далее: ${fmt.format(Date(next.start))} - ${fmt.format(Date(next.stop))} - ${next.title}"
+                        tvNext.visibility = View.VISIBLE
+                    } else {
+                        tvNext.visibility = View.GONE
+                    }
+                } else {
+                    tvCurrent.text = epgUnavailableMessage()
+                    tvCurrent.visibility = View.VISIBLE
+                    tvNext.visibility = View.GONE
+                }
+
+                itemView.setOnClickListener {
+                    logDebug("NAV", "home_channel_card_click name=${channel.name}")
+                    currentChannelIndex = position
+                    playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
+                }
+                return itemView
+            }
+        }
     }
 
     private fun hideStartPage() {

@@ -673,6 +673,29 @@
                 android:overScrollMode="never"/>
         </ScrollView>
 
+        <GridView
+            android:id="@+id/gvHomeChannelList"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:visibility="gone"
+            android:layout_marginTop="31dp"
+            android:numColumns="auto_fit"
+            android:columnWidth="320dp"
+            android:horizontalSpacing="12dp"
+            android:verticalSpacing="12dp"
+            android:stretchMode="columnWidth"
+            android:gravity="start"
+            android:clipToPadding="false"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:overScrollMode="never"
+            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
+            app:layout_constraintEnd_toEndOf="@id/ivHomePower"
+            app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
+            app:layout_constraintBottom_toBottomOf="parent" />
+
         <TextView
             android:id="@+id/tvHomeStartTitle"
             style="@style/AppGolosText"
