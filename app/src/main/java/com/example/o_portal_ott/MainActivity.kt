@@ -432,7 +432,13 @@ class MainActivity : AppCompatActivity() {
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        val end = System.currentTimeMillis() + EPG_KEEP_FUTURE_DAYS * 24L * 60L * 60L * 1000L
+        val end = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_YEAR, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
         val title = "Программа канала ${ch.name}"
         while (cal.timeInMillis < end) {
             val start = cal.timeInMillis
@@ -1847,6 +1853,7 @@ class MainActivity : AppCompatActivity() {
                 val item = getItem(position) ?: return row
                 holder.tvTime.text = timeFormat.format(Date(item.start))
                 holder.tvTitle.text = item.title
+                holder.tvTitle.isSelected = true
                 if (item.desc.isNotBlank()) {
                     holder.tvDesc.text = item.desc
                     holder.tvDesc.visibility = View.VISIBLE
