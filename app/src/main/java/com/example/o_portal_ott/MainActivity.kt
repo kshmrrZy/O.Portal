@@ -1583,8 +1583,7 @@ class MainActivity : AppCompatActivity() {
                         holder.tvCurrentProgram.visibility = View.VISIBLE
                     }
                     realPrograms.isEmpty() -> {
-                        holder.tvCurrentProgram.text =
-                            "Для канала отсутствует EPG. Проверьте настройки плейлиста"
+                        holder.tvCurrentProgram.text = epgUnavailableMessage()
                         holder.tvCurrentProgram.visibility = View.VISIBLE
                     }
                     else -> {
@@ -1673,7 +1672,7 @@ class MainActivity : AppCompatActivity() {
             epgDateRow.visibility = View.GONE
             lvEpgPrograms.visibility = View.GONE
             lvEpgPrograms.adapter = null
-            tvEpgEmptyState.text = "Для канала отсутствует EPG. Проверьте настройки плейлиста"
+            tvEpgEmptyState.text = epgUnavailableMessage()
             tvEpgEmptyState.visibility = View.VISIBLE
             epgPanel.visibility = View.VISIBLE
             showUI()
@@ -2944,11 +2943,22 @@ class MainActivity : AppCompatActivity() {
                     availableEpgSources = parsedEpgUrls
 
                     val savedSelection = getSelectedEpgSources()
-                    selectedEpgSources = if (savedSelection.isNotEmpty()) {
-                        savedSelection.intersect(availableEpgSources.toSet()).toMutableSet()
+                    selectedEpgSources = if (availableEpgSources.isEmpty()) {
+                        // У плейлиста нет собственной ссылки на EPG (x-tvg-url) — применяем
+                        // сохранённые в настройках источники как есть, без пересечения с пустым списком.
+                        savedSelection.toMutableSet()
                     } else {
-                        availableEpgSources.toMutableSet()
+                        val intersected = savedSelection.intersect(availableEpgSources.toSet())
+                        if (intersected.isNotEmpty()) {
+                            intersected.toMutableSet()
+                        } else {
+                            availableEpgSources.toMutableSet()
+                        }
                     }
+                    logDebug(
+                        "EPG_DEBUG",
+                        "EPG_SOURCE_SELECTION playlist=$selectedPlaylist availableEpgSources=$availableEpgSources savedSelection=$savedSelection selectedEpgSources=$selectedEpgSources"
+                    )
 
                     if (shouldRefreshEpgNow()) {
                         synchronized(epgDataLock) { epgData.clear() }
@@ -2995,6 +3005,8 @@ class MainActivity : AppCompatActivity() {
     ) {
         if (epgFetchInProgress || urls.isEmpty()) return
         epgFetchInProgress = true
+        updateEpgDisplay()
+        refreshOpenOverlayPanelsAfterEpgUpdate()
         thread {
             fun humanReadableEpgError(t: Throwable): String {
                 return when {
@@ -3509,6 +3521,7 @@ class MainActivity : AppCompatActivity() {
             ensureEpgLoadedLazy()
             refreshLogo()
             updateEpgDisplay()
+            refreshOpenOverlayPanelsAfterEpgUpdate()
             showUI()
         }.onFailure { e ->
             Log.e("PLAYER", "Ошибка воспроизведения канала", e)
@@ -3607,6 +3620,10 @@ class MainActivity : AppCompatActivity() {
         logDebug("PLAYER_STATE", "playback failure shown; waiting for user LIVE/channel action url=$url")
     }
 
+    private fun epgUnavailableMessage(): String =
+        if (epgFetchInProgress) "Выполняется обновление программы передач"
+        else "Для канала отсутствует EPG. Проверьте настройки плейлиста"
+
     private fun updateEpgDisplay() {
         val suppressText = timelineUserSeeking || System.currentTimeMillis() < seekStatusHoldUntilMs
         if (isArchivePlayback) {
@@ -3635,11 +3652,9 @@ class MainActivity : AppCompatActivity() {
         }
         val ch = channels.getOrNull(currentChannelIndex) ?: return
         val now = System.currentTimeMillis()
-        val programs = getProgramsForDisplay(ch)
-
-        val cur = programs.find { now in it.start until it.stop }
+        val cur = getProgramsForChannel(ch).find { now in it.start until it.stop }
         if (!suppressText) {
-            tvEpg.text = cur?.title ?: "Загрузка программы..."
+            tvEpg.text = cur?.title ?: epgUnavailableMessage()
         }
         updateTimelineUi()
     }
