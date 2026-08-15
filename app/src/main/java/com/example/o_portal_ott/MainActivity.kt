@@ -927,7 +927,7 @@ class MainActivity : AppCompatActivity() {
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
             val root = FrameLayout(parent.context)
             root.isFocusable = true
-            root.isFocusableInTouchMode = true
+            root.isFocusableInTouchMode = false
             root.isClickable = true
             root.isEnabled = true
             root.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
