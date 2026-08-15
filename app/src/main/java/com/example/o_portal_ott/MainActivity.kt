@@ -1650,7 +1650,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
-            (gvChannelListPanel.adapter as? BaseAdapter)?.notifyDataSetChanged()
+            showChannelListPanel()
         }
     }
 
@@ -1870,6 +1870,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSettingsDialog() {
+        if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
+            hideEpgPanel()
+        }
+        if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
+            hideChannelListPanel()
+        }
         settingsOpenedFromPlayer = homePanel.visibility != View.VISIBLE
         isSettingsModalVisible = true
         homePlaylistTilesPanel.visibility = View.GONE
@@ -3100,7 +3106,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun ensureEpgLoadedLazy() {
         if (selectedEpgSources.isEmpty() || epgFetchInProgress) return
-        if (isEpgDataEmpty() || shouldRefreshEpgNow()) {
+        val epgEmpty = isEpgDataEmpty()
+        val refreshDue = shouldRefreshEpgNow()
+        logDebug(
+            "EPG_DEBUG",
+            "ensureEpgLoadedLazy epgEmpty=$epgEmpty refreshDue=$refreshDue " +
+                "savedFingerprint=${getEpgSourceFingerprint()} " +
+                "currentFingerprint=${buildEpgSourceFingerprint(selectedEpgSources.toList())} " +
+                "selectedEpgSources=$selectedEpgSources"
+        )
+        if (epgEmpty || refreshDue) {
             fetchEpgSources(selectedEpgSources.toList())
         }
     }
