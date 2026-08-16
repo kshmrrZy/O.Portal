@@ -3149,7 +3149,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             } catch (e: Exception) {
-                Log.e("M3U", "Ошибка загрузки плейлиста", e)
+                Log.e("M3U", "Ошибка загрузки плейлиста: ${redactThrowableChain(e)}")
                 handler.post {
                     if (showErrors) {
                         AlertDialog.Builder(this)
@@ -3226,7 +3226,7 @@ class MainActivity : AppCompatActivity() {
                         parsed = true
                         break
                     } catch (t: Throwable) {
-                        Log.w("EPG", "Ошибка обработки EPG кандидата: $candidateUrl", t)
+                        Log.w("EPG", redactSensitive("Ошибка обработки EPG кандидата: $candidateUrl"), t)
                         lastError = humanReadableEpgError(t)
                         when (t) {
                             is OutOfMemoryError -> applyEpgStatus(
@@ -3248,7 +3248,7 @@ class MainActivity : AppCompatActivity() {
 
                 if (!parsed) {
                     applyEpgStatus(sourceUrl, "Ошибка загрузки: $lastError")
-                    Log.w("EPG", "Не удалось обработать источник EPG: $sourceUrl ($lastError)")
+                    Log.w("EPG", redactSensitive("Не удалось обработать источник EPG: $sourceUrl ($lastError)"))
                 }
             }
 
@@ -3703,7 +3703,7 @@ class MainActivity : AppCompatActivity() {
             refreshOpenOverlayPanelsAfterEpgUpdate()
             showUI()
         }.onFailure { e ->
-            Log.e("PLAYER", "Ошибка воспроизведения канала", e)
+            Log.e("PLAYER", "Ошибка воспроизведения канала: ${redactThrowableChain(e)}")
             showPlaybackFailureAndReturn(
                 lastRequestedPlaybackUrl,
                 e.message ?: e.javaClass.simpleName
@@ -4109,7 +4109,7 @@ class MainActivity : AppCompatActivity() {
                         droppedFrames: Int,
                         elapsedMs: Long
                     ) {
-                        Log.w("PLAYER_STATE", "droppedFrames=$droppedFrames elapsedMs=$elapsedMs url=$lastRequestedPlaybackUrl")
+                        Log.w("PLAYER_STATE", redactSensitive("droppedFrames=$droppedFrames elapsedMs=$elapsedMs url=$lastRequestedPlaybackUrl"))
                     }
 
                     override fun onVideoDecoderInitialized(
@@ -4615,7 +4615,8 @@ class MainActivity : AppCompatActivity() {
                     sbTimeline.progress = (sbTimeline.progress + 20).coerceAtMost(1000)
                     return true
                 }
-                showChannelListPanel()
+                toggleEpgPanel()
+                showUI()
                 return true
             }
 
@@ -4623,11 +4624,12 @@ class MainActivity : AppCompatActivity() {
                 if (homeSettingsScreen.visibility == View.VISIBLE) {
                     hideSettingsScreen(); return true
                 }
+                if (homePanel.visibility == View.VISIBLE) return true
                 if (controlsPanel.visibility == View.VISIBLE && isArchivePlayback && sbTimeline.isEnabled) {
                     sbTimeline.progress = (sbTimeline.progress - 20).coerceAtLeast(0)
                     return true
                 }
-                // EPG opening moved to dedicated button
+                showChannelListPanel()
                 return true
             }
         }
@@ -5444,11 +5446,27 @@ class MainActivity : AppCompatActivity() {
         val tvCurrentProgram: TextView,
         val ivLogo: ImageView
     )
+    private fun redactSensitive(message: String): String {
+        val token = (prefs.getString(PREF_USER_TOKEN, null) ?: "").trim()
+        return if (token.length >= 6) message.replace(token, "***TOKEN***") else message
+    }
+
+    /**
+     * Собирает всю цепочку причин исключения (t, t.cause, t.cause.cause...) в одну строку,
+     * маскируя токен на каждом уровне — Android сам подставляет e.toString() в лог,
+     * и текст ошибки сети иногда содержит упавший URL целиком, включая токен.
+     */
+    private fun redactThrowableChain(t: Throwable): String {
+        val chain = generateSequence(t) { it.cause }.toList()
+        return chain.joinToString(" -- caused by: ") { redactSensitive(it.toString()) }
+    }
+
     private fun logDebug(tag: String, message: String, tr: Throwable? = null) {
-        Log.i(tag, message, tr)
+        val safeMessage = redactSensitive(message)
+        Log.i(tag, safeMessage, tr)
         runCatching<Unit> {
             val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
-            val line = "$ts [$tag] $message\n"
+            val line = "$ts [$tag] $safeMessage\n"
             val out = openFileOutput("player_debug.log", Context.MODE_APPEND)
             out.use { stream -> stream.write(line.toByteArray()) }
         }
