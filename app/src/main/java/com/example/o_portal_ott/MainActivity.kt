@@ -3014,7 +3014,6 @@ class MainActivity : AppCompatActivity() {
                 selectedEpgSources = availableEpgSources.toMutableSet()
                 saveSelectedEpgSources(selectedEpgSources)
                 showAppToast("Настройки EPG восстановлены")
-                    .show()
                 dialogRef?.dismiss()
                 showEpgSelectionDialog()
             }
