@@ -653,6 +653,7 @@
             android:visibility="gone"
             android:layout_marginTop="0dp"
             android:overScrollMode="ifContentScrolls"
+            android:scrollbars="none"
             android:fillViewport="true"
             app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
@@ -672,6 +673,7 @@
             android:visibility="gone"
             android:layout_marginTop="31dp"
             android:layout_marginStart="0dp"
+            android:scrollbars="none"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
             app:layout_constraintEnd_toEndOf="@id/ivHomePower"
             app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
@@ -685,6 +687,7 @@
                 android:paddingTop="8dp"
                 android:paddingBottom="8dp"
                 android:clipToPadding="false"
+                android:scrollbars="none"
                 android:overScrollMode="never"/>
         </ScrollView>
 
