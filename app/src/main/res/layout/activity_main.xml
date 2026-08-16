@@ -678,7 +678,7 @@
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:visibility="gone"
-            android:layout_marginTop="31dp"
+            android:layout_marginTop="8dp"
             android:numColumns="auto_fit"
             android:columnWidth="230dp"
             android:horizontalSpacing="12dp"
@@ -695,7 +695,7 @@
             android:listSelector="@android:color/transparent"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
             app:layout_constraintEnd_toEndOf="@id/ivHomePower"
-            app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
+            app:layout_constraintTop_toBottomOf="@id/tvHomeCategoryBack"
             app:layout_constraintBottom_toBottomOf="parent" />
 
         <TextView

@@ -1391,12 +1391,14 @@ class MainActivity : AppCompatActivity() {
                             "Далее: ${fmt.format(Date(next.start))} - ${fmt.format(Date(next.stop))} - ${next.title}"
                         tvNext.visibility = View.VISIBLE
                     } else {
-                        tvNext.visibility = View.GONE
+                        tvNext.text = ""
+                        tvNext.visibility = View.INVISIBLE
                     }
                 } else {
                     tvCurrent.text = epgUnavailableMessage()
                     tvCurrent.visibility = View.VISIBLE
-                    tvNext.visibility = View.GONE
+                    tvNext.text = ""
+                    tvNext.visibility = View.INVISIBLE
                 }
 
                 itemView.setOnClickListener {
@@ -1715,12 +1717,9 @@ class MainActivity : AppCompatActivity() {
                             "Сейчас: ${fmt.format(Date(cur.start))} - ${fmt.format(Date(cur.stop))} - ${cur.title}"
                         holder.tvCurrentProgram.visibility = View.VISIBLE
                     }
-                    displayPrograms.isEmpty() -> {
+                    else -> {
                         holder.tvCurrentProgram.text = epgUnavailableMessage()
                         holder.tvCurrentProgram.visibility = View.VISIBLE
-                    }
-                    else -> {
-                        holder.tvCurrentProgram.visibility = View.GONE
                     }
                 }
 
