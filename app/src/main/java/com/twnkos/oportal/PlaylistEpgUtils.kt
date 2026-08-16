@@ -1,4 +1,4 @@
-package com.example.o_portal_ott
+package com.twnkos.oportal
 
 object PlaylistEpgUtils {
 

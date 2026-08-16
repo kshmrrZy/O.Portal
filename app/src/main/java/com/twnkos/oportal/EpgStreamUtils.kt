@@ -1,4 +1,4 @@
-package com.example.o_portal_ott
+package com.twnkos.oportal
 
 import java.io.FilterInputStream
 import java.io.IOException
