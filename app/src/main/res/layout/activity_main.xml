@@ -534,7 +534,7 @@
             android:columnWidth="260dp"
             android:horizontalSpacing="12dp"
             android:verticalSpacing="12dp"
-            android:stretchMode="spacingWidthUniform"
+            android:stretchMode="columnWidth"
             android:gravity="start"
             android:scrollbars="none" />
     </LinearLayout>
@@ -683,7 +683,7 @@
             android:columnWidth="280dp"
             android:horizontalSpacing="12dp"
             android:verticalSpacing="12dp"
-            android:stretchMode="spacingWidthUniform"
+            android:stretchMode="columnWidth"
             android:gravity="start"
             android:clipToPadding="false"
             android:paddingStart="8dp"
