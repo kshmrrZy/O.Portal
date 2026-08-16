@@ -2179,7 +2179,7 @@ class MainActivity : AppCompatActivity() {
                 else -> false
             }
         }
-        btnAdvancedSettings.setOnClickListener { showSettingsPlaceholderDialog() }
+        btnAdvancedSettings.setOnClickListener { exportDebugLogToDownloads() }
         fun openUserSettingsScreen() {
             settingsRows.forEach { it.visibility = View.GONE }
             userSettingsPanel.visibility = View.VISIBLE
