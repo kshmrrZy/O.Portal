@@ -220,6 +220,7 @@ class MainActivity : AppCompatActivity() {
     private enum class HomeReturnTarget { PLAYLISTS, CHANNEL_LIST }
     private var homeReturnTarget: HomeReturnTarget = HomeReturnTarget.PLAYLISTS
     private var lastChannelListCategory: String? = null
+    private var settingsOpenedFromHomeChannelList = false
     private var availableEpgSources: List<String> = emptyList()
     private var selectedEpgSources: MutableSet<String> = mutableSetOf()
     private val epgSourceStatus = mutableMapOf<String, String>()
@@ -1339,10 +1340,27 @@ class MainActivity : AppCompatActivity() {
         channels.clear()
         channels.addAll(channelsForCategory)
         selectedCategoryName = category
+        lastChannelListCategory = category
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = category)
         enableHomeCategoryBack { returnToCategoryTilesOnHome() }
         homePlaylistTilesPanel.visibility = View.GONE
         gvHomeChannelList.visibility = View.VISIBLE
+
+        if (selectedEpgSources.isNotEmpty() && !epgFetchInProgress) {
+            val hasCoverage = synchronized(epgDataLock) {
+                channelsForCategory.any { ch ->
+                    listOfNotNull(ch.tvgId, ch.tvgName, ch.name).any { key ->
+                        epgData.containsKey(key.lowercase().trim())
+                    }
+                }
+            }
+            if (!hasCoverage) {
+                logDebug("EPG_DEBUG", "showHomeChannelList: no EPG coverage for category=$category, forcing fetch")
+                fetchEpgSources(selectedEpgSources.toList())
+            } else {
+                ensureEpgLoadedLazy()
+            }
+        }
 
         gvHomeChannelList.adapter = object : ArrayAdapter<Channel>(this, 0, channelsForCategory) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
@@ -1994,6 +2012,13 @@ class MainActivity : AppCompatActivity() {
         if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
             hideChannelListPanel()
         }
+        if (::gvHomeChannelList.isInitialized && gvHomeChannelList.visibility == View.VISIBLE) {
+            gvHomeChannelList.visibility = View.GONE
+            gvHomeChannelList.adapter = null
+            settingsOpenedFromHomeChannelList = true
+        } else {
+            settingsOpenedFromHomeChannelList = false
+        }
         settingsOpenedFromPlayer = homePanel.visibility != View.VISIBLE
         isSettingsModalVisible = true
         homePlaylistTilesPanel.visibility = View.GONE
@@ -2367,7 +2392,17 @@ class MainActivity : AppCompatActivity() {
         val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
         val hasThirdParty = getThirdPartyPlaylistProfiles().isNotEmpty()
         if (isAuthorizedUser || hasThirdParty) {
-            showPlaylistPageOnHome()
+            val category = lastChannelListCategory
+            if (settingsOpenedFromHomeChannelList && category != null &&
+                cachedCategoryGroups.containsKey(category)
+            ) {
+                showPlaylistPageOnHome()
+                returnToCategoryTilesOnHome()
+                showHomeChannelList(category, cachedCategoryGroups[category].orEmpty())
+            } else {
+                showPlaylistPageOnHome()
+            }
+            settingsOpenedFromHomeChannelList = false
         } else {
             tvHomeStartTitle.visibility = View.VISIBLE
             tvHomeStartSubtitle.visibility = View.VISIBLE
