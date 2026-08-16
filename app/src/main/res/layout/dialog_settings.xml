@@ -29,7 +29,7 @@
         android:visibility="gone"
         android:clickable="true"
         android:focusable="true"
-        android:paddingHorizontal="10dp"
+        android:paddingHorizontal="1dp"
         android:paddingVertical="1dp"
         android:text="назад"
         android:textColor="#FFFFFF"
