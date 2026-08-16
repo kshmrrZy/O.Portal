@@ -414,7 +414,7 @@
             </LinearLayout>
             <TextView android:id="@+id/tvAuthorizedHint" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="двойной тап позволяет скопировать ссылку на плейлист или токен, но с пульта даже не пытайтесь. вот так." android:textColor="#B3FFFFFF" android:textSize="10sp"/>
         </LinearLayout>
-        <TextView android:id="@+id/tvUserFooterHint" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="Данные для входа в приложение можно получить на сайте o.avff.ru, авторизовавшись через VK или Telegram\nTelegram-бот для поддержки @oportal_bot" android:textColor="#B3FFFFFF" android:textSize="12sp"/>
+        <TextView android:id="@+id/tvUserFooterHint" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="Данные для входа в приложение можно получить на сайте o.avff.pw, авторизовавшись через VK или Telegram\nTelegram-бот для поддержки @oportal_bot" android:textColor="#B3FFFFFF" android:textSize="12sp"/>
     </LinearLayout>
 
     </ScrollView>

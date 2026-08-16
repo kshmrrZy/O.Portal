@@ -2678,6 +2678,8 @@ class MainActivity : AppCompatActivity() {
         val isAuthorized = cachedName.isNotBlank()
         authForm.visibility = if (isAuthorized) View.GONE else View.VISIBLE
         authorizedView.visibility = if (isAuthorized) View.VISIBLE else View.GONE
+        panel.findViewById<View>(R.id.tvUserFooterHint).visibility =
+            if (isAuthorized) View.GONE else View.VISIBLE
         tvState.text = "Имя пользователя"
         tvAuthorizedName.text = cachedName
         tvAuthorizedTokenValue.text = prefs.getString(PREF_USER_TOKEN, "") ?: ""
