@@ -187,6 +187,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var gvChannelListPanel: GridView
     private lateinit var tvReloadingStatus: View
     private lateinit var ivReloadingIcon: ImageView
+    private lateinit var tvAppToast: TextView
     private lateinit var tvReloadingTitle: TextView
     private lateinit var tvReloadingSubtitle: TextView
     private lateinit var listBackgroundOverlay: View
@@ -567,6 +568,7 @@ class MainActivity : AppCompatActivity() {
         btnEpgPlayer = findViewById(R.id.btnEpgPlayer)
         tvReloadingStatus = findViewById(R.id.tvReloadingStatus)
         ivReloadingIcon = findViewById(R.id.ivReloadingIcon)
+        tvAppToast = findViewById(R.id.tvAppToast)
         tvReloadingTitle = findViewById(R.id.tvReloadingTitle)
         tvReloadingSubtitle = findViewById(R.id.tvReloadingSubtitle)
         listBackgroundOverlay = findViewById(R.id.listBackgroundOverlay)
@@ -811,7 +813,7 @@ class MainActivity : AppCompatActivity() {
 
         btnStopTimer.setOnClickListener {
             cancelSleepTimer()
-            Toast.makeText(this, "Таймер остановлен", Toast.LENGTH_SHORT).show()
+            showAppToast("Таймер остановлен")
         }
 
         mDetector = GestureDetectorCompat(this, object : GestureDetector.SimpleOnGestureListener() {
@@ -1426,7 +1428,7 @@ class MainActivity : AppCompatActivity() {
     private fun showHomePlaylistSelector() {
         val profiles = getPlaylistProfiles()
         if (profiles.isEmpty()) {
-            Toast.makeText(this, "Добавьте плейлист в настройках", Toast.LENGTH_SHORT).show()
+            showAppToast("Добавьте плейлист в настройках")
             return
         }
         val sp = Spinner(this)
@@ -1456,7 +1458,7 @@ class MainActivity : AppCompatActivity() {
         val selected = getPlaylistProfiles().firstOrNull { it.name == getSelectedPlaylistName() }
             ?: getPlaylistProfiles().firstOrNull()
         if (selected == null || selected.type != "token" || selected.value.isBlank()) {
-            Toast.makeText(this, "Введите токен в настройках", Toast.LENGTH_LONG).show()
+            showAppToast("Введите токен в настройках", 3500L)
             showSettingsDialog()
             return
         }
@@ -1960,11 +1962,7 @@ class MainActivity : AppCompatActivity() {
                 row.alpha = if (isNow) 1f else 0.9f
                 row.setOnClickListener {
                     if (!archiveAvailable) {
-                        Toast.makeText(
-                            this@MainActivity,
-                            "Архив недоступен для этой передачи",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        showAppToast("Архив недоступен для этой передачи")
                         return@setOnClickListener
                     }
                     playArchiveProgram(ch, item)
@@ -2245,7 +2243,7 @@ class MainActivity : AppCompatActivity() {
             }
                 .filter { it.name.isNotBlank() && it.value.isNotBlank() }
             saveThirdPartyPlaylistProfiles(items)
-            Toast.makeText(this, "Сторонние плейлисты сохранены", Toast.LENGTH_SHORT).show()
+            showAppToast("Сторонние плейлисты сохранены")
         }
         findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener { loadPlaylist(forceReload = true, showErrors = true, autoPlay = false) }
 
@@ -2334,19 +2332,18 @@ class MainActivity : AppCompatActivity() {
             saveCustomEpgSources(links)
             selectedEpgSources = links.toMutableSet()
             saveSelectedEpgSources(selectedEpgSources)
-            Toast.makeText(this, "Ссылки EPG сохранены", Toast.LENGTH_SHORT).show()
+            showAppToast("Ссылки EPG сохранены")
         }
         findViewById<View>(R.id.btnRefreshEpgSettings).setOnClickListener {
             if (selectedEpgSources.isNotEmpty()) {
                 synchronized(epgDataLock) { epgData.clear() }
                 fetchEpgSources(selectedEpgSources.toList(), mutableMapOf())
-                Toast.makeText(this, "Обновление EPG запущено", Toast.LENGTH_SHORT).show()
+                showAppToast("Обновление EPG запущено")
             } else {
-                Toast.makeText(
-                    this,
+                showAppToast(
                     "Нет выбранных источников EPG — включите переключатель и нажмите \"Сохранить\"",
-                    Toast.LENGTH_LONG
-                ).show()
+                    3500L
+                )
             }
         }
 
@@ -2564,7 +2561,7 @@ class MainActivity : AppCompatActivity() {
                 val current = prefs.getBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, USE_FFMPEG_AUDIO_FOR_MPEG_L2)
                 val next = !current
                 prefs.edit().putBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, next).apply()
-                Toast.makeText(this, "FFmpeg audio mode: ${if (next) "PREFER" else "OFF"}", Toast.LENGTH_LONG).show()
+                showAppToast("FFmpeg audio mode: ${if (next) "PREFER" else "OFF"}", 3500L)
             }
             .setNegativeButton("Закрыть", null)
             .show()
@@ -2633,7 +2630,7 @@ class MainActivity : AppCompatActivity() {
                             val playlist = json.optString("playlist", "")
                             prefs.edit().putString(PREF_USER_LOGIN, login).apply()
                             applyAuthorizedProfile(name, token, playlist)
-                            Toast.makeText(this, "Авторизация успешна", Toast.LENGTH_SHORT).show()
+                            showAppToast("Авторизация успешна")
                             dialog.dismiss()
                         } else {
                             val msg = json.optString("message", "Неверный login или token.")
@@ -2865,7 +2862,7 @@ class MainActivity : AppCompatActivity() {
             val type = if (rgSourceType.checkedRadioButtonId == R.id.rbToken) "token" else "url"
 
             if (name.isBlank() || value.isBlank()) {
-                Toast.makeText(this, "Заполните название и значение", Toast.LENGTH_SHORT).show()
+                showAppToast("Заполните название и значение")
                 return@setOnClickListener
             }
 
@@ -2880,12 +2877,12 @@ class MainActivity : AppCompatActivity() {
             refreshSpinner()
             loadPlaylist(forceReload = true, showErrors = true)
             etSourceValue.text?.clear()
-            Toast.makeText(this, "Плейлист сохранён", Toast.LENGTH_SHORT).show()
+            showAppToast("Плейлист сохранён")
         }
 
         btnApply.setOnClickListener {
             if (selectedIndex !in profiles.indices) {
-                Toast.makeText(this, "Выберите профиль плейлиста", Toast.LENGTH_SHORT).show()
+                showAppToast("Выберите профиль плейлиста")
                 return@setOnClickListener
             }
 
@@ -2897,7 +2894,7 @@ class MainActivity : AppCompatActivity() {
             val type = if (rgSourceType.checkedRadioButtonId == R.id.rbToken) "token" else "url"
 
             if (value.isBlank()) {
-                Toast.makeText(this, "Введите токен или URL", Toast.LENGTH_SHORT).show()
+                showAppToast("Введите токен или URL")
                 return@setOnClickListener
             }
 
@@ -2905,8 +2902,7 @@ class MainActivity : AppCompatActivity() {
                 indexProfile.name.equals(finalName, true)
             }.takeIf { it >= 0 && it != selectedIndex } ?: -1
             if (duplicate >= 0) {
-                Toast.makeText(this, "Профиль с таким названием уже существует", Toast.LENGTH_SHORT)
-                    .show()
+                showAppToast("Профиль с таким названием уже существует")
                 return@setOnClickListener
             }
 
@@ -2918,13 +2914,12 @@ class MainActivity : AppCompatActivity() {
             refreshSpinner()
             etSourceValue.text?.clear()
             loadPlaylist(forceReload = true, showErrors = true)
-            Toast.makeText(this, "Применено", Toast.LENGTH_SHORT).show()
+            showAppToast("Применено")
         }
 
         btnDelete.setOnClickListener {
             if (profiles.size <= 1) {
-                Toast.makeText(this, "Должен остаться хотя бы один профиль", Toast.LENGTH_SHORT)
-                    .show()
+                showAppToast("Должен остаться хотя бы один профиль")
                 return@setOnClickListener
             }
             if (selectedIndex in profiles.indices) {
@@ -2956,7 +2951,7 @@ class MainActivity : AppCompatActivity() {
         val editableSources = getCustomEpgSources().ifEmpty { playlistEpgSources }
         availableEpgSources = editableSources
         if (availableEpgSources.isEmpty()) {
-            Toast.makeText(this, "Программа передач отсутствует", Toast.LENGTH_SHORT).show()
+            showAppToast("Программа передач отсутствует")
             return
         }
 
@@ -3000,11 +2995,7 @@ class MainActivity : AppCompatActivity() {
                         availableEpgSources = links
                         selectedEpgSources = links.toMutableSet()
                         saveSelectedEpgSources(selectedEpgSources)
-                        Toast.makeText(
-                            this@MainActivity,
-                            "Ссылки EPG сохранены",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        showAppToast("Ссылки EPG сохранены")
                         dialogRef?.dismiss()
                         showEpgSelectionDialog()
                     }
@@ -3022,7 +3013,7 @@ class MainActivity : AppCompatActivity() {
                 availableEpgSources = playlistEpgSources
                 selectedEpgSources = availableEpgSources.toMutableSet()
                 saveSelectedEpgSources(selectedEpgSources)
-                Toast.makeText(this@MainActivity, "Настройки EPG восстановлены", Toast.LENGTH_SHORT)
+                showAppToast("Настройки EPG восстановлены")
                     .show()
                 dialogRef?.dismiss()
                 showEpgSelectionDialog()
@@ -3158,10 +3149,6 @@ class MainActivity : AppCompatActivity() {
                         showCategoryTilesOnHome(selectedPlaylistDisplayName, groupedCategories)
                     } else {
                         logDebug("NAV", "startup_load_ready_without_autonavigation")
-                    }
-
-                    if (forceReload) {
-                        Toast.makeText(this, "Плейлист обновлён", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
@@ -3598,7 +3585,7 @@ class MainActivity : AppCompatActivity() {
     private fun playArchiveProgram(channel: Channel, program: Program) {
         val archiveUrl = buildArchiveUrl(channel, program)
         if (archiveUrl.isNullOrBlank()) {
-            Toast.makeText(this, "Не удалось сформировать ссылку архива", Toast.LENGTH_SHORT).show()
+            showAppToast("Не удалось сформировать ссылку архива")
             return
         }
         runCatching {
@@ -3786,6 +3773,17 @@ class MainActivity : AppCompatActivity() {
                 logDebug("PLAYER_HLS", "manifest preview failed url=$url error=${it.message}", it)
             }
         }
+    }
+
+    private val hideAppToastRunnable = Runnable {
+        if (::tvAppToast.isInitialized) tvAppToast.visibility = View.GONE
+    }
+
+    private fun showAppToast(message: String, durationMs: Long = 2200L) {
+        tvAppToast.text = message
+        tvAppToast.visibility = View.VISIBLE
+        handler.removeCallbacks(hideAppToastRunnable)
+        handler.postDelayed(hideAppToastRunnable, durationMs)
     }
 
     private fun showReloadingStatus(title: String, subtitle: String, isError: Boolean = false) {
@@ -4564,7 +4562,7 @@ class MainActivity : AppCompatActivity() {
             (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)
         ) {
             cancelSleepTimer()
-            Toast.makeText(this, "Таймер остановлен", Toast.LENGTH_SHORT).show()
+            showAppToast("Таймер остановлен")
             return true
         }
 
@@ -5462,19 +5460,19 @@ class MainActivity : AppCompatActivity() {
     private fun exportDebugLogToDownloads() {
         val src = File(filesDir, "player_debug.log")
         if (!src.exists()) {
-            Toast.makeText(this, "Файл лога ещё не создан", Toast.LENGTH_SHORT).show()
+            showAppToast("Файл лога ещё не создан")
             return
         }
         val dstDir = getExternalFilesDir("Download") ?: run {
-            Toast.makeText(this, "Не удалось открыть папку Download", Toast.LENGTH_SHORT).show()
+            showAppToast("Не удалось открыть папку Download")
             return
         }
         val dst = File(dstDir, "player_debug_${System.currentTimeMillis()}.log")
         runCatching {
             src.copyTo(dst, overwrite = true)
-            Toast.makeText(this, "Лог экспортирован: ${dst.absolutePath}", Toast.LENGTH_LONG).show()
+            showAppToast("Лог экспортирован: ${dst.absolutePath}", 3500L)
         }.onFailure { error: Throwable ->
-            Toast.makeText(this, "Ошибка экспорта: ${error.message}", Toast.LENGTH_LONG).show()
+            showAppToast("Ошибка экспорта: ${error.message}", 3500L)
         }
     }
 }

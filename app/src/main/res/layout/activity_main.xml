@@ -63,6 +63,21 @@
         </LinearLayout>
     </LinearLayout>
 
+    <TextView
+        android:id="@+id/tvAppToast"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="32dp"
+        android:background="@drawable/bg_timer_warning_modal"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="8dp"
+        android:maxWidth="680dp"
+        android:breakStrategy="high_quality"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/timerWarningPanel"
         android:layout_width="wrap_content"
