@@ -2596,8 +2596,6 @@ class MainActivity : AppCompatActivity() {
             if (idx >= 0) profiles[idx] = profile else profiles.add(profile)
             savePlaylistProfiles(profiles)
             syncPortalPlaylistsForAuthorizedUser(token)
-            setSelectedPlaylistName("Избранные")
-            loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
             hideSettingsScreen()
             showPlaylistPageOnHome()
             tvStatus.text = "Вы авторизованы как $name"
@@ -2737,8 +2735,6 @@ class MainActivity : AppCompatActivity() {
                             if (idx >= 0) profiles[idx] = p else profiles.add(p)
                             savePlaylistProfiles(profiles)
                             syncPortalPlaylistsForAuthorizedUser(token)
-                            setSelectedPlaylistName("Избранные")
-                            loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
                             hideSettingsScreen()
                             showPlaylistPageOnHome()
                             bindInlineUserSettings(panel)

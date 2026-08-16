@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.o_portal_ott"
+    namespace = "com.twnkos.oportal"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.o_portal_ott"
+        applicationId = "com.twnkos.oportal"
         minSdk = 24
         targetSdk = 34
         versionCode = 1
