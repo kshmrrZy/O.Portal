@@ -2090,7 +2090,8 @@ class MainActivity : AppCompatActivity() {
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
         val btnExportDebugLog = findViewById<View>(R.id.btnExportDebugLog)
-        val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings)
+        val btnAppInfo = findViewById<View>(R.id.btnAppInfo)
+        val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings, btnAppInfo)
 
         configureBackButtonsForSettings("showSettingsDialog_after_back_config")
         userSettingsPanel.visibility = View.GONE
@@ -2180,8 +2181,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
         btnAdvancedSettings.setOnClickListener { exportDebugLogToDownloads() }
+        btnAppInfo.setOnClickListener { showAppInfoScreen() }
         fun openUserSettingsScreen() {
             settingsRows.forEach { it.visibility = View.GONE }
+            findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
             userSettingsPanel.visibility = View.VISIBLE
             tvSettingsBack.visibility = View.VISIBLE
             tvSettingsBack.setOnClickListener { hideSettingsScreen() }
@@ -2200,10 +2203,11 @@ class MainActivity : AppCompatActivity() {
             findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect),
             findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode),
             findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings),
-            findViewById<View>(R.id.btnExportDebugLog)
+            findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo)
         )
         settingsRows.forEach { it.visibility = View.GONE }
         userSettingsPanel.visibility = View.GONE
+        findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
         playlistPanel.visibility = View.VISIBLE
         tvSettingsBack.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки плейлистов")
@@ -2250,15 +2254,37 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+    private fun showAppInfoScreen() {
+        val appInfoPanel = findViewById<View>(R.id.appInfoPanel)
+        val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
+        val epgPanel = findViewById<View>(R.id.epgSettingsPanel)
+        val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
+        val settingsRows = listOf(
+            findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect),
+            findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode),
+            findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings),
+            findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo)
+        )
+        settingsRows.forEach { it.visibility = View.GONE }
+        playlistPanel.visibility = View.GONE
+        epgPanel.visibility = View.GONE
+        userSettingsPanel.visibility = View.GONE
+        appInfoPanel.visibility = View.VISIBLE
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "О приложении")
+
+        configureBackButtonsForSettings("showAppInfoScreen")
+    }
+
     private fun openEpgSettingsScreen() {
         val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
         val epgPanel = findViewById<View>(R.id.epgSettingsPanel)
         val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
         val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
-        val settingsRows = listOf(findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect), findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode), findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings), findViewById<View>(R.id.btnExportDebugLog))
+        val settingsRows = listOf(findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect), findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode), findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings), findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo))
         settingsRows.forEach { it.visibility = View.GONE }
         playlistPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
+        findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
         epgPanel.visibility = View.VISIBLE
         tvSettingsBack.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки EPG")
@@ -2370,6 +2396,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = false)
         playerSettingsOverlay.visibility = View.GONE
         homePanel.setBackgroundResource(R.drawable.bg_home_screen)
@@ -2422,7 +2449,7 @@ class MainActivity : AppCompatActivity() {
             lp.marginStart = 0
             tvSettingsBack.layoutParams = lp
         }
-        val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings)
+        val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings, R.id.btnAppInfo)
         rowIds.forEachIndexed { i, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
@@ -2445,6 +2472,7 @@ class MainActivity : AppCompatActivity() {
             R.id.itemStartMode,
             R.id.btnAdvancedSettings,
             R.id.btnUserSettings,
+            R.id.btnAppInfo,
         )
         val containerHeight = (homeSettingsScreen.layoutParams?.height ?: 0).takeIf { it > 0 }
             ?: (resources.displayMetrics.heightPixels - dpToPx(40))

@@ -191,6 +191,15 @@
     </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/btnAppInfo"
+        android:layout_width="0dp" android:layout_height="46dp" android:layout_marginTop="8dp"
+        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp"
+        app:layout_constraintTop_toBottomOf="@id/btnExportDebugLog" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
+        <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/alert" android:tint="#FFFFFF"/>
+        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Информация о приложении" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/playlistSettingsPanel"
         android:layout_width="0dp"
         android:layout_height="0dp"
@@ -295,6 +304,64 @@
             <TextView android:id="@+id/btnRefreshEpgSettings" style="@style/AppGolosText" android:layout_width="160dp" android:layout_height="42dp" android:layout_marginStart="10dp" android:background="@drawable/bg_settings_row" android:gravity="center" android:text="Обновить" android:textColor="#FFFFFF" android:textSize="16sp"/>
         </LinearLayout>
     </LinearLayout>
+<ScrollView
+        android:id="@+id/appInfoPanel"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="39dp"
+        android:fillViewport="true"
+        android:scrollbars="vertical"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Описание" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Приложение предназначено для просмотра IPTV-каналов с портала O.Portal" android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Рекомендуемые параметры" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Операционная система не ниже Android 7.0, не менее 1 ГБ ОЗУ, не менее 500 МБ для установки" android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Где взять логин и токен" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="На сайте o.avff.pw в разделе Профиль после авторизации с помощью VK или Telegram" android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Где проверить обновление приложения" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="По технической возможности направляем OTA-уведомление для скачивания, но новую версию можно скачать по ссылке o.avff.pw/app" android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="18dp" android:background="#33FFFFFF"/>
+
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="1. Назначение приложения" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Приложение O.Portal представляет собой программный проигрыватель (плеер), предназначенный для воспроизведения медиаплейлистов в формате IPTV (M3U/M3U8 и аналогичных), которые пользователь самостоятельно добавляет по ссылкам, полученным из сети Интернет. Приложение не хранит, не размещает, не распространяет и не индексирует какой-либо медиаконтент, а также не предоставляет собственных каналов, плейлистов или трансляций." android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="2. Источник контента" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Все плейлисты и ссылки на потоковые трансляции добавляются пользователем самостоятельно. Разработчик приложения не имеет отношения к созданию, размещению или поддержке источников контента, на которые ссылаются добавленные пользователем плейлисты, и не осуществляет предварительную проверку, модерацию или контроль содержимого таких источников." android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="3. Ограничение ответственности" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Разработчик приложения не несёт ответственности за:\n• содержание, легальность и происхождение контента, доступного по добавленным пользователем ссылкам;\n• цели, для которых пользователь использует приложение;\n• возможные нарушения авторских и смежных прав, допущенные при использовании сторонних источников контента.\n\nПриложение является технологическим инструментом (плеером) и не осуществляет и не может осуществлять контроль над тем, какие именно ссылки добавляет пользователь и какой контент по ним доступен." android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="4. Отсутствие технической возможности контроля" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="В силу технической архитектуры приложения (пользователь самостоятельно вводит внешние ссылки на потоки) у разработчика отсутствует техническая возможность проверять правовой статус контента, транслируемого по указанным пользователем источникам, до момента его воспроизведения." android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="5. Обязанности пользователя" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Используя приложение, пользователь подтверждает, что:\n• самостоятельно несёт ответственность за выбор источников контента и соблюдение применимого законодательства, включая законодательство об авторском праве;\n• обязуется не использовать приложение для доступа к контенту, распространяемому с нарушением прав правообладателей;\n• использует приложение на свой риск." android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="6. Обращения правообладателей" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Если вы являетесь правообладателем и полагаете, что функционирование приложения каким-либо образом затрагивает ваши права, вы можете связаться с разработчиками приложения через Telegram: t.me/oportal_bot. Разработчик готов оперативно рассматривать поступившие обращения и, при наличии технической возможности, предпринимать разумные меры реагирования, несмотря на то что сам разработчик не размещает и не контролирует контент, доступный по ссылкам, добавленным пользователями." android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+
+            <TextView android:id="@+id/tvAppInfoDevelopers" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="Developments: TwojNochnojKoshmar, avtnmis" android:textColor="#99FFFFFF" android:textSize="12sp"/>
+            <TextView android:id="@+id/tvAppInfoFeedback" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="Feedback: t.me/@oportal_bot" android:textColor="#99FFFFFF" android:textSize="12sp"/>
+
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="16dp" android:background="#33FFFFFF"/>
+
+            <TextView android:id="@+id/tvAppInfoVersion" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="center" android:text="O.Portal App v. 0.1" android:textColor="#99FFFFFF" android:textSize="13sp"/>
+        </LinearLayout>
+    </ScrollView>
 <ScrollView
         android:id="@+id/userSettingsPanel"
         android:layout_width="0dp"
