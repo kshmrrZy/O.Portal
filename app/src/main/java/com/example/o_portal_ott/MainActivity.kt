@@ -2057,7 +2057,7 @@ class MainActivity : AppCompatActivity() {
                 lp.startToStart = R.id.tvHomeAppTitle
                 lp.endToEnd = R.id.ivHomePower
                 lp.bottomToBottom = ConstraintSet.PARENT_ID
-                lp.topMargin = dpToPx(8)
+                lp.topMargin = dpToPx(0)
                 lp.marginStart = 0
                 lp.marginEnd = 0
                 lp.bottomMargin = dpToPx(20)
