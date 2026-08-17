@@ -233,6 +233,7 @@ class MainActivity : AppCompatActivity() {
     private var timerEndAtMillis: Long = 0L
     private var suppressReloadOverlayUntilMs: Long = 0L
     private var lastBackPressAt = 0L
+    private var lastOkPressAt = 0L
 
     private var shouldOpenLastChannelOnStart = false
     private var isArchivePlayback = false
@@ -1237,9 +1238,11 @@ class MainActivity : AppCompatActivity() {
         ivHomeSettings.alpha = 1f
         ivHomeSettings.scaleX = 1f
         ivHomeSettings.scaleY = 1f
+        ivHomeSettings.isFocusable = false
         ivHomePower.alpha = 1f
         ivHomePower.scaleX = 1f
         ivHomePower.scaleY = 1f
+        ivHomePower.isFocusable = false
         homePlaylistTilesPanel.visibility = View.VISIBLE
         gvHomeChannelList.visibility = View.GONE
         gvHomeChannelList.adapter = null
@@ -4621,6 +4624,50 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Плиточные экраны (плейлисты/категории/список каналов на главном экране, но не самый первый
+        // пустой экран) — своя явная связка: вверх с верхнего ряда уводит на шестерёнку/питание,
+        // влево-вправо переключает между ними, вниз возвращает обратно в сетку.
+        if (homePanel.visibility == View.VISIBLE && tvHomeStartTitle.visibility != View.VISIBLE) {
+            val focused = currentFocus
+            val iconsHaveFocus = focused === ivHomeSettings || focused === ivHomePower
+            if (iconsHaveFocus) {
+                when (keyCode) {
+                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                        if (focused === ivHomeSettings) ivHomePower.requestFocus() else ivHomeSettings.requestFocus()
+                        return true
+                    }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        ivHomeSettings.isFocusable = false
+                        ivHomePower.isFocusable = false
+                        if (homePlaylistTilesPanel.visibility == View.VISIBLE) rvHomeTiles.requestFocus()
+                        else if (gvHomeChannelList.visibility == View.VISIBLE) gvHomeChannelList.requestFocus()
+                        return true
+                    }
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                        focused?.performClick()
+                        return true
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP -> return true
+                }
+            } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP &&
+                (homePlaylistTilesPanel.visibility == View.VISIBLE || gvHomeChannelList.visibility == View.VISIBLE)
+            ) {
+                val grid = if (homePlaylistTilesPanel.visibility == View.VISIBLE) rvHomeTiles else gvHomeChannelList
+                val focusedLoc = IntArray(2)
+                val gridLoc = IntArray(2)
+                focused?.getLocationOnScreen(focusedLoc)
+                grid.getLocationOnScreen(gridLoc)
+                val isTopRow = focused == null || focusedLoc[1] <= gridLoc[1] + dpToPx(8)
+                if (isTopRow) {
+                    ivHomeSettings.isFocusable = true
+                    ivHomePower.isFocusable = true
+                    ivHomeSettings.requestFocus()
+                    return true
+                }
+                // иначе — не наш случай, пусть обычная навигация внутри сетки решает сама
+            }
+        }
+
         // Любой экран поверх плеера — плейлисты/категории/список каналов на главном экране,
         // любые настройки, список каналов и EPG внутри плеера. Отдаём нажатия стандартной системе
         // фокуса Android, чтобы реально подсвечивались и перелистывались пункты — раньше это всё
@@ -4637,6 +4684,18 @@ class MainActivity : AppCompatActivity() {
 
         // Дальше — мы реально смотрим канал, ничего поверх не открыто: горячие клавиши плеера.
         when {
+            keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER ||
+                keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                val now = System.currentTimeMillis()
+                if (now - lastOkPressAt < 2000L) {
+                    lastOkPressAt = 0L
+                    showUI()
+                } else {
+                    lastOkPressAt = now
+                }
+                return true
+            }
+
             keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> {
                 inputNumber += (keyCode - KeyEvent.KEYCODE_0).toString()
                 handler.removeCallbacks(channelSwitchRunnable)
