@@ -577,6 +577,9 @@ class MainActivity : AppCompatActivity() {
         homePanel = findViewById(R.id.homePanel)
         ivHomeSettings = findViewById(R.id.ivHomeSettings)
         ivHomePower = findViewById(R.id.ivHomePower)
+        ivHomeSettings.scaleX = 1.25f
+        ivHomeSettings.scaleY = 1.25f
+        ivHomePower.alpha = 0.5f
         homeSettingsScreen = findViewById(R.id.homeSettingsScreen)
         playerSettingsOverlay = findViewById(R.id.playerSettingsOverlay)
         tvEpg.isSelected = true
@@ -645,11 +648,24 @@ class MainActivity : AppCompatActivity() {
 
 
         setHomeFrame(tvHomeAppTitle, 61f, 47f, null, null, widthScale, heightScale)
-        setHomeFrame(tvHomeSystemTime, 1045f, 47f, 85f, null, widthScale, heightScale)
+        setHomeFrame(tvHomeSystemTime, 1045f, 47f, null, null, widthScale, heightScale)
         setHomeFrame(ivHomeSettings, 1140f, 47f, 40f, 40f, widthScale, heightScale)
         setHomeFrame(ivHomePower, 1196f, 47f, 40f, 40f, widthScale, heightScale)
         setHomeFrame(tvHomeStartTitle, 257f, 321f, 765f, null, widthScale, heightScale)
-        setHomeFrame(tvHomeStartSubtitle, 315f, 379f, 650f, null, widthScale, heightScale)
+
+        (tvHomeStartSubtitle.layoutParams as ConstraintLayout.LayoutParams).apply {
+            width = (650f * widthScale).toInt().coerceAtLeast(1)
+            height = ViewGroup.LayoutParams.WRAP_CONTENT
+            topToTop = ConstraintSet.UNSET
+            startToStart = R.id.tvHomeStartTitle
+            topToBottom = R.id.tvHomeStartTitle
+            marginStart = 0
+            leftMargin = 0
+            topMargin = (12f * heightScale).toInt()
+            horizontalBias = 0f
+            verticalBias = 0f
+            tvHomeStartSubtitle.layoutParams = this
+        }
     }
 
     private fun setHomeFrame(
@@ -1190,6 +1206,9 @@ class MainActivity : AppCompatActivity() {
                 "HOME_GRID_GEOMETRY source=$source leftAnchor=${geometry.leftAnchor} rightAnchor=${geometry.safeRight} availableWidth=${geometry.availableWidth} columns=${geometry.columns} tileWidth=${geometry.tileWidth} spacing=${geometry.spacing} firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=${geometry.rootWidth}"
             )
             logHomeGridRealCoords(source, tileWidth, columns)
+            if (!rvHomeTiles.hasFocus()) {
+                first?.requestFocus()
+            }
         }
     }
 
@@ -1413,6 +1432,7 @@ class MainActivity : AppCompatActivity() {
                 return itemView
             }
         }
+        gvHomeChannelList.post { gvHomeChannelList.requestFocus() }
     }
 
     private fun hideStartPage() {
@@ -1474,6 +1494,10 @@ class MainActivity : AppCompatActivity() {
             }
             if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
                 hideChannelListPanel()
+                return@addCallback
+            }
+            if (::playerSettingsOverlay.isInitialized && playerSettingsOverlay.visibility == View.VISIBLE) {
+                hideSettingsScreen()
                 return@addCallback
             }
             if (homeSettingsScreen.visibility == View.VISIBLE) {
@@ -1739,6 +1763,7 @@ class MainActivity : AppCompatActivity() {
         channelListPanel.post {
             syncOverlayPanelBounds(channelListPanel)
             gvChannelListPanel.setSelection(currentChannelIndex)
+            gvChannelListPanel.requestFocus()
         }
     }
 
@@ -1840,7 +1865,10 @@ class MainActivity : AppCompatActivity() {
 
         epgPanel.visibility = View.VISIBLE
         showUI()
-        epgPanel.post { syncEpgPanelBounds() }
+        epgPanel.post {
+            syncEpgPanelBounds()
+            lvEpgPrograms.requestFocus()
+        }
     }
 
     private fun renderEpgDateChips() {
@@ -2076,6 +2104,7 @@ class MainActivity : AppCompatActivity() {
         homeSettingsScreen.visibility = View.VISIBLE
 
         val btnPlaylistSettings = findViewById<View>(R.id.btnPlaylistSettings)
+        btnPlaylistSettings.post { btnPlaylistSettings.requestFocus() }
         val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
         val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
         val btnEpgSelect = findViewById<View>(R.id.btnEpgSelect)
@@ -4563,13 +4592,20 @@ class MainActivity : AppCompatActivity() {
             return true
         }
 
-        if (homePanel.visibility == View.VISIBLE && homeSettingsScreen.visibility != View.VISIBLE) {
+        // Самый первый экран приложения (ещё нет ни одного плейлиста) — тут нет списка, который можно
+        // было бы обойти обычным фокусом, поэтому свой мини-переключатель между шестерёнкой и питанием.
+        if (tvHomeStartTitle.visibility == View.VISIBLE) {
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> return true
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
                     homeActionIndex = 1 - homeActionIndex
-                    ivHomeSettings.alpha = if (homeActionIndex == 0) 1f else 0.6f
-                    ivHomePower.alpha = if (homeActionIndex == 1) 1f else 0.6f
+                    val settingsSelected = homeActionIndex == 0
+                    ivHomeSettings.alpha = if (settingsSelected) 1f else 0.5f
+                    ivHomeSettings.scaleX = if (settingsSelected) 1.25f else 1f
+                    ivHomeSettings.scaleY = if (settingsSelected) 1.25f else 1f
+                    ivHomePower.alpha = if (!settingsSelected) 1f else 0.5f
+                    ivHomePower.scaleX = if (!settingsSelected) 1.25f else 1f
+                    ivHomePower.scaleY = if (!settingsSelected) 1.25f else 1f
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
@@ -4578,10 +4614,22 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        if (homeSettingsScreen.visibility == View.VISIBLE && !settingsOpenedFromPlayer) {
-            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return true
+
+        // Любой экран поверх плеера — плейлисты/категории/список каналов на главном экране,
+        // любые настройки, список каналов и EPG внутри плеера. Отдаём нажатия стандартной системе
+        // фокуса Android, чтобы реально подсвечивались и перелистывались пункты — раньше это всё
+        // "съедалось" переключением канала, даже когда экран был совсем другой.
+        val overlayOpen = homePanel.visibility == View.VISIBLE ||
+            homeSettingsScreen.visibility == View.VISIBLE ||
+            (::playerSettingsOverlay.isInitialized && playerSettingsOverlay.visibility == View.VISIBLE) ||
+            (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) ||
+            (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE)
+
+        if (overlayOpen) {
+            return super.onKeyDown(keyCode, event)
         }
 
+        // Дальше — мы реально смотрим канал, ничего поверх не открыто: горячие клавиши плеера.
         when {
             keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> {
                 inputNumber += (keyCode - KeyEvent.KEYCODE_0).toString()
@@ -4592,7 +4640,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_CHANNEL_UP -> {
-                if (homePanel.visibility == View.VISIBLE) return true
                 if (channels.isNotEmpty()) {
                     currentChannelIndex = (currentChannelIndex + 1) % channels.size
                     playChannel(forcePlay = true)
@@ -4601,7 +4648,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_CHANNEL_DOWN -> {
-                if (homeSettingsScreen.visibility == View.VISIBLE || homePanel.visibility == View.VISIBLE) return true
                 if (channels.isNotEmpty()) {
                     currentChannelIndex = (currentChannelIndex - 1 + channels.size) % channels.size
                     playChannel(forcePlay = true)
@@ -4610,7 +4656,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                if (homeSettingsScreen.visibility == View.VISIBLE || homePanel.visibility == View.VISIBLE) return true
                 if (controlsPanel.visibility == View.VISIBLE && isArchivePlayback && sbTimeline.isEnabled) {
                     sbTimeline.progress = (sbTimeline.progress + 20).coerceAtMost(1000)
                     return true
@@ -4621,10 +4666,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_LEFT -> {
-                if (homeSettingsScreen.visibility == View.VISIBLE) {
-                    hideSettingsScreen(); return true
-                }
-                if (homePanel.visibility == View.VISIBLE) return true
                 if (controlsPanel.visibility == View.VISIBLE && isArchivePlayback && sbTimeline.isEnabled) {
                     sbTimeline.progress = (sbTimeline.progress - 20).coerceAtLeast(0)
                     return true
