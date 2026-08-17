@@ -1234,6 +1234,12 @@ class MainActivity : AppCompatActivity() {
         showStartPage()
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
+        ivHomeSettings.alpha = 1f
+        ivHomeSettings.scaleX = 1f
+        ivHomeSettings.scaleY = 1f
+        ivHomePower.alpha = 1f
+        ivHomePower.scaleX = 1f
+        ivHomePower.scaleY = 1f
         homePlaylistTilesPanel.visibility = View.VISIBLE
         gvHomeChannelList.visibility = View.GONE
         gvHomeChannelList.adapter = null
