@@ -26,6 +26,7 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.graphics.Rect
 import android.content.Intent
+import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.BaseAdapter
 import android.widget.Button
@@ -1441,6 +1442,8 @@ class MainActivity : AppCompatActivity() {
                 return itemView
             }
         }
+        gvHomeChannelList.onItemClickListener =
+            AdapterView.OnItemClickListener { _, view, _, _ -> view.performClick() }
         gvHomeChannelList.post { gvHomeChannelList.requestFocus() }
     }
 
@@ -1518,10 +1521,12 @@ class MainActivity : AppCompatActivity() {
                     tvHomeCategoryBack.performClick()
                     return@addCallback
                 }
-                if (homePlaylistTilesPanel.visibility == View.VISIBLE && tvHomeStartTitle.visibility != View.VISIBLE) {
-                    showStartPage()
-                    return@addCallback
-                }
+                // Самый верхний экран (список плейлистов) — сразу спрашиваем про выход,
+                // без промежуточного пустого экрана (он и вызывал "пропадание" плиток).
+            } else {
+                // Мы реально в плеере — возвращаемся на предыдущий экран, а не сразу к выходу.
+                exitPlayerToPlaylist()
+                return@addCallback
             }
             val now = System.currentTimeMillis()
             if (now - lastBackPressAt < 2000L) {
@@ -1767,6 +1772,8 @@ class MainActivity : AppCompatActivity() {
                 return itemView
             }
         }
+        gvChannelListPanel.onItemClickListener =
+            AdapterView.OnItemClickListener { _, view, _, _ -> view.performClick() }
         channelListPanel.visibility = View.VISIBLE
         showUI()
         channelListPanel.post {
@@ -2008,6 +2015,8 @@ class MainActivity : AppCompatActivity() {
                 return row
             }
         }
+        lvEpgPrograms.onItemClickListener =
+            AdapterView.OnItemClickListener { _, view, _, _ -> view.performClick() }
 
         val currentIdx = items.indexOfFirst { now in it.start until it.stop }
         if (currentIdx >= 0) lvEpgPrograms.post {
@@ -4689,15 +4698,18 @@ class MainActivity : AppCompatActivity() {
                 val now = System.currentTimeMillis()
                 if (now - lastOkPressAt < 2000L) {
                     lastOkPressAt = 0L
-                    showUI()
+                    showSettingsDialog()
                 } else {
                     lastOkPressAt = now
+                    showUI()
                 }
                 return true
             }
 
             keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> {
                 inputNumber += (keyCode - KeyEvent.KEYCODE_0).toString()
+                tvEpg.text = "Переключаю на канал: $inputNumber"
+                seekStatusHoldUntilMs = System.currentTimeMillis() + 2000L
                 handler.removeCallbacks(channelSwitchRunnable)
                 showUI()
                 handler.postDelayed(channelSwitchRunnable, 1500)
