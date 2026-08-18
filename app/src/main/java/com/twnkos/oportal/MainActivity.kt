@@ -1444,7 +1444,10 @@ class MainActivity : AppCompatActivity() {
         }
         gvHomeChannelList.onItemClickListener =
             AdapterView.OnItemClickListener { _, view, _, _ -> view.performClick() }
-        gvHomeChannelList.post { gvHomeChannelList.requestFocus() }
+        gvHomeChannelList.post {
+            gvHomeChannelList.setSelection(0)
+            gvHomeChannelList.requestFocus()
+        }
     }
 
     private fun hideStartPage() {
@@ -3836,6 +3839,8 @@ class MainActivity : AppCompatActivity() {
         tvReloadingSubtitle.text = subtitle
         tvReloadingSubtitle.visibility = if (subtitle.isBlank()) View.GONE else View.VISIBLE
         tvReloadingStatus.visibility = View.VISIBLE
+        tvReloadingStatus.bringToFront()
+        tvReloadingStatus.parent?.let { (it as? View)?.requestLayout() }
     }
 
     private fun showCenterError(message: String, durationMs: Long = 3500L) {
@@ -4562,7 +4567,7 @@ class MainActivity : AppCompatActivity() {
             visibility = View.VISIBLE
             isEnabled = true
             isClickable = true
-            isFocusable = true
+            isFocusable = false
         }
         bindRealPlayerExitButtonListener()
         sbTimeline.isEnabled = true
@@ -4599,6 +4604,8 @@ class MainActivity : AppCompatActivity() {
             playChannel(forcePlay = true)
         }
         inputNumber = ""
+        seekStatusHoldUntilMs = 0L
+        updateEpgDisplay()
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
