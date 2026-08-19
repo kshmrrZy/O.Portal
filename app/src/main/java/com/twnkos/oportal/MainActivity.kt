@@ -5,7 +5,10 @@ import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
+import android.content.ContentValues
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -1542,8 +1545,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showExitWarning() {
-        showReloadingStatus("Нажмите ещё раз для выхода!", "")
-        handler.postDelayed({ tvReloadingStatus.visibility = View.GONE }, 1800)
+        showAppToast("Нажмите ещё раз для выхода!", 1800L)
     }
 
     private fun closeAppCompletely() {
@@ -5603,14 +5605,32 @@ class MainActivity : AppCompatActivity() {
             showAppToast("Файл лога ещё не создан")
             return
         }
-        val dstDir = getExternalFilesDir("Download") ?: run {
-            showAppToast("Не удалось открыть папку Download")
-            return
-        }
-        val dst = File(dstDir, "player_debug_${System.currentTimeMillis()}.log")
+        val fileName = "player_debug_${System.currentTimeMillis()}.log"
         runCatching {
-            src.copyTo(dst, overwrite = true)
-            showAppToast("Лог экспортирован: ${dst.absolutePath}", 3500L)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = contentResolver
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                    put(MediaStore.Downloads.MIME_TYPE, "text/plain")
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: throw IllegalStateException("Не удалось создать файл в Загрузках")
+                resolver.openOutputStream(uri)?.use { out ->
+                    src.inputStream().use { it.copyTo(out) }
+                } ?: throw IllegalStateException("Не удалось открыть поток для записи")
+                values.clear()
+                values.put(MediaStore.Downloads.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+                showAppToast("Лог сохранён в Загрузки: $fileName", 3500L)
+            } else {
+                @Suppress("DEPRECATION")
+                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                if (!dir.exists()) dir.mkdirs()
+                val dst = File(dir, fileName)
+                src.copyTo(dst, overwrite = true)
+                showAppToast("Лог сохранён: ${dst.absolutePath}", 3500L)
+            }
         }.onFailure { error: Throwable ->
             showAppToast("Ошибка экспорта: ${error.message}", 3500L)
         }

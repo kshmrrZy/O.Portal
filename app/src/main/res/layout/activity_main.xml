@@ -295,7 +295,7 @@
                 android:layout_height="8dp"
                 android:layout_marginTop="8dp"
                 android:clickable="true"
-                android:focusable="true">
+                android:focusable="false">
                 <View
                     android:id="@+id/viewTimelineStripe"
                     android:layout_width="match_parent"
@@ -323,7 +323,7 @@
                 android:background="@android:color/transparent"
                 android:src="@drawable/pause"
                 android:scaleType="fitCenter"
-                android:focusable="true"
+                android:focusable="false"
                 android:clickable="true"
                 android:backgroundTint="@android:color/transparent"
                 android:padding="0dp" />
@@ -346,7 +346,7 @@
                     android:src="@drawable/live"
                     android:scaleType="fitCenter"
                     android:padding="0dp"
-                    android:focusable="true"
+                    android:focusable="false"
                     android:clickable="true" />
             </LinearLayout>
 
@@ -358,7 +358,7 @@
                 android:background="@android:color/transparent"
                 android:src="@drawable/backleft"
                 android:scaleType="fitCenter"
-                android:focusable="true"
+                android:focusable="false"
                 android:clickable="true"
                 android:backgroundTint="@android:color/transparent"
                 android:padding="0dp" />
@@ -371,7 +371,7 @@
                 android:background="@android:color/transparent"
                 android:src="@drawable/backright"
                 android:scaleType="fitCenter"
-                android:focusable="true"
+                android:focusable="false"
                 android:clickable="true"
                 android:backgroundTint="@android:color/transparent"
                 android:padding="0dp" />
@@ -384,7 +384,7 @@
                 android:background="@android:color/transparent"
                 android:src="@drawable/block"
                 android:scaleType="fitCenter"
-                android:focusable="true"
+                android:focusable="false"
                 android:clickable="true"
                 android:backgroundTint="@android:color/transparent"
                 android:padding="0dp" />
@@ -397,7 +397,7 @@
                 android:background="@android:color/transparent"
                 android:src="@drawable/epgplayer"
                 android:scaleType="fitCenter"
-                android:focusable="true"
+                android:focusable="false"
                 android:clickable="true"
                 android:backgroundTint="@android:color/transparent"
                 android:padding="0dp" />
@@ -414,7 +414,7 @@
                 android:background="@android:color/transparent"
                 android:src="@drawable/settingsplayer"
                 android:scaleType="fitCenter"
-                android:focusable="true"
+                android:focusable="false"
                 android:clickable="true"
                 android:backgroundTint="@android:color/transparent"
                 android:padding="0dp" />
@@ -424,6 +424,7 @@
             android:id="@+id/sbTimeline"
             android:layout_width="1dp"
             android:layout_height="1dp"
+            android:focusable="false"
             android:visibility="invisible" />
 
         <TextView
