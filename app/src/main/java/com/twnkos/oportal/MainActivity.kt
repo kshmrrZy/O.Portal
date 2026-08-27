@@ -279,37 +279,48 @@ class MainActivity : AppCompatActivity() {
     private val playbackFreezeWatchdogRunnable: Runnable = Runnable {
         val player = mediaPlayer ?: return@Runnable
         if (videoOnlyMinimalMode) {
-            handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
+            handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
             return@Runnable
         }
         if (!firstFrameRendered) {
-            handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
+            handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
             return@Runnable
         }
         val now = System.currentTimeMillis()
         if (!player.isPlaying) {
             if (player.playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
                 if (bufferingSinceMs == 0L) bufferingSinceMs = now
-                if (now - bufferingSinceMs > 12_000L) {
-                    logDebug("PLAYER_STATE", "watchdog buffering detected; auto-restart disabled")
+                if (now - bufferingSinceMs > 5_000L) {
+                    logDebug("PLAYER_STATE", "watchdog buffering detected; reconnecting")
                     bufferingSinceMs = now
+                    attemptPlaybackRecovery()
                 }
             } else {
                 bufferingSinceMs = 0L
             }
-            handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
+            handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
             return@Runnable
         }
         bufferingSinceMs = 0L
+        if (tvReloadingStatus.visibility == View.VISIBLE) {
+            tvReloadingStatus.visibility = View.GONE
+        }
         val pos = player.currentPosition
         if (pos > lastPlaybackPositionMs + 250L) {
             lastPlaybackPositionMs = pos
             lastProgressWallClockMs = now
-        } else if (lastProgressWallClockMs > 0L && now - lastProgressWallClockMs > 10_000L) {
-            logDebug("PLAYER_STATE", "watchdog progress stall detected; auto-restart disabled")
+        } else if (lastProgressWallClockMs > 0L && now - lastProgressWallClockMs > 5_000L) {
+            logDebug("PLAYER_STATE", "watchdog progress stall detected; reconnecting")
             lastProgressWallClockMs = now
+            attemptPlaybackRecovery()
         }
-        handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
+        handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
+    }
+
+    private fun attemptPlaybackRecovery() {
+        if (isSettingsModalVisible || homePanel.visibility == View.VISIBLE) return
+        showReloadingStatus("Трансляция прервана", "Пытаемся переподключиться...")
+        playChannel(forcePlay = true)
     }
 
 
@@ -1446,7 +1457,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
         gvHomeChannelList.onItemClickListener =
-            AdapterView.OnItemClickListener { _, view, _, _ -> view.performClick() }
+            AdapterView.OnItemClickListener { _, view, position, _ ->
+                logDebug("NAV", "DPAD_OK_onItemClick gvHomeChannelList position=$position")
+                view.performClick()
+            }
         gvHomeChannelList.post {
             gvHomeChannelList.setSelection(0)
             gvHomeChannelList.requestFocus()
@@ -1515,11 +1529,11 @@ class MainActivity : AppCompatActivity() {
                 return@addCallback
             }
             if (::playerSettingsOverlay.isInitialized && playerSettingsOverlay.visibility == View.VISIBLE) {
-                hideSettingsScreen()
+                handleSettingsBackPress()
                 return@addCallback
             }
             if (homeSettingsScreen.visibility == View.VISIBLE) {
-                hideSettingsScreen()
+                handleSettingsBackPress()
                 return@addCallback
             }
             if (homePanel.visibility == View.VISIBLE) {
@@ -1778,7 +1792,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
         gvChannelListPanel.onItemClickListener =
-            AdapterView.OnItemClickListener { _, view, _, _ -> view.performClick() }
+            AdapterView.OnItemClickListener { _, view, position, _ ->
+                logDebug("NAV", "DPAD_OK_onItemClick gvChannelListPanel position=$position")
+                view.performClick()
+            }
         channelListPanel.visibility = View.VISIBLE
         showUI()
         channelListPanel.post {
@@ -2021,7 +2038,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
         lvEpgPrograms.onItemClickListener =
-            AdapterView.OnItemClickListener { _, view, _, _ -> view.performClick() }
+            AdapterView.OnItemClickListener { _, view, position, _ ->
+                logDebug("NAV", "DPAD_OK_onItemClick lvEpgPrograms position=$position")
+                view.performClick()
+            }
 
         val currentIdx = items.indexOfFirst { now in it.start until it.stop }
         if (currentIdx >= 0) lvEpgPrograms.post {
@@ -2029,6 +2049,38 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+    private fun isSettingsSubPanelOpen(): Boolean =
+        findViewById<View>(R.id.playlistSettingsPanel).visibility == View.VISIBLE ||
+            findViewById<View>(R.id.epgSettingsPanel).visibility == View.VISIBLE ||
+            findViewById<View>(R.id.userSettingsPanel).visibility == View.VISIBLE ||
+            findViewById<View>(R.id.appInfoPanel).visibility == View.VISIBLE
+
+    private fun returnToSettingsRowList() {
+        findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
+        val settingsRowIds = intArrayOf(
+            R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings,
+            R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings,
+            R.id.btnExportDebugLog, R.id.btnAppInfo
+        )
+        settingsRowIds.forEach { findViewById<View>(it).visibility = View.VISIBLE }
+        findViewById<View>(R.id.tvSettingsBack).visibility = View.GONE
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
+        restoreDefaultSettingsRows()
+        val btnPlaylistSettingsRow = findViewById<View>(R.id.btnPlaylistSettings)
+        btnPlaylistSettingsRow.post { btnPlaylistSettingsRow.requestFocus() }
+    }
+
+    private fun handleSettingsBackPress() {
+        if (isSettingsSubPanelOpen()) {
+            returnToSettingsRowList()
+        } else {
+            hideSettingsScreen()
+        }
+    }
 
     private fun configureBackButtonsForSettings(stage: String) {
         val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
@@ -2038,7 +2090,7 @@ class MainActivity : AppCompatActivity() {
         tvSettingsBack.visibility = View.VISIBLE
         tvSettingsBack.isEnabled = true
         tvSettingsBack.isClickable = true
-        tvSettingsBack.setOnClickListener { hideSettingsScreen() }
+        tvSettingsBack.setOnClickListener { handleSettingsBackPress() }
 
         btnBackToMenu.visibility = View.GONE
         btnBackToMenu.isEnabled = false
@@ -2283,6 +2335,18 @@ class MainActivity : AppCompatActivity() {
                     !states[i]; iv.setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft)
             }
         }
+        urls.forEachIndexed { i, et ->
+            et.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    if (!s.isNullOrBlank() && !states[i]) {
+                        states[i] = true
+                        toggles[i].setImageResource(R.drawable.toggleright)
+                    }
+                }
+            })
+        }
 
         findViewById<View>(R.id.btnSavePlaylistSettings).setOnClickListener {
             val items = (0..2).map { i ->
@@ -2320,6 +2384,9 @@ class MainActivity : AppCompatActivity() {
         epgPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
         appInfoPanel.visibility = View.VISIBLE
+        appInfoPanel.isFocusable = true
+        appInfoPanel.isFocusableInTouchMode = true
+        appInfoPanel.post { appInfoPanel.requestFocus() }
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "О приложении")
 
         configureBackButtonsForSettings("showAppInfoScreen")
@@ -2347,7 +2414,10 @@ class MainActivity : AppCompatActivity() {
         var intervalIndex = intervals.indexOf(prefs.getInt(PREF_EPG_REFRESH_INTERVAL_DAYS, 1)).takeIf { it >= 0 } ?: 0
         var pendingApply: Runnable? = null
 
-        val current = getCustomEpgSources().ifEmpty { extractEpgSourcesFromPlaylist(currentPlaylistText) }.take(3)
+        val current = getCustomEpgSources()
+            .ifEmpty { getSelectedEpgSources().toList() }
+            .ifEmpty { extractEpgSourcesFromPlaylist(currentPlaylistText) }
+            .take(3)
         val selected = getSelectedEpgSources()
         urls.forEachIndexed { i, et ->
             val value = current.getOrNull(i) ?: ""
@@ -2355,6 +2425,18 @@ class MainActivity : AppCompatActivity() {
             states[i] = value.isNotBlank() && (selected.isEmpty() || selected.contains(value))
         }
         toggles.forEachIndexed { i, v -> v.setOnClickListener { states[i] = !states[i]; v.setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft) } }
+        urls.forEachIndexed { i, et ->
+            et.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    if (!s.isNullOrBlank() && !states[i]) {
+                        states[i] = true
+                        toggles[i].setImageResource(R.drawable.toggleright)
+                    }
+                }
+            })
+        }
 
         fun updateIntervalText() {
             val d = intervals[intervalIndex]
@@ -2387,13 +2469,19 @@ class MainActivity : AppCompatActivity() {
             showAppToast("Ссылки EPG сохранены")
         }
         findViewById<View>(R.id.btnRefreshEpgSettings).setOnClickListener {
+            val links = urls.mapIndexedNotNull { i, et -> et.text.toString().trim().takeIf { it.isNotBlank() && states[i] } }.distinct()
+            if (links.isNotEmpty()) {
+                saveCustomEpgSources(links)
+                selectedEpgSources = links.toMutableSet()
+                saveSelectedEpgSources(selectedEpgSources)
+            }
             if (selectedEpgSources.isNotEmpty()) {
                 synchronized(epgDataLock) { epgData.clear() }
                 fetchEpgSources(selectedEpgSources.toList(), mutableMapOf())
-                showAppToast("Обновление EPG запущено")
+                showAppToast("Ссылки сохранены, обновление EPG запущено")
             } else {
                 showAppToast(
-                    "Нет выбранных источников EPG — включите переключатель и нажмите \"Сохранить\"",
+                    "Нет выбранных источников EPG — включите переключатель у нужной ссылки",
                     3500L
                 )
             }
@@ -4575,6 +4663,8 @@ class MainActivity : AppCompatActivity() {
         sbTimeline.isEnabled = true
         handler.removeCallbacks(hideUiRunnable)
         handler.postDelayed(hideUiRunnable, 5000)
+        val btnPlayPauseView = findViewById<View>(R.id.btnPlayPause)
+        btnPlayPauseView.post { btnPlayPauseView.requestFocus() }
     }
 
     private fun hideUI() {
@@ -4686,6 +4776,22 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Панель управления плеером открыта (после ОК), и фокус реально уже на одной из её
+        // кнопок — даём стрелкам переключаться между кнопками панели через обычный фокус,
+        // вместо переключения канала/списка каналов/EPG.
+        if (controlsPanel.visibility == View.VISIBLE) {
+            val controlsPanelButtonIds = intArrayOf(
+                R.id.btnPlayPause, R.id.btnLiveReload, R.id.btnBackLeft,
+                R.id.btnBackRight, R.id.btnLock, R.id.btnEpgPlayer, R.id.btnSettings
+            )
+            val focused = currentFocus
+            val focusInControlsPanel = focused != null &&
+                controlsPanelButtonIds.any { findViewById<View>(it) === focused }
+            if (focusInControlsPanel) {
+                return super.onKeyDown(keyCode, event)
+            }
+        }
+
         // Любой экран поверх плеера — плейлисты/категории/список каналов на главном экране,
         // любые настройки, список каналов и EPG внутри плеера. Отдаём нажатия стандартной системе
         // фокуса Android, чтобы реально подсвечивались и перелистывались пункты — раньше это всё
@@ -4704,14 +4810,7 @@ class MainActivity : AppCompatActivity() {
         when {
             keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER ||
                 keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                val now = System.currentTimeMillis()
-                if (now - lastOkPressAt < 2000L) {
-                    lastOkPressAt = 0L
-                    showSettingsDialog()
-                } else {
-                    lastOkPressAt = now
-                    showUI()
-                }
+                showUI()
                 return true
             }
 
@@ -4833,13 +4932,15 @@ class MainActivity : AppCompatActivity() {
                     getProgramsForDisplay(ch).find { System.currentTimeMillis() in it.start until it.stop }
                 }
         if (p == null) {
-            tvCurrentTime.text = "--:--"
-            tvProgramEndTime.text = "--:--"
+            tvCurrentTime.visibility = View.INVISIBLE
+            tvProgramEndTime.visibility = View.INVISIBLE
             if (!timelineUserSeeking) {
                 sbTimeline.progress = 0
             }
             return
         }
+        tvCurrentTime.visibility = View.VISIBLE
+        tvProgramEndTime.visibility = View.VISIBLE
         tvCurrentTime.text = fmt.format(Date(p.start))
         tvProgramEndTime.text = fmt.format(Date(p.stop))
         if (!timelineUserSeeking) {
