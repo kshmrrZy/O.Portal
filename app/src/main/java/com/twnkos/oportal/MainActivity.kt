@@ -4779,6 +4779,21 @@ class MainActivity : AppCompatActivity() {
         // Панель управления плеером открыта (после ОК), и фокус реально уже на одной из её
         // кнопок — даём стрелкам переключаться между кнопками панели через обычный фокус,
         // вместо переключения канала/списка каналов/EPG.
+        // Панель EPG открыта — влево/вправо явно листают даты, независимо от того, где
+        // сейчас реальный фокус (раньше это работало только случайно через поиск фокуса Android).
+        if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    btnEpgDatePrev.performClick()
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    btnEpgDateNext.performClick()
+                    return true
+                }
+            }
+        }
+
         if (controlsPanel.visibility == View.VISIBLE) {
             val controlsPanelButtonIds = intArrayOf(
                 R.id.btnPlayPause, R.id.btnLiveReload, R.id.btnBackLeft,
