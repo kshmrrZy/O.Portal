@@ -75,6 +75,7 @@ import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.DecoderCounters
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -352,6 +353,13 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_CUSTOM_EPG_SOURCES = "custom_epg_sources"
         private const val PREF_LOGO_CACHE = "logo_cache"
         private const val PREF_START_LAST_CHANNEL = "pref_start_last_channel"
+        private const val PREF_ASPECT_RATIO_MODE = "pref_aspect_ratio_mode"
+        private val ASPECT_RATIO_LABEL_BY_KEY = mapOf(
+            "auto" to "Автоматически", "fill" to "Растянуть", "zoom" to "Обрезать"
+        )
+        private val ASPECT_RATIO_KEY_BY_LABEL = mapOf(
+            "Автоматически" to "auto", "Растянуть" to "fill", "Обрезать" to "zoom"
+        )
         private const val PREF_SLEEP_TIMER_MINUTES = "pref_sleep_timer_minutes"
         private const val PREF_SHOW_LOCK_BUTTON = "pref_show_lock_button"
         private const val PREF_APP_VERSION_CODE = "pref_app_version_code"
@@ -2065,8 +2073,8 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
         val settingsRowIds = intArrayOf(
             R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings,
-            R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings,
-            R.id.btnExportDebugLog, R.id.btnAppInfo
+            R.id.itemStartMode, R.id.itemAspectRatio, R.id.btnAdvancedSettings, R.id.btnUserSettings,
+            R.id.btnAppInfo
         )
         settingsRowIds.forEach { findViewById<View>(it).visibility = View.VISIBLE }
         findViewById<View>(R.id.tvSettingsBack).visibility = View.GONE
@@ -2196,7 +2204,8 @@ class MainActivity : AppCompatActivity() {
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
         val btnExportDebugLog = findViewById<View>(R.id.btnExportDebugLog)
         val btnAppInfo = findViewById<View>(R.id.btnAppInfo)
-        val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), btnAdvancedSettings, btnUserSettings, btnAppInfo)
+        val itemAspectRatio = findViewById<View>(R.id.itemAspectRatio)
+        val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), itemAspectRatio, btnAdvancedSettings, btnUserSettings, btnAppInfo)
 
         configureBackButtonsForSettings("showSettingsDialog_after_back_config")
         userSettingsPanel.visibility = View.GONE
@@ -2205,6 +2214,26 @@ class MainActivity : AppCompatActivity() {
         tbStartMode.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean(PREF_START_LAST_CHANNEL, isChecked).apply()
             shouldOpenLastChannelOnStart = isChecked
+        }
+
+        val tbAspectRatio = findViewById<ToggleButton>(R.id.tbAspectRatio)
+        val aspectRatioLabels = listOf("Автоматически", "Растянуть", "Обрезать")
+        var aspectRatioIndex = aspectRatioLabels.indexOf(
+            prefs.getString(PREF_ASPECT_RATIO_MODE, "auto").let { ASPECT_RATIO_LABEL_BY_KEY[it] ?: "Автоматически" }
+        ).coerceAtLeast(0)
+        fun applyAspectRatioLabel() {
+            val label = aspectRatioLabels[aspectRatioIndex]
+            tbAspectRatio.textOn = label
+            tbAspectRatio.textOff = label
+            tbAspectRatio.text = label
+        }
+        applyAspectRatioLabel()
+        tbAspectRatio.setOnClickListener {
+            aspectRatioIndex = (aspectRatioIndex + 1) % aspectRatioLabels.size
+            applyAspectRatioLabel()
+            val key = ASPECT_RATIO_KEY_BY_LABEL[aspectRatioLabels[aspectRatioIndex]] ?: "auto"
+            prefs.edit().putString(PREF_ASPECT_RATIO_MODE, key).apply()
+            applyAspectRatioMode()
         }
 
         val playlistSettingsPanel = findViewById<View>(R.id.playlistSettingsPanel)
@@ -2306,7 +2335,7 @@ class MainActivity : AppCompatActivity() {
         val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
         val settingsRows = listOf(
             findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect),
-            findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode),
+            findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode), findViewById<View>(R.id.itemAspectRatio),
             findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings),
             findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo)
         )
@@ -2378,7 +2407,7 @@ class MainActivity : AppCompatActivity() {
         val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
         val settingsRows = listOf(
             findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect),
-            findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode),
+            findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode), findViewById<View>(R.id.itemAspectRatio),
             findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings),
             findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo)
         )
@@ -2400,7 +2429,7 @@ class MainActivity : AppCompatActivity() {
         val epgPanel = findViewById<View>(R.id.epgSettingsPanel)
         val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
         val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
-        val settingsRows = listOf(findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect), findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode), findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings), findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo))
+        val settingsRows = listOf(findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect), findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode), findViewById<View>(R.id.itemAspectRatio), findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings), findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo))
         settingsRows.forEach { it.visibility = View.GONE }
         playlistPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
@@ -2439,6 +2468,43 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             })
+        }
+
+        val tbSourceMode = findViewById<ToggleButton>(R.id.tbEpgSourceMode)
+        val tvSourceHint = findViewById<TextView>(R.id.tvEpgSourceHint)
+        val playlistOwnSources = extractEpgSourcesFromPlaylist(currentPlaylistText)
+        val hasManualSaved = getCustomEpgSources().isNotEmpty()
+
+        fun applyEpgSourceModeLock(manual: Boolean) {
+            urls.forEach { it.isEnabled = manual; it.alpha = if (manual) 1f else 0.5f }
+            toggles.forEach { it.isEnabled = manual; it.alpha = if (manual) 1f else 0.5f }
+            tvSourceHint.text = when {
+                manual -> "Ссылки указаны вручную и не зависят от плейлиста."
+                playlistOwnSources.isNotEmpty() -> "Ссылка берётся из самого плейлиста: ${playlistOwnSources.first()}"
+                else -> "У этого плейлиста нет своей ссылки на EPG. Переключите на \"Указать вручную\", чтобы добавить свою."
+            }
+        }
+
+        fun fillFromPlaylistOwnSources() {
+            urls.forEachIndexed { i, et -> et.setText(playlistOwnSources.getOrNull(i) ?: "") }
+            toggles.forEachIndexed { i, v ->
+                states[i] = playlistOwnSources.getOrNull(i)?.isNotBlank() == true
+                v.setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft)
+            }
+        }
+
+        tbSourceMode.isChecked = hasManualSaved
+        applyEpgSourceModeLock(hasManualSaved)
+        if (!hasManualSaved) fillFromPlaylistOwnSources()
+
+        tbSourceMode.setOnCheckedChangeListener { _, isChecked ->
+            applyEpgSourceModeLock(isChecked)
+            if (!isChecked) {
+                fillFromPlaylistOwnSources()
+                clearCustomEpgSources()
+                selectedEpgSources = playlistOwnSources.toMutableSet()
+                saveSelectedEpgSources(selectedEpgSources)
+            }
         }
 
         fun updateIntervalText() {
@@ -2589,7 +2655,7 @@ class MainActivity : AppCompatActivity() {
             lp.marginStart = 0
             tvSettingsBack.layoutParams = lp
         }
-        val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.btnAdvancedSettings, R.id.btnUserSettings, R.id.btnAppInfo)
+        val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.itemAspectRatio, R.id.btnAdvancedSettings, R.id.btnUserSettings, R.id.btnAppInfo)
         rowIds.forEachIndexed { i, id ->
             val row = findViewById<View>(id)
             val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
@@ -2610,6 +2676,7 @@ class MainActivity : AppCompatActivity() {
             R.id.btnEpgSelect,
             R.id.btnSleepTimerSettings,
             R.id.itemStartMode,
+            R.id.itemAspectRatio,
             R.id.btnAdvancedSettings,
             R.id.btnUserSettings,
             R.id.btnAppInfo,
@@ -3772,6 +3839,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun applyAspectRatioMode() {
+        val playerView = findViewById<PlayerView>(R.id.videoLayout)
+        val mode = prefs.getString(PREF_ASPECT_RATIO_MODE, "auto") ?: "auto"
+        val isWinkChannel = selectedPlaylistDisplayName.contains("wink", ignoreCase = true)
+        playerView.resizeMode = when (mode) {
+            "fill" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+            "zoom" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            else -> if (isWinkChannel) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
+        }
+    }
+
     private fun playChannel(
         forcePlay: Boolean = false,
         reason: PlayerOpenReason = PlayerOpenReason.RECOVERY
@@ -3788,6 +3866,7 @@ class MainActivity : AppCompatActivity() {
             }
             logDebug("NAV", "open_player")
             homePanel.visibility = View.GONE
+            applyAspectRatioMode()
             val shouldUseSoftware = !preferGpuDecoding
             if (softwareDecoderMode != shouldUseSoftware) {
                 stopPlayback()
