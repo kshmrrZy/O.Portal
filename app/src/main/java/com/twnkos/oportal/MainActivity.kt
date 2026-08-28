@@ -1318,6 +1318,8 @@ class MainActivity : AppCompatActivity() {
         showStartPage()
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
+        gvHomeChannelList.visibility = View.GONE
+        gvHomeChannelList.adapter = null
         homePlaylistTilesPanel.visibility = View.VISIBLE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории ($playlistName)")
         enableHomeCategoryBack { showPlaylistPageOnHome() }
@@ -2106,6 +2108,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSettingsDialog() {
+        findViewById<View>(R.id.tvSettingsBack).visibility = View.GONE
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
             hideEpgPanel()
         }
