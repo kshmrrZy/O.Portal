@@ -355,10 +355,10 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_START_LAST_CHANNEL = "pref_start_last_channel"
         private const val PREF_ASPECT_RATIO_MODE = "pref_aspect_ratio_mode"
         private val ASPECT_RATIO_LABEL_BY_KEY = mapOf(
-            "auto" to "Автоматически", "fill" to "Растянуть", "zoom" to "Обрезать"
+            "auto" to "Автоматически", "fit" to "Вписать в экран", "fill" to "Растянуть", "zoom" to "Обрезать"
         )
         private val ASPECT_RATIO_KEY_BY_LABEL = mapOf(
-            "Автоматически" to "auto", "Растянуть" to "fill", "Обрезать" to "zoom"
+            "Автоматически" to "auto", "Вписать в экран" to "fit", "Растянуть" to "fill", "Обрезать" to "zoom"
         )
         private const val PREF_SLEEP_TIMER_MINUTES = "pref_sleep_timer_minutes"
         private const val PREF_SHOW_LOCK_BUTTON = "pref_show_lock_button"
@@ -2079,7 +2079,11 @@ class MainActivity : AppCompatActivity() {
         settingsRowIds.forEach { findViewById<View>(it).visibility = View.VISIBLE }
         findViewById<View>(R.id.tvSettingsBack).visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
-        restoreDefaultSettingsRows()
+        if (settingsOpenedFromPlayer) {
+            tunePlayerSettingsRows()
+        } else {
+            restoreDefaultSettingsRows()
+        }
         val btnPlaylistSettingsRow = findViewById<View>(R.id.btnPlaylistSettings)
         btnPlaylistSettingsRow.post { btnPlaylistSettingsRow.requestFocus() }
     }
@@ -2217,7 +2221,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val tbAspectRatio = findViewById<ToggleButton>(R.id.tbAspectRatio)
-        val aspectRatioLabels = listOf("Автоматически", "Растянуть", "Обрезать")
+        val aspectRatioLabels = listOf("Автоматически", "Вписать в экран", "Растянуть", "Обрезать")
         var aspectRatioIndex = aspectRatioLabels.indexOf(
             prefs.getString(PREF_ASPECT_RATIO_MODE, "auto").let { ASPECT_RATIO_LABEL_BY_KEY[it] ?: "Автоматически" }
         ).coerceAtLeast(0)
@@ -3844,6 +3848,7 @@ class MainActivity : AppCompatActivity() {
         val mode = prefs.getString(PREF_ASPECT_RATIO_MODE, "auto") ?: "auto"
         val isWinkChannel = selectedPlaylistDisplayName.contains("wink", ignoreCase = true)
         playerView.resizeMode = when (mode) {
+            "fit" -> AspectRatioFrameLayout.RESIZE_MODE_FIT
             "fill" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
             "zoom" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             else -> if (isWinkChannel) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
@@ -5469,8 +5474,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun extractEpgSourcesFromPlaylist(content: String): List<String> {
-        if (!content.contains("x-tvg-url=\"")) return emptyList()
-        return content.substringAfter("x-tvg-url=\"", "")
+        val tagName = when {
+            content.contains("x-tvg-url=\"") -> "x-tvg-url=\""
+            content.contains("url-tvg=\"") -> "url-tvg=\""
+            else -> return emptyList()
+        }
+        return content.substringAfter(tagName, "")
             .substringBefore("\"")
             .split(",")
             .map { it.trim() }
