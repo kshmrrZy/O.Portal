@@ -168,16 +168,17 @@
             android:background="@drawable/bg_player_top_back_plate"
             android:padding="@dimen/player_top_back_padding"
             android:scaleType="fitCenter"
-            android:src="@drawable/back"
+            android:src="@drawable/ic_back_player"
             android:contentDescription="Back to menu" />
 
-        <FrameLayout
+        <LinearLayout
             android:id="@+id/liveStatusBadge"
             android:layout_width="wrap_content"
             android:layout_height="40dp"
-            android:minWidth="@dimen/player_live_badge_min_width"
-            android:paddingStart="12dp"
-            android:paddingEnd="14dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="@dimen/player_live_badge_pad_h"
+            android:paddingEnd="@dimen/player_live_badge_pad_h"
             android:focusable="false"
             android:focusableInTouchMode="false"
             android:clickable="false"
@@ -188,22 +189,19 @@
                 android:id="@+id/liveStatusDot"
                 android:layout_width="10dp"
                 android:layout_height="10dp"
-                android:layout_gravity="center_vertical|start"
-                android:layout_marginStart="14dp"
                 android:background="@drawable/dot_live_red" />
 
             <TextView
                 android:id="@+id/tvLiveStatusText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:layout_marginStart="8dp"
+                android:layout_marginStart="6dp"
                 android:fontFamily="@font/golos_text"
                 android:textColor="#FFFFFF"
                 android:textStyle="bold"
                 android:textSize="13sp"
                 android:text="LIVE" />
-        </FrameLayout>
+        </LinearLayout>
 
 
         <LinearLayout
@@ -802,10 +800,10 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginTop="0dp"
-            android:minHeight="140dp"
+            android:minHeight="112dp"
             android:background="@drawable/bg_profile_header_card"
-            android:paddingHorizontal="20dp"
-            android:paddingVertical="20dp"
+            android:paddingHorizontal="18dp"
+            android:paddingVertical="16dp"
             android:visibility="gone"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
