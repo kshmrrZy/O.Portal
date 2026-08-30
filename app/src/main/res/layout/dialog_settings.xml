@@ -41,7 +41,7 @@
     <LinearLayout
         android:id="@+id/btnPlaylistSettings" android:focusable="true" android:focusableInTouchMode="false"
         android:layout_width="0dp"
-        android:layout_height="66dp"
+        android:layout_height="@dimen/settings_grid_button_height"
         android:layout_marginTop="12dp"
         android:layout_marginEnd="@dimen/settings_grid_column_gap"
         android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
@@ -81,7 +81,7 @@
     <LinearLayout
         android:id="@+id/btnEpgSelect" android:focusable="true" android:focusableInTouchMode="false"
         android:layout_width="0dp"
-        android:layout_height="66dp"
+        android:layout_height="@dimen/settings_grid_button_height"
         android:layout_marginTop="12dp"
         android:layout_marginStart="@dimen/settings_grid_column_gap"
         android:layout_marginEnd="@dimen/settings_grid_column_gap"
@@ -99,7 +99,7 @@
 
     <LinearLayout
         android:id="@+id/btnSleepTimerSettings" android:focusable="true" android:focusableInTouchMode="false"
-        android:layout_width="0dp" android:layout_height="66dp" android:layout_marginTop="12dp"
+        android:layout_width="0dp" android:layout_height="@dimen/settings_grid_button_height" android:layout_marginTop="12dp"
         android:layout_marginStart="@dimen/settings_grid_column_gap"
         android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
         android:paddingVertical="@dimen/settings_grid_button_padding_v"
@@ -119,7 +119,7 @@
 
     <LinearLayout
         android:id="@+id/btnUserSettings" android:focusable="true" android:focusableInTouchMode="false"
-        android:layout_width="0dp" android:layout_height="66dp" android:layout_marginTop="12dp"
+        android:layout_width="0dp" android:layout_height="@dimen/settings_grid_button_height" android:layout_marginTop="12dp"
         android:layout_marginEnd="@dimen/settings_grid_column_gap"
         android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
         android:paddingVertical="@dimen/settings_grid_button_padding_v"
@@ -130,7 +130,7 @@
 
     <LinearLayout
         android:id="@+id/btnAdvancedSettings" android:focusable="true" android:focusableInTouchMode="false"
-        android:layout_width="0dp" android:layout_height="66dp" android:layout_marginTop="12dp"
+        android:layout_width="0dp" android:layout_height="@dimen/settings_grid_button_height" android:layout_marginTop="12dp"
         android:layout_marginStart="@dimen/settings_grid_column_gap"
         android:layout_marginEnd="@dimen/settings_grid_column_gap"
         android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
@@ -142,7 +142,7 @@
 
     <LinearLayout
         android:id="@+id/btnAppInfo" android:focusable="true" android:focusableInTouchMode="false"
-        android:layout_width="0dp" android:layout_height="66dp" android:layout_marginTop="12dp"
+        android:layout_width="0dp" android:layout_height="@dimen/settings_grid_button_height" android:layout_marginTop="12dp"
         android:layout_marginStart="@dimen/settings_grid_column_gap"
         android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
         android:paddingVertical="@dimen/settings_grid_button_padding_v"

@@ -369,8 +369,12 @@ class MainActivity : AppCompatActivity() {
     private val golosTypefaceExtraBold: Typeface? by lazy {
         ResourcesCompat.getFont(this, R.font.golostext_extrabold)
     }
-    private val golosTypefaceBlack: Typeface? by lazy {
-        ResourcesCompat.getFont(this, R.font.golostext_black)
+    private val golosTypefaceSemiBold: Typeface? by lazy {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            Typeface.create(golosTypeface, 600, false)
+        } else {
+            golosTypefaceExtraBold
+        }
     }
 
     companion object {
@@ -673,6 +677,11 @@ class MainActivity : AppCompatActivity() {
         homePanel.post { applyHomeScreenScale(force = true) }
     }
 
+    private fun updatePlayPauseButton() {
+        btnPlayPause.setImageResource(if (isPlaybackPaused) R.drawable.play else R.drawable.pause)
+        btnPlayPause.alpha = 1.0f
+    }
+
     private fun applyHomeAppTitleStyle(
         settingsMode: Boolean = false,
         settingsTitle: String = "Настройки",
@@ -680,12 +689,12 @@ class MainActivity : AppCompatActivity() {
     ) {
         val logo = SpannableString("O.Portal")
         val medium = golosTypeface
-        val bold = golosTypefaceExtraBold ?: Typeface.create(golosTypeface, Typeface.BOLD)
+        val portalFace = golosTypefaceSemiBold ?: golosTypefaceExtraBold ?: Typeface.create(golosTypeface, Typeface.BOLD)
         if (medium != null) {
             logo.setSpan(CustomTypefaceSpan(medium), 0, 2, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        if (bold != null) {
-            logo.setSpan(CustomTypefaceSpan(bold), 2, logo.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        if (portalFace != null) {
+            logo.setSpan(CustomTypefaceSpan(portalFace), 2, logo.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         tvHomeAppTitle.text = logo
         tvHomeSystemTime.typeface = golosTypeface ?: Typeface.DEFAULT
@@ -745,7 +754,7 @@ class MainActivity : AppCompatActivity() {
         listOf(
             R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings,
             R.id.btnUserSettings, R.id.btnAdvancedSettings, R.id.btnAppInfo
-        ).forEach { height(it, 56f) }
+        ).forEach { height(it, 74f) }
 
         // Красные кнопки
         height(R.id.btnResetSettings, 52f)
@@ -796,19 +805,19 @@ class MainActivity : AppCompatActivity() {
 
         fun scaledSp(baseSp: Float): Float = baseSp * scale
 
-        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(26f))
-        tvHomeBreadcrumbArrow.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(18f))
+        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(16f))
+        tvHomeBreadcrumbArrow.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(12f))
         tvHomeBreadcrumbPill.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(10f))
-        tvHomeBreadcrumbArrow2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(18f))
+        tvHomeBreadcrumbArrow2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(12f))
         tvHomeBreadcrumbPill2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(10f))
-        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(18f))
+        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(12f))
         tvHomeWelcome.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(13f))
         tvPlaylistPageTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(22f))
         tvPlaylistPageSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(13f))
-        tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(52f))
-        tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(22f))
+        tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(36f))
+        tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(16f))
 
-        val iconSize = scalePx(24f, scale)
+        val iconSize = scalePx(18f, scale)
         ivHomeSettings.layoutParams = ivHomeSettings.layoutParams.apply {
             width = iconSize
             height = iconSize
@@ -942,14 +951,11 @@ class MainActivity : AppCompatActivity() {
                 mediaPlayer?.play()
                 if (!videoOnlyMinimalMode) handler.postDelayed(startupSlowStreamRunnable, 45_000L)
                 isPlaybackPaused = false
-                btnPlayPause.alpha = 1.0f
-                btnPlayPause.setImageResource(R.drawable.pause)
             } else {
                 mediaPlayer?.pause()
                 isPlaybackPaused = true
-                btnPlayPause.alpha = 1.0f
-                btnPlayPause.setImageResource(R.drawable.play)
             }
+            updatePlayPauseButton()
             showUI()
         }
 
@@ -1808,7 +1814,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startSleepTimer(minutes: Int) {
-        cancelSleepTimer()
+        cancelSleepTimer(clearPreference = false)
         timerEndAtMillis = System.currentTimeMillis() + minutes * 60_000L
         handler.postDelayed(timerFinishRunnable, minutes * 60_000L)
         handler.postDelayed(timerWarnRunnable, (minutes * 60_000L - 30_000L).coerceAtLeast(0L))
@@ -1819,12 +1825,14 @@ class MainActivity : AppCompatActivity() {
         handler.postDelayed({ timerWarningPanel.visibility = View.GONE }, 30_000L)
     }
 
-    private fun cancelSleepTimer() {
+    private fun cancelSleepTimer(clearPreference: Boolean = true) {
         timerEndAtMillis = 0L
         handler.removeCallbacks(timerFinishRunnable)
         handler.removeCallbacks(timerWarnRunnable)
         timerWarningPanel.visibility = View.GONE
-        prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, 0).apply()
+        if (clearPreference) {
+            prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, 0).apply()
+        }
     }
 
     private fun showChannelList() {
@@ -2496,26 +2504,19 @@ class MainActivity : AppCompatActivity() {
         btnExportDebugLog.isClickable = false
         btnPlaylistSettings.setOnClickListener { openPlaylistSettingsScreen() }
         btnEpgSelect.setOnClickListener { openEpgSettingsScreen() }
-        val sleepOptions = arrayOf(0, 10, 20, 30, 60, 90, 120, 240)
+        val sleepOptions = arrayOf(0, 10, 30, 60, 90, 120)
         var sleepIndex =
             sleepOptions.indexOf(prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)).takeIf { it >= 0 } ?: 0
-        var pendingSleepApply: Runnable? = null
-        var sleepTitleResetRunnable: Runnable? = null
-        fun updateSleepValueText() {
+
+        fun updateSleepButtonVisual() {
             val selected = sleepOptions[sleepIndex]
-            tvSleepTimerValue.text = if (selected == 0) "выключено" else "$selected мин"
-        }
-
-        fun refreshSleepValueFromPrefs() {
-            val selected = prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)
-            tvSleepTimerValue.text = if (selected > 0) "выставлено: $selected мин" else "выключено"
-        }
-
-        fun showSleepStatusTemporary(message: String) {
-            sleepTitleResetRunnable?.let { handler.removeCallbacks(it) }
-            tvSleepTimerValue.text = message
-            sleepTitleResetRunnable = Runnable { refreshSleepValueFromPrefs() }
-            handler.postDelayed(sleepTitleResetRunnable!!, 5000L)
+            val active = selected > 0
+            sleepRow.setBackgroundResource(
+                if (active) R.drawable.bg_settings_grid_card_focused else R.drawable.bg_settings_grid_card_normal
+            )
+            tvSleepTimerValue.setTextColor(
+                if (active) Color.parseColor("#FFFFFF") else Color.parseColor("#99FFFFFF")
+            )
         }
 
         fun applySleepSelection() {
@@ -2523,25 +2524,26 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, selected).apply()
             if (selected == 0) {
                 cancelSleepTimer()
-                showSleepStatusTemporary("Таймер отключен")
+                tvSleepTimerValue.text = "выключено"
             } else {
                 startSleepTimer(selected)
-                showSleepStatusTemporary("Таймер запущен на $selected минут")
+                tvSleepTimerValue.text = "выставлено: $selected мин"
             }
-        }
-
-        fun scheduleSleepApply() {
-            pendingSleepApply?.let { handler.removeCallbacks(it) }
-            pendingSleepApply = Runnable { applySleepSelection() }
-            handler.postDelayed(pendingSleepApply!!, 7000L)
+            updateSleepButtonVisual()
         }
 
         fun changeSleep() {
             sleepIndex = (sleepIndex + 1) % sleepOptions.size
-            updateSleepValueText()
-            scheduleSleepApply()
+            applySleepSelection()
         }
-        refreshSleepValueFromPrefs()
+        val savedMinutes = prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)
+        sleepIndex = sleepOptions.indexOf(savedMinutes).takeIf { it >= 0 } ?: 0
+        if (savedMinutes > 0) {
+            tvSleepTimerValue.text = "выставлено: $savedMinutes мин"
+        } else {
+            tvSleepTimerValue.text = "выключено"
+        }
+        updateSleepButtonVisual()
         sleepRow.isFocusable = true
         sleepRow.setOnClickListener { changeSleep() }
         sleepRow.setOnKeyListener { _, keyCode, event ->
@@ -4123,7 +4125,7 @@ class MainActivity : AppCompatActivity() {
             updateLiveStatusBadge()
             currentArchiveProgram = program
             archiveStreamStartMs = program.start
-            btnPlayPause.alpha = 1.0f
+            updatePlayPauseButton()
             tvChannelName.text = "${currentChannelIndex + 1}. ${channel.name}"
             val stamp = SimpleDateFormat(
                 "dd.MM.yyyy HH:mm",
@@ -4273,7 +4275,7 @@ class MainActivity : AppCompatActivity() {
             currentArchiveProgram = null
             archiveStreamStartMs = 0L
             updateLiveStatusBadge()
-            btnPlayPause.alpha = 1.0f
+            updatePlayPauseButton()
 
             tvChannelName.text = "${currentChannelIndex + 1}. ${ch.name}"
             hasStartedPlaybackFromChannelClick = true
@@ -5216,6 +5218,7 @@ class MainActivity : AppCompatActivity() {
         sbTimeline.isEnabled = true
         handler.removeCallbacks(hideUiRunnable)
         handler.postDelayed(hideUiRunnable, 5000)
+        updatePlayPauseButton()
         val btnPlayPauseView = findViewById<View>(R.id.btnPlayPause)
         btnPlayPauseView.post { btnPlayPauseView.requestFocus() }
     }
@@ -5478,7 +5481,7 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.play()
             handler.postDelayed(startupSlowStreamRunnable, 45_000L)
             isPlaybackPaused = false
-            btnPlayPause.alpha = 1.0f
+            updatePlayPauseButton()
         }
     }
 

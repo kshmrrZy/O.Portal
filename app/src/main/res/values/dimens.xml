@@ -25,12 +25,12 @@
 
     <!-- Home screen (base 1280×720 reference) -->
     <dimen name="home_edge_margin">48dp</dimen>
-    <dimen name="home_header_top_margin">24dp</dimen>
-    <dimen name="home_app_title_size">26sp</dimen>
+    <dimen name="home_header_top_margin">12dp</dimen>
+    <dimen name="home_app_title_size">16sp</dimen>
     <dimen name="home_welcome_size">13sp</dimen>
     <dimen name="home_welcome_margin_top">2dp</dimen>
-    <dimen name="home_clock_size">18sp</dimen>
-    <dimen name="home_header_icon_size">24dp</dimen>
+    <dimen name="home_clock_size">12sp</dimen>
+    <dimen name="home_header_icon_size">18dp</dimen>
     <dimen name="home_header_icon_gap">5dp</dimen>
     <dimen name="home_page_title_size">22sp</dimen>
     <dimen name="home_page_subtitle_size">13sp</dimen>
@@ -44,10 +44,11 @@
     <dimen name="home_bottom_action_icon_size">22dp</dimen>
     <dimen name="home_bottom_action_icon_gap">10dp</dimen>
     <dimen name="home_bottom_action_text_size">18sp</dimen>
-    <dimen name="home_start_title_size">52sp</dimen>
-    <dimen name="home_start_subtitle_size">22sp</dimen>
+    <dimen name="home_start_title_size">36sp</dimen>
+    <dimen name="home_start_subtitle_size">16sp</dimen>
 
     <dimen name="settings_grid_column_gap">8dp</dimen>
-    <dimen name="settings_grid_button_padding_h">14dp</dimen>
-    <dimen name="settings_grid_button_padding_v">10dp</dimen>
+    <dimen name="settings_grid_button_height">74dp</dimen>
+    <dimen name="settings_grid_button_padding_h">12dp</dimen>
+    <dimen name="settings_grid_button_padding_v">12dp</dimen>
 </resources>
