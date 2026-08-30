@@ -20,6 +20,7 @@
         android:layout_marginStart="@dimen/home_bottom_action_icon_gap"
         android:includeFontPadding="false"
         android:textColor="#FFFFFF"
-        android:textFontWeight="500" />
+        android:textFontWeight="500"
+        android:textSize="@dimen/home_bottom_action_text_size" />
 
 </LinearLayout>

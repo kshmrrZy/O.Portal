@@ -318,21 +318,21 @@
             <FrameLayout
                 android:id="@+id/timelineTrack"
                 android:layout_width="match_parent"
-                android:layout_height="16dp"
+                android:layout_height="12dp"
                 android:layout_marginTop="@dimen/player_timeline_time_gap"
                 android:clickable="true"
                 android:focusable="false">
                 <View
                     android:id="@+id/viewTimelineStripe"
                     android:layout_width="match_parent"
-                    android:layout_height="8dp"
+                    android:layout_height="4dp"
                     android:layout_gravity="center_vertical"
                     android:background="@drawable/player_timeline_stripe_bg" />
                 <View
                     android:id="@+id/viewTimelineLive"
                     android:layout_width="0dp"
-                    android:layout_height="8dp"
-                    android:layout_gravity="center_vertical"
+                    android:layout_height="4dp"
+                    android:layout_gravity="center_vertical|start"
                     android:background="@drawable/player_timeline_live_bg" />
                 <View
                     android:id="@+id/viewTimelineThumb"
@@ -667,6 +667,7 @@
             android:visibility="gone"
             app:layout_constraintStart_toEndOf="@id/tvHomeAppTitle"
             app:layout_constraintTop_toTopOf="@id/tvHomeAppTitle"
+            app:layout_constraintBottom_toBottomOf="@id/tvHomeAppTitle"
             android:layout_marginStart="8dp" />
 
         <TextView
@@ -683,7 +684,8 @@
             android:textSize="10sp"
             android:visibility="gone"
             app:layout_constraintStart_toEndOf="@id/tvHomeBreadcrumbArrow"
-            app:layout_constraintTop_toTopOf="@id/tvHomeBreadcrumbArrow"
+            app:layout_constraintTop_toTopOf="@id/tvHomeAppTitle"
+            app:layout_constraintBottom_toBottomOf="@id/tvHomeAppTitle"
             android:layout_marginStart="8dp" />
 
         <TextView
@@ -698,7 +700,8 @@
             android:textSize="12sp"
             android:visibility="gone"
             app:layout_constraintStart_toEndOf="@id/tvHomeBreadcrumbPill"
-            app:layout_constraintTop_toTopOf="@id/tvHomeBreadcrumbPill" />
+            app:layout_constraintTop_toTopOf="@id/tvHomeAppTitle"
+            app:layout_constraintBottom_toBottomOf="@id/tvHomeAppTitle" />
 
         <TextView
             android:id="@+id/tvHomeBreadcrumbPill2"
@@ -715,7 +718,8 @@
             android:textSize="10sp"
             android:visibility="gone"
             app:layout_constraintStart_toEndOf="@id/tvHomeBreadcrumbArrow2"
-            app:layout_constraintTop_toTopOf="@id/tvHomeBreadcrumbPill" />
+            app:layout_constraintTop_toTopOf="@id/tvHomeAppTitle"
+            app:layout_constraintBottom_toBottomOf="@id/tvHomeAppTitle" />
 
         <TextView
             android:id="@+id/tvHomeSystemTime"
@@ -800,10 +804,11 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginTop="0dp"
-            android:minHeight="112dp"
+            android:minHeight="128dp"
             android:background="@drawable/bg_profile_header_card"
-            android:paddingHorizontal="18dp"
-            android:paddingVertical="16dp"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="18dp"
+            android:paddingBottom="14dp"
             android:visibility="gone"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
@@ -866,29 +871,42 @@
             <TextView
                 android:id="@+id/tvProfileTokenValue"
                 style="@style/AppGolosText"
-                android:layout_width="240dp"
+                android:layout_width="0dp"
                 android:layout_height="@dimen/profile_token_value_height"
                 android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
                 android:background="@drawable/bg_settings_row"
-                android:gravity="center"
+                android:gravity="center_vertical"
                 android:singleLine="true"
                 android:ellipsize="middle"
+                android:includeFontPadding="false"
                 android:paddingHorizontal="10dp"
                 android:textColor="#80FFFFFF"
                 android:textSize="@dimen/profile_token_value_size"
                 app:layout_constraintStart_toEndOf="@id/tvProfileTokenLabel"
+                app:layout_constraintEnd_toStartOf="@id/btnProfileChangeToken"
                 app:layout_constraintTop_toTopOf="@id/tvProfileTokenLabel"
                 app:layout_constraintBottom_toBottomOf="@id/tvProfileTokenLabel" />
 
             <ImageView
                 android:id="@+id/btnProfileChangeToken"
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:layout_marginStart="10dp"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
                 android:src="@drawable/ic_refresh_small"
-                app:layout_constraintStart_toEndOf="@id/tvProfileTokenValue"
+                app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toTopOf="@id/tvProfileTokenValue"
                 app:layout_constraintBottom_toBottomOf="@id/tvProfileTokenValue" />
+
+            <View
+                android:id="@+id/profileHeaderDivider"
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_marginTop="14dp"
+                android:background="#33FFFFFF"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/tvProfileTokenValue"
+                app:layout_constraintBottom_toBottomOf="parent" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
 
