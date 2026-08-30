@@ -588,16 +588,16 @@ class MainActivity : AppCompatActivity() {
         tvHomeAppTitle.isClickable = true
         tvHomeAppTitle.isFocusable = false
         tvHomeAppTitle.setOnClickListener { goHomeFromLogoClick() }
+        tvHomeBreadcrumbArrow = findViewById(R.id.tvHomeBreadcrumbArrow)
+        tvHomeBreadcrumbPill = findViewById(R.id.tvHomeBreadcrumbPill)
+        tvHomeBreadcrumbArrow2 = findViewById(R.id.tvHomeBreadcrumbArrow2)
+        tvHomeBreadcrumbPill2 = findViewById(R.id.tvHomeBreadcrumbPill2)
         tvHomeBreadcrumbPill.isClickable = true
         tvHomeBreadcrumbPill.isFocusable = false
         tvHomeBreadcrumbPill.setOnClickListener { onBreadcrumbClick() }
         tvHomeBreadcrumbPill2.isClickable = true
         tvHomeBreadcrumbPill2.isFocusable = false
         tvHomeBreadcrumbPill2.setOnClickListener { onBreadcrumbClick() }
-        tvHomeBreadcrumbArrow = findViewById(R.id.tvHomeBreadcrumbArrow)
-        tvHomeBreadcrumbPill = findViewById(R.id.tvHomeBreadcrumbPill)
-        tvHomeBreadcrumbArrow2 = findViewById(R.id.tvHomeBreadcrumbArrow2)
-        tvHomeBreadcrumbPill2 = findViewById(R.id.tvHomeBreadcrumbPill2)
         tvHomeAppTitle.text = SpannableString("O.Portal").apply {
             setSpan(StyleSpan(Typeface.BOLD), 2, length, 0)
             tvHomeAppTitle.typeface = Typeface.create(tvHomeAppTitle.typeface, 800, false)
