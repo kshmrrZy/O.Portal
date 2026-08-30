@@ -358,6 +358,12 @@ class MainActivity : AppCompatActivity() {
             R.font.golos_text
         )
     }
+    private val golosTypefaceExtraBold: Typeface? by lazy {
+        ResourcesCompat.getFont(this, R.font.golostext_extrabold)
+    }
+    private val golosTypefaceBlack: Typeface? by lazy {
+        ResourcesCompat.getFont(this, R.font.golostext_black)
+    }
 
     companion object {
         private const val EXTRA_OPEN_HOME_PLAYLISTS_FRESH = "extra_open_home_playlists_fresh"
@@ -643,15 +649,13 @@ class MainActivity : AppCompatActivity() {
         homePanel = findViewById(R.id.homePanel)
         ivHomeSettings = findViewById(R.id.ivHomeSettings)
         ivHomePower = findViewById(R.id.ivHomePower)
-        ivHomeSettings.scaleX = 1.25f
-        ivHomeSettings.scaleY = 1.25f
-        ivHomePower.alpha = 0.5f
         homeSettingsScreen = findViewById(R.id.homeSettingsScreen)
         playerSettingsOverlay = findViewById(R.id.playerSettingsOverlay)
         tvEpg.isSelected = true
         prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, 0).apply()
         applyGolosTypeface(window.decorView)
         applyHomeAppTitleStyle()
+        setupHomeBottomActionTiles()
         homePanel.addOnLayoutChangeListener { _, _, _, right, bottom, _, _, oldRight, oldBottom ->
             if (right != oldRight || bottom != oldBottom) {
                 applyHomeScreenScale(force = true)
@@ -665,18 +669,10 @@ class MainActivity : AppCompatActivity() {
         settingsTitle: String = "Настройки",
         settingsTitle2: String? = null
     ) {
-        val title = SpannableString("O.Portal")
-        golosTypeface?.let { font ->
-            tvHomeAppTitle.typeface = Typeface.create(font, Typeface.NORMAL)
-            title.setSpan(
-                TypefaceSpan(Typeface.create(font, Typeface.BOLD)),
-                2,
-                8,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            tvHomeSystemTime.typeface = Typeface.create(font, Typeface.BOLD)
-        } ?: title.setSpan(StyleSpan(Typeface.BOLD), 2, 8, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        tvHomeAppTitle.text = title
+        tvHomeAppTitle.typeface = golosTypefaceBlack ?: golosTypeface
+        tvHomeAppTitle.text = "O.Portal"
+        tvHomeSystemTime.typeface = golosTypefaceExtraBold
+            ?: Typeface.create(golosTypeface, Typeface.BOLD)
         tvHomeBreadcrumbArrow.visibility = if (settingsMode) View.VISIBLE else View.GONE
         tvHomeBreadcrumbPill.visibility = if (settingsMode) View.VISIBLE else View.GONE
         if (settingsMode) {
@@ -781,74 +777,66 @@ class MainActivity : AppCompatActivity() {
 
         val widthScale = panelWidth.toFloat() / HOME_BASE_WIDTH
         val heightScale = panelHeight.toFloat() / HOME_BASE_HEIGHT
-        val scale = minOf(widthScale, heightScale)
-        logDebug(
-            "HOME_SCALE",
-            "panelWidth=$panelWidth panelHeight=$panelHeight density=${resources.displayMetrics.density} " +
-                "densityDpi=${resources.displayMetrics.densityDpi} widthScale=$widthScale heightScale=$heightScale " +
-                "scale=$scale resultingTitlePx=${36f * scale}"
-        )
+        val scale = minOf(widthScale, heightScale).coerceIn(0.55f, 1.4f)
 
-        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 36f * scale)
-        tvHomeBreadcrumbArrow.setTextSize(TypedValue.COMPLEX_UNIT_PX, 24f * scale)
-        tvHomeBreadcrumbPill.setTextSize(TypedValue.COMPLEX_UNIT_PX, 10f * scale)
-        tvHomeBreadcrumbArrow2.setTextSize(TypedValue.COMPLEX_UNIT_PX, 24f * scale)
-        tvHomeBreadcrumbPill2.setTextSize(TypedValue.COMPLEX_UNIT_PX, 10f * scale)
-        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_PX, 28f * scale)
-        tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 48f * scale)
-        tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 16f * scale)
+        fun scaledSp(baseSp: Float): Float = baseSp * scale
 
+        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(42f))
+        tvHomeBreadcrumbArrow.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(24f))
+        tvHomeBreadcrumbPill.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(10f))
+        tvHomeBreadcrumbArrow2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(24f))
+        tvHomeBreadcrumbPill2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(10f))
+        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(34f))
+        tvHomeWelcome.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(16f))
+        tvPlaylistPageTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(28f))
+        tvPlaylistPageSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(14f))
+        tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(52f))
+        tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(22f))
 
-
-
-        setHomeFrame(tvHomeAppTitle, 61f, 37f, null, null, widthScale, heightScale)
-        setHomeFrame(tvHomeBreadcrumbArrow, 218f, 44f, null, null, widthScale, heightScale)
-        setHomeFrame(tvHomeBreadcrumbPill, 243f, 47f, null, null, widthScale, heightScale)
-        setHomeFrame(tvHomeSystemTime, 1067f, 42f, null, null, widthScale, heightScale)
-        setHomeFrame(ivHomeSettings, 1157f, 47f, 40f, 40f, widthScale, heightScale)
-        setHomeFrame(ivHomePower, 1196f, 47f, 40f, 40f, widthScale, heightScale)
-        setHomeFrame(tvHomeStartTitle, 257f, 321f, 765f, null, widthScale, heightScale)
-
-        (tvHomeStartSubtitle.layoutParams as ConstraintLayout.LayoutParams).apply {
-            width = (650f * widthScale).toInt().coerceAtLeast(1)
-            height = ViewGroup.LayoutParams.WRAP_CONTENT
-            topToTop = ConstraintSet.UNSET
-            startToStart = R.id.tvHomeStartTitle
-            topToBottom = R.id.tvHomeStartTitle
-            marginStart = 0
-            leftMargin = 0
-            topMargin = (12f * heightScale).toInt()
-            horizontalBias = 0f
-            verticalBias = 0f
-            tvHomeStartSubtitle.layoutParams = this
+        val iconSize = scalePx(40f, scale)
+        ivHomeSettings.layoutParams = ivHomeSettings.layoutParams.apply {
+            width = iconSize
+            height = iconSize
         }
+        ivHomePower.layoutParams = ivHomePower.layoutParams.apply {
+            width = iconSize
+            height = iconSize
+        }
+
+        val bottomTileHeight = scalePx(66f, scale)
+        findViewById<View>(R.id.btnOwnPlaylistsTile).layoutParams.height = bottomTileHeight
+        findViewById<View>(R.id.btnFavoritesTile).layoutParams.height = bottomTileHeight
+        setupHomeBottomActionTiles(scale)
     }
 
-    private fun setHomeFrame(
-        view: View,
-        baseLeft: Float,
-        baseTop: Float,
-        baseWidth: Float?,
-        baseHeight: Float?,
-        widthScale: Float,
-        heightScale: Float
-    ) {
-        val params = view.layoutParams as ConstraintLayout.LayoutParams
-        params.startToStart = ConstraintSet.PARENT_ID
-        params.topToTop = ConstraintSet.PARENT_ID
-        params.endToEnd = ConstraintSet.UNSET
-        params.bottomToBottom = ConstraintSet.UNSET
-        params.horizontalBias = 0f
-        params.verticalBias = 0f
-        val leftMargin = (baseLeft * widthScale).toInt()
-        params.leftMargin = leftMargin
-        params.marginStart = leftMargin
-        params.topMargin = (baseTop * heightScale).toInt()
-        params.width = baseWidth?.let { (it * widthScale).toInt().coerceAtLeast(1) }
-            ?: ViewGroup.LayoutParams.WRAP_CONTENT
-        params.height = baseHeight?.let { (it * heightScale).toInt().coerceAtLeast(1) }
-            ?: ViewGroup.LayoutParams.WRAP_CONTENT
-        view.layoutParams = params
+    private fun setupHomeBottomActionTiles(scale: Float = 1f) {
+        val textSizeSp = 21f * scale
+        bindHomeBottomActionTile(
+            findViewById(R.id.btnOwnPlaylistsTile),
+            R.drawable.ic_play,
+            getString(R.string.home_own_playlists),
+            textSizeSp
+        )
+        bindHomeBottomActionTile(
+            findViewById(R.id.btnFavoritesTile),
+            R.drawable.ic_star,
+            getString(R.string.home_favorites),
+            textSizeSp
+        )
+    }
+
+    private fun bindHomeBottomActionTile(container: View, iconRes: Int, label: String, textSizeSp: Float) {
+        val icon = container.findViewById<ImageView>(R.id.ivBottomActionIcon)
+        val labelView = container.findViewById<TextView>(R.id.tvBottomActionLabel)
+        icon?.setImageResource(iconRes)
+        labelView?.text = label
+        labelView?.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
+        golosTypeface?.let { labelView?.typeface = Typeface.create(it, Typeface.NORMAL) }
+        val iconSize = scalePx(22f, textSizeSp / 21f)
+        icon?.layoutParams = icon?.layoutParams?.apply {
+            width = iconSize
+            height = iconSize
+        }
     }
 
     private fun applyGolosTypeface(view: View) {
@@ -1065,9 +1053,10 @@ class MainActivity : AppCompatActivity() {
         val uiMode = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK
         val isTv = uiMode == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
         return when {
-            isTv -> (widthDp / 190f).toInt().coerceIn(5, 9)
-            widthDp < 360f -> 3
-            else -> 4
+            isTv -> 3
+            widthDp >= 500f -> 3
+            widthDp >= 360f -> 2
+            else -> 2
         }
     }
 
@@ -1144,6 +1133,7 @@ class MainActivity : AppCompatActivity() {
             tv.gravity = Gravity.CENTER
             tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, titleSizeSp)
             tv.typeface = golosTypeface?.let { Typeface.create(it, Typeface.NORMAL) } ?: Typeface.DEFAULT
+            tv.setTypeface(tv.typeface, Typeface.NORMAL)
             tv.isFocusable = false
             tv.isFocusableInTouchMode = false
             tv.isClickable = false
@@ -1302,29 +1292,13 @@ class MainActivity : AppCompatActivity() {
         val availableWidth = (safeRight - leftAnchor).coerceAtLeast(dpToPx(320))
         val leftInset = 0
         val rightInset = 0
-        val preferredTileWidth = dpToPx(112)
-        var spacing = if (columns > 1) {
-            ((availableWidth - preferredTileWidth * columns) / (columns - 1))
-                .coerceIn(dpToPx(8), dpToPx(14))
-        } else {
-            0
-        }
-        var tileWidth = if (columns > 1) {
-            ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
+        val spacing = resources.getDimensionPixelSize(R.dimen.home_tile_spacing)
+        val tileHeight = resources.getDimensionPixelSize(R.dimen.home_tile_min_height)
+        val tileWidth = if (columns > 1) {
+            ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(100))
         } else {
             availableWidth
         }
-
-        if (columns > 1) {
-            val usedWidth = tileWidth * columns + spacing * (columns - 1)
-            val remaining = availableWidth - usedWidth
-            if (remaining != 0) {
-                spacing += remaining / (columns - 1)
-                tileWidth = ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(106))
-            }
-        }
-
-        val tileHeight = (tileWidth * 0.34f).toInt().coerceAtLeast(dpToPx(44))
 
         return HomeGridGeometry(
             columns = columns,
@@ -1412,7 +1386,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartSubtitle.visibility = View.GONE
         homePlaylistTilesPanel.visibility = View.VISIBLE
         disableHomeCategoryBack("showThirdPartyTilesOnHome_before_show")
-        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "категории", settingsTitle2 = "Сторонние плейлисты")
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "категории", settingsTitle2 = "Свои плейлисты")
         enableHomeCategoryBack { showPlaylistPageOnHome() }
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
         val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }
@@ -1454,13 +1428,13 @@ class MainActivity : AppCompatActivity() {
         tvPlaylistPageTitle.visibility = if (showTitle) View.VISIBLE else View.GONE
         tvPlaylistPageSubtitle.visibility = if (showTitle) View.VISIBLE else View.GONE
         (homePlaylistTilesPanel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
-            lp.topMargin = dpToPx(
-                when {
-                    showTitle -> 145
-                    showWelcome && name.isNotBlank() -> 55
-                    else -> 31
-                }
-            )
+            if (showTitle) {
+                lp.topToBottom = R.id.tvPlaylistPageSubtitle
+                lp.topMargin = resources.getDimensionPixelSize(R.dimen.home_grid_margin_top)
+            } else {
+                lp.topToBottom = R.id.tvHomeWelcome
+                lp.topMargin = dpToPx(24)
+            }
             homePlaylistTilesPanel.layoutParams = lp
         }
     }

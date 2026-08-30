@@ -636,14 +636,12 @@
             android:includeFontPadding="false"
             android:text="O.Portal"
             android:textColor="#FFFFFF"
-            android:textFontWeight="1000"
-            android:textSize="42sp"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintHorizontal_bias="0.054"
-            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
+            android:textFontWeight="900"
+            android:textSize="@dimen/home_app_title_size"
+            app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintVertical_bias="0.055" />
+            android:layout_marginStart="@dimen/home_edge_margin"
+            android:layout_marginTop="@dimen/home_header_top_margin" />
 
         <TextView
             android:id="@+id/tvHomeBreadcrumbArrow"
@@ -655,8 +653,9 @@
             android:textColor="#FFFFFF"
             android:textSize="24sp"
             android:visibility="gone"
-            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
-            app:layout_constraintTop_toTopOf="parent" />
+            app:layout_constraintStart_toEndOf="@id/tvHomeAppTitle"
+            app:layout_constraintTop_toTopOf="@id/tvHomeAppTitle"
+            android:layout_marginStart="12dp" />
 
         <TextView
             android:id="@+id/tvHomeBreadcrumbPill"
@@ -671,8 +670,9 @@
             android:textColor="#FFFFFF"
             android:textSize="10sp"
             android:visibility="gone"
-            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
-            app:layout_constraintTop_toTopOf="parent" />
+            app:layout_constraintStart_toEndOf="@id/tvHomeBreadcrumbArrow"
+            app:layout_constraintTop_toTopOf="@id/tvHomeBreadcrumbArrow"
+            android:layout_marginStart="8dp" />
 
         <TextView
             android:id="@+id/tvHomeBreadcrumbArrow2"
@@ -713,48 +713,42 @@
             android:includeFontPadding="false"
             android:textColor="#FFFFFF"
             android:textFontWeight="700"
-            android:textSize="34sp"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintHorizontal_bias="0.885"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintVertical_bias="0.059"
+            android:textSize="@dimen/home_clock_size"
+            app:layout_constraintEnd_toStartOf="@id/ivHomeSettings"
+            app:layout_constraintTop_toTopOf="@id/tvHomeAppTitle"
+            app:layout_constraintBottom_toBottomOf="@id/tvHomeAppTitle"
+            android:layout_marginEnd="@dimen/home_header_icon_gap"
             tools:text="21:00" />
 
         <ImageView
-            android:id="@+id/ivHomePower"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@drawable/bg_home_icon_selector"
-            android:clickable="true"
-            android:contentDescription="@string/home_power_button"
-            android:focusable="false"
-            android:scaleType="fitCenter"
-            android:src="@drawable/fibspower"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintHorizontal_bias="0.952"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintVertical_bias="0.068" />
-
-        <ImageView
             android:id="@+id/ivHomeSettings"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="@dimen/home_header_icon_size"
+            android:layout_height="@dimen/home_header_icon_size"
             android:background="@drawable/bg_home_icon_selector"
             android:clickable="true"
             android:contentDescription="@string/home_settings_button"
             android:focusable="false"
             android:scaleType="fitCenter"
             android:src="@drawable/fibssettings"
-            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/ivHomePower"
+            app:layout_constraintTop_toTopOf="@id/tvHomeAppTitle"
+            app:layout_constraintBottom_toBottomOf="@id/tvHomeAppTitle"
+            android:layout_marginEnd="@dimen/home_header_icon_gap" />
+
+        <ImageView
+            android:id="@+id/ivHomePower"
+            android:layout_width="@dimen/home_header_icon_size"
+            android:layout_height="@dimen/home_header_icon_size"
+            android:background="@drawable/bg_home_icon_selector"
+            android:clickable="true"
+            android:contentDescription="@string/home_power_button"
+            android:focusable="false"
+            android:scaleType="fitCenter"
+            android:src="@drawable/fibspower"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintHorizontal_bias="0.921"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintVertical_bias="0.068" />
+            app:layout_constraintTop_toTopOf="@id/tvHomeAppTitle"
+            app:layout_constraintBottom_toBottomOf="@id/tvHomeAppTitle"
+            android:layout_marginEnd="@dimen/home_edge_margin" />
 
 
 
@@ -772,7 +766,7 @@
             android:textColor="#FFFFFF"
             android:textSize="12sp"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
-            app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
+            app:layout_constraintTop_toBottomOf="@id/tvHomeWelcome"
             android:layout_marginTop="4dp" />
 
         <androidx.constraintlayout.widget.ConstraintLayout
@@ -782,10 +776,11 @@
             android:visibility="gone"
             android:background="@drawable/bg_settings_unified_panel"
             android:clipToOutline="true"
-            app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
+            app:layout_constraintTop_toBottomOf="@id/tvHomeWelcome"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
             app:layout_constraintEnd_toEndOf="@id/ivHomePower"
-            app:layout_constraintBottom_toBottomOf="parent">
+            app:layout_constraintBottom_toBottomOf="parent"
+            android:layout_marginTop="8dp">
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/userProfileHeaderCard"
@@ -911,56 +906,64 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:includeFontPadding="false"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
+            android:textColor="#B3FFFFFF"
+            android:textFontWeight="400"
+            android:textSize="@dimen/home_welcome_size"
             android:visibility="gone"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
-            app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle" />
+            app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
+            android:layout_marginTop="@dimen/home_welcome_margin_top"
+            tools:text="Добро пожаловать, username!" />
 
         <TextView
             android:id="@+id/tvPlaylistPageTitle"
             style="@style/AppGolosText"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="90dp"
             android:gravity="center"
             android:includeFontPadding="false"
             android:text="Доступные сервисы для просмотра"
             android:textColor="#FFFFFF"
-            android:textSize="28sp"
+            android:textFontWeight="700"
+            android:textSize="@dimen/home_page_title_size"
             android:visibility="gone"
-            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
-            app:layout_constraintEnd_toEndOf="@id/ivHomePower"
-            app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle" />
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvHomeWelcome"
+            android:layout_marginTop="@dimen/home_page_title_margin_top"
+            android:layout_marginStart="@dimen/home_edge_margin"
+            android:layout_marginEnd="@dimen/home_edge_margin" />
 
         <TextView
             android:id="@+id/tvPlaylistPageSubtitle"
             style="@style/AppGolosText"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
             android:gravity="center"
             android:includeFontPadding="false"
             android:text="выберите один из сервисов для просмотра категорий каналов"
             android:textColor="#80FFFFFF"
-            android:textSize="14sp"
+            android:textFontWeight="400"
+            android:textSize="@dimen/home_page_subtitle_size"
             android:visibility="gone"
-            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
-            app:layout_constraintEnd_toEndOf="@id/ivHomePower"
-            app:layout_constraintTop_toBottomOf="@id/tvPlaylistPageTitle" />
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvPlaylistPageTitle"
+            android:layout_marginTop="@dimen/home_page_subtitle_margin_top"
+            android:layout_marginStart="@dimen/home_edge_margin"
+            android:layout_marginEnd="@dimen/home_edge_margin" />
 
         <ScrollView
             android:id="@+id/homePlaylistTilesPanel"
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:visibility="gone"
-            android:layout_marginTop="31dp"
-            android:layout_marginStart="0dp"
             android:scrollbars="none"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
             app:layout_constraintEnd_toEndOf="@id/ivHomePower"
-            app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
-            app:layout_constraintBottom_toBottomOf="parent">
+            app:layout_constraintTop_toBottomOf="@id/tvPlaylistPageSubtitle"
+            app:layout_constraintBottom_toBottomOf="parent"
+            android:layout_marginTop="@dimen/home_grid_margin_top">
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -970,54 +973,44 @@
                     android:id="@+id/rvHomeTiles"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:paddingStart="8dp"
-                    android:paddingEnd="8dp"
-                    android:paddingTop="8dp"
-                    android:paddingBottom="8dp"
                     android:clipToPadding="false"
-                    android:scrollbars="none"
-                    android:overScrollMode="never"/>
+                    android:overScrollMode="never"
+                    android:scrollbars="none" />
 
                 <LinearLayout
                     android:id="@+id/homeBottomTilesRow"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
+                    android:layout_marginTop="@dimen/home_bottom_row_margin_top"
                     android:orientation="horizontal"
-                    android:paddingStart="8dp"
-                    android:paddingEnd="8dp"
                     android:visibility="gone">
 
-                    <TextView
+                    <FrameLayout
                         android:id="@+id/btnOwnPlaylistsTile"
-                        android:focusable="true"
-                        android:focusableInTouchMode="false"
-                        style="@style/AppGolosText"
                         android:layout_width="0dp"
-                        android:layout_height="66dp"
+                        android:layout_height="@dimen/home_tile_min_height"
                         android:layout_weight="1"
-                        android:background="@drawable/bg_settings_grid_card"
-                        android:gravity="center"
-                        android:text="▶ Сторонние плейлисты"
-                        android:textColor="#FFFFFF"
-                        android:textFontWeight="500"
-                        android:textSize="24sp" />
+                        android:background="@drawable/bg_playlist_tile"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:focusableInTouchMode="false">
 
-                    <TextView
+                        <include layout="@layout/item_home_bottom_action" />
+                    </FrameLayout>
+
+                    <FrameLayout
                         android:id="@+id/btnFavoritesTile"
-                        android:focusable="true"
-                        android:focusableInTouchMode="false"
-                        style="@style/AppGolosText"
                         android:layout_width="0dp"
-                        android:layout_height="66dp"
+                        android:layout_height="@dimen/home_tile_min_height"
                         android:layout_weight="1"
-                        android:layout_marginStart="8dp"
-                        android:background="@drawable/bg_settings_grid_card"
-                        android:gravity="center"
-                        android:text="★ Избранные каналы"
-                        android:textColor="#FFFFFF"
-                        android:textFontWeight="500"
-                        android:textSize="24sp" />
+                        android:layout_marginStart="@dimen/home_tile_spacing"
+                        android:background="@drawable/bg_playlist_tile"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:focusableInTouchMode="false">
+
+                        <include layout="@layout/item_home_bottom_action" />
+                    </FrameLayout>
                 </LinearLayout>
             </LinearLayout>
         </ScrollView>
@@ -1035,8 +1028,8 @@
             android:stretchMode="columnWidth"
             android:gravity="start"
             android:clipToPadding="false"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
+            android:paddingStart="0dp"
+            android:paddingEnd="0dp"
             android:paddingTop="8dp"
             android:paddingBottom="8dp"
             android:overScrollMode="never"
@@ -1058,7 +1051,7 @@
             android:text="Для начала работы приложения"
             android:textColor="#FFFFFF"
             android:textFontWeight="500"
-            android:textSize="52sp"
+            android:textSize="@dimen/home_start_title_size"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHorizontal_bias="0.5"
@@ -1076,14 +1069,12 @@
             android:includeFontPadding="false"
             android:text="введите токен или ссылку на плейлист в разделе Настройки"
             android:textColor="#B3FFFFFF"
-            android:textFontWeight="500"
-            android:textSize="22sp"
-            app:layout_constraintBottom_toBottomOf="parent"
+            android:textFontWeight="400"
+            android:textSize="@dimen/home_start_subtitle_size"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintHorizontal_bias="0.5"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintVertical_bias="0.544"
+            app:layout_constraintTop_toBottomOf="@id/tvHomeStartTitle"
+            android:layout_marginTop="12dp"
             app:layout_constraintWidth_percent="0.377" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
