@@ -152,7 +152,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var mDetector: GestureDetectorCompat
     private lateinit var scaleGestureDetector: ScaleGestureDetector
     private var videoPinchScale = 1f
-    private val aspectRatioLabels = listOf("Автоматически", "Вписать в экран", "Растянуть", "Обрезать")
+    private val aspectRatioLabels = listOf("Автоматически", "Вписать в экран", "16:9", "Растянуть", "Обрезать")
     private var aspectRatioIndex = 0
 
     private var channelListDialog: AlertDialog? = null
@@ -394,10 +394,18 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_START_LAST_CHANNEL = "pref_start_last_channel"
         private const val PREF_ASPECT_RATIO_MODE = "pref_aspect_ratio_mode"
         private val ASPECT_RATIO_LABEL_BY_KEY = mapOf(
-            "auto" to "Автоматически", "fit" to "Вписать в экран", "fill" to "Растянуть", "zoom" to "Обрезать"
+            "auto" to "Автоматически",
+            "fit" to "Вписать в экран",
+            "aspect_16_9" to "16:9",
+            "fill" to "Растянуть",
+            "zoom" to "Обрезать"
         )
         private val ASPECT_RATIO_KEY_BY_LABEL = mapOf(
-            "Автоматически" to "auto", "Вписать в экран" to "fit", "Растянуть" to "fill", "Обрезать" to "zoom"
+            "Автоматически" to "auto",
+            "Вписать в экран" to "fit",
+            "16:9" to "aspect_16_9",
+            "Растянуть" to "fill",
+            "Обрезать" to "zoom"
         )
         private const val PREF_SLEEP_TIMER_MINUTES = "pref_sleep_timer_minutes"
         private const val PREF_SHOW_LOCK_BUTTON = "pref_show_lock_button"
@@ -427,6 +435,7 @@ class MainActivity : AppCompatActivity() {
 
     private val hideUiRunnable = Runnable { hideUI() }
     private var pendingSeekDeltaSec: Int = 0
+    private var liveTimelineAnchorMs: Long = 0L
     private val applySeekDeltaRunnable = Runnable {
         val player = mediaPlayer ?: return@Runnable
         if (pendingSeekDeltaSec != 0) {
@@ -745,20 +754,20 @@ class MainActivity : AppCompatActivity() {
         (findViewById<View>(R.id.userProfileHeaderCard).layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
         }
-        findViewById<View>(R.id.userProfileHeaderCard).minimumHeight = scalePx(140f, scale)
-        height(R.id.profileAvatarFrame, 88f)
+        findViewById<View>(R.id.userProfileHeaderCard).minimumHeight = scalePx(112f, scale)
+        height(R.id.profileAvatarFrame, 72f)
         (findViewById<View>(R.id.profileAvatarFrame).layoutParams as? ViewGroup.LayoutParams)?.let { lp ->
-            lp.width = scalePx(88f, scale)
+            lp.width = scalePx(72f, scale)
         }
         (findViewById<ImageView>(R.id.ivProfileAvatar).layoutParams as? ViewGroup.LayoutParams)?.let { lp ->
-            lp.width = scalePx(32f, scale)
-            lp.height = scalePx(32f, scale)
+            lp.width = scalePx(28f, scale)
+            lp.height = scalePx(28f, scale)
         }
-        textSize(R.id.tvProfileName, 24f)
-        textSize(R.id.tvProfileNickname, 15f)
-        textSize(R.id.tvProfileTokenLabel, 15f)
-        height(R.id.tvProfileTokenValue, 32f)
-        textSize(R.id.tvProfileTokenValue, 12f)
+        textSize(R.id.tvProfileName, 22f)
+        textSize(R.id.tvProfileNickname, 14f)
+        textSize(R.id.tvProfileTokenLabel, 14f)
+        height(R.id.tvProfileTokenValue, 30f)
+        textSize(R.id.tvProfileTokenValue, 11f)
 
         // Сетка настроек (6 карточек)
         listOf(
@@ -841,37 +850,48 @@ class MainActivity : AppCompatActivity() {
         val bottomTileHeight = scalePx(66f, scale)
         findViewById<View>(R.id.btnOwnPlaylistsTile).layoutParams.height = bottomTileHeight
         findViewById<View>(R.id.btnFavoritesTile).layoutParams.height = bottomTileHeight
-        setupHomeBottomActionTiles(scale)
+        setupHomeBottomActionTiles(scale, scaledSp(18f))
         applyHomeBottomTilesGeometry()
     }
 
-    private fun setupHomeBottomActionTiles(scale: Float = 1f) {
-        val textSizeSp = 18f * scale
+    private fun setupHomeBottomActionTiles(scale: Float = 1f, textSizeSp: Float = 18f) {
         bindHomeBottomActionTile(
             findViewById(R.id.btnOwnPlaylistsTile),
             R.drawable.ic_play,
             getString(R.string.home_own_playlists),
-            textSizeSp
+            textSizeSp,
+            scale
         )
         bindHomeBottomActionTile(
             findViewById(R.id.btnFavoritesTile),
             R.drawable.ic_star,
             getString(R.string.home_favorites),
-            textSizeSp
+            textSizeSp,
+            scale
         )
     }
 
-    private fun bindHomeBottomActionTile(container: View, iconRes: Int, label: String, textSizeSp: Float) {
+    private fun bindHomeBottomActionTile(
+        container: View,
+        iconRes: Int,
+        label: String,
+        textSizeSp: Float,
+        scale: Float = 1f
+    ) {
         val icon = container.findViewById<ImageView>(R.id.ivBottomActionIcon)
         val labelView = container.findViewById<TextView>(R.id.tvBottomActionLabel)
         icon?.setImageResource(iconRes)
         labelView?.text = label
         labelView?.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
         golosTypeface?.let { labelView?.typeface = Typeface.create(it, Typeface.NORMAL) }
-        val iconSize = scalePx(20f, textSizeSp / 18f)
+        val iconSize = scalePx(22f, scale)
         icon?.layoutParams = icon?.layoutParams?.apply {
             width = iconSize
             height = iconSize
+        }
+        val iconGap = scalePx(10f, scale)
+        labelView?.layoutParams = (labelView?.layoutParams as? LinearLayout.LayoutParams)?.apply {
+            marginStart = iconGap
         }
     }
 
@@ -970,9 +990,14 @@ class MainActivity : AppCompatActivity() {
                 mediaPlayer?.play()
                 if (!videoOnlyMinimalMode) handler.postDelayed(startupSlowStreamRunnable, 45_000L)
                 isPlaybackPaused = false
+                liveTimelineAnchorMs = 0L
             } else {
                 mediaPlayer?.pause()
                 isPlaybackPaused = true
+                if (!isArchivePlayback) {
+                    liveTimelineAnchorMs = System.currentTimeMillis()
+                    updateTimelineUi()
+                }
             }
             updatePlayPauseButton()
             showUI()
@@ -1379,6 +1404,8 @@ class MainActivity : AppCompatActivity() {
                 applyTileSize(btnOwn, geometry.availableWidth, geometry.tileHeight)
             }
         }
+        val contentScale = computeContentDpScale()
+        setupHomeBottomActionTiles(contentScale, 18f * contentScale)
     }
 
     private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic", titleSizeSp: Float = 18f) {
@@ -1951,6 +1978,7 @@ class MainActivity : AppCompatActivity() {
                 val channel = channels[position]
                 holder.tvName.text = "${position + 1}. ${channel.name}"
                 holder.tvName.isSelected = true
+                golosTypeface?.let { holder.tvName.typeface = Typeface.create(it, Typeface.NORMAL) }
 
                 val pList = getProgramsForDisplay(channel)
                 val cur = pList.find { System.currentTimeMillis() in it.start until it.stop }
@@ -2545,7 +2573,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val tbAspectRatio = findViewById<ToggleButton>(R.id.tbAspectRatio)
-        val aspectRatioLabels = listOf("Автоматически", "Вписать в экран", "Растянуть", "Обрезать")
+        val aspectRatioLabels = listOf("Автоматически", "Вписать в экран", "16:9", "Растянуть", "Обрезать")
         var aspectRatioIndex = aspectRatioLabels.indexOf(
             prefs.getString(PREF_ASPECT_RATIO_MODE, "auto").let { ASPECT_RATIO_LABEL_BY_KEY[it] ?: "Автоматически" }
         ).coerceAtLeast(0)
@@ -4192,6 +4220,7 @@ class MainActivity : AppCompatActivity() {
             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
             handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
             isPlaybackPaused = false
+            liveTimelineAnchorMs = 0L
             isArchivePlayback = true
             updateLiveStatusBadge()
             currentArchiveProgram = program
@@ -4220,6 +4249,7 @@ class MainActivity : AppCompatActivity() {
         playerView.resizeMode = when (mode) {
             "fit" -> AspectRatioFrameLayout.RESIZE_MODE_FIT
             "fill" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+            "aspect_16_9" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             "zoom" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             else -> if (isWinkChannel) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
         }
@@ -4342,6 +4372,7 @@ class MainActivity : AppCompatActivity() {
             handler.post(memoryLogRunnable)
             handler.postDelayed(startupSlowStreamRunnable, 45_000L)
             isPlaybackPaused = false
+            liveTimelineAnchorMs = 0L
             isArchivePlayback = false
             currentArchiveProgram = null
             archiveStreamStartMs = 0L
@@ -5553,6 +5584,7 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.play()
             handler.postDelayed(startupSlowStreamRunnable, 45_000L)
             isPlaybackPaused = false
+            liveTimelineAnchorMs = 0L
             updatePlayPauseButton()
         }
     }
@@ -5592,8 +5624,11 @@ class MainActivity : AppCompatActivity() {
         tvProgramEndTime.visibility = View.VISIBLE
         tvProgramEndTime.text = fmt.format(Date(p.stop))
         val currentMs =
-            if (isArchivePlayback) archiveStreamStartMs + (mediaPlayer?.currentPosition
-                ?: 0L) else System.currentTimeMillis()
+            if (isArchivePlayback) {
+                archiveStreamStartMs + (mediaPlayer?.currentPosition ?: 0L)
+            } else {
+                getLiveTimelinePositionMs()
+            }
         tvCurrentTime.text = fmt.format(Date(currentMs.coerceIn(p.start, p.stop)))
         if (!timelineUserSeeking) {
             val progress = (((currentMs - p.start).toDouble() / (p.stop - p.start).coerceAtLeast(1L)
@@ -5604,15 +5639,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun getLiveTimelinePositionMs(): Long {
+        if (isArchivePlayback) return System.currentTimeMillis()
+        if (isPlaybackPaused && liveTimelineAnchorMs > 0L) return liveTimelineAnchorMs
+        return System.currentTimeMillis()
+    }
+
     private fun maxTimelineProgressForLiveSeek(): Int? {
         if (isArchivePlayback) return null
-        val ch = channels.getOrNull(currentChannelIndex) ?: return 0
+        val ch = channels.getOrNull(currentChannelIndex) ?: return null
         val cur =
-            getProgramsForDisplay(ch).find { System.currentTimeMillis() in it.start until it.stop }
-                ?: return 0
-        if (!isArchiveAvailable(ch, cur)) return 0
+            getProgramsForDisplay(ch).find { getLiveTimelinePositionMs() in it.start until it.stop }
+                ?: return null
         val duration = (cur.stop - cur.start).coerceAtLeast(1L)
-        return (((System.currentTimeMillis() - cur.start).toDouble() / duration) * 1000.0)
+        return (((getLiveTimelinePositionMs() - cur.start).toDouble() / duration) * 1000.0)
             .toInt().coerceIn(0, 1000)
     }
 
@@ -5680,10 +5720,9 @@ class MainActivity : AppCompatActivity() {
         } else {
             val ch = channels.getOrNull(currentChannelIndex) ?: return null
             val cur =
-                getProgramsForDisplay(ch).find { System.currentTimeMillis() in it.start until it.stop }
+                getProgramsForDisplay(ch).find { getLiveTimelinePositionMs() in it.start until it.stop }
                     ?: return null
-            if (!isArchiveAvailable(ch, cur)) return null
-            Triple(cur.start, cur.stop, System.currentTimeMillis())
+            Triple(cur.start, cur.stop, getLiveTimelinePositionMs())
         }
     }
 
@@ -5704,7 +5743,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             val ch = channels.getOrNull(currentChannelIndex)
             val cur =
-                ch?.let { getProgramsForDisplay(it).find { pr -> System.currentTimeMillis() in pr.start until pr.stop } }
+                ch?.let { getProgramsForDisplay(it).find { pr -> getLiveTimelinePositionMs() in pr.start until pr.stop } }
             if (ch != null && cur != null && isArchiveAvailable(ch, cur)) {
                 val target =
                     cur.start + ((cur.stop - cur.start) * (clamped / 1000f)).toLong()
@@ -5784,6 +5823,7 @@ class MainActivity : AppCompatActivity() {
         videoOnlyMinimalTriedSoftwareDecoder = false
         audioTrackForcedDisabled = false
         isPlaybackPaused = false
+        liveTimelineAnchorMs = 0L
         isArchivePlayback = false
         currentArchiveProgram = null
         archiveStreamStartMs = 0L
