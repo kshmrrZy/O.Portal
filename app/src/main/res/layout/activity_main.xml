@@ -165,6 +165,8 @@
             android:layout_width="@dimen/player_top_icon_size"
             android:layout_height="@dimen/player_top_icon_size"
             android:layout_gravity="center_vertical"
+            android:background="@drawable/bg_player_top_back"
+            android:padding="8dp"
             android:src="@drawable/back"
             android:contentDescription="Back to menu" />
 
@@ -774,18 +776,30 @@
             android:layout_marginTop="4dp" />
 
         <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/settingsMainPanel"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:visibility="gone"
+            android:background="@drawable/bg_settings_unified_panel"
+            android:clipToOutline="true"
+            app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
+            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
+            app:layout_constraintEnd_toEndOf="@id/ivHomePower"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/userProfileHeaderCard"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="0dp"
             android:minHeight="110dp"
             android:background="@drawable/bg_profile_header_card"
             android:paddingHorizontal="18dp"
             android:paddingVertical="16dp"
             android:visibility="gone"
-            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
-            app:layout_constraintEnd_toEndOf="@id/ivHomePower"
-            app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle">
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
 
             <FrameLayout
                 android:id="@+id/profileAvatarFrame"
@@ -879,13 +893,15 @@
             android:scrollbars="none"
             android:fillViewport="true"
             app:layout_constraintTop_toBottomOf="@id/userProfileHeaderCard"
-            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
-            app:layout_constraintEnd_toEndOf="@id/ivHomePower"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintBottom_toBottomOf="parent">
 
             <include layout="@layout/dialog_settings" />
 
         </ScrollView>
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
 
 
 

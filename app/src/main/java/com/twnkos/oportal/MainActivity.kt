@@ -588,6 +588,12 @@ class MainActivity : AppCompatActivity() {
         tvHomeAppTitle.isClickable = true
         tvHomeAppTitle.isFocusable = false
         tvHomeAppTitle.setOnClickListener { goHomeFromLogoClick() }
+        tvHomeBreadcrumbPill.isClickable = true
+        tvHomeBreadcrumbPill.isFocusable = false
+        tvHomeBreadcrumbPill.setOnClickListener { onBreadcrumbClick() }
+        tvHomeBreadcrumbPill2.isClickable = true
+        tvHomeBreadcrumbPill2.isFocusable = false
+        tvHomeBreadcrumbPill2.setOnClickListener { onBreadcrumbClick() }
         tvHomeBreadcrumbArrow = findViewById(R.id.tvHomeBreadcrumbArrow)
         tvHomeBreadcrumbPill = findViewById(R.id.tvHomeBreadcrumbPill)
         tvHomeBreadcrumbArrow2 = findViewById(R.id.tvHomeBreadcrumbArrow2)
@@ -934,13 +940,11 @@ class MainActivity : AppCompatActivity() {
                 if (!videoOnlyMinimalMode) handler.postDelayed(startupSlowStreamRunnable, 45_000L)
                 isPlaybackPaused = false
                 btnPlayPause.alpha = 1.0f
-                btnPlayPause.isSelected = false
                 btnPlayPause.setImageResource(R.drawable.pause)
             } else {
                 mediaPlayer?.pause()
                 isPlaybackPaused = true
-                btnPlayPause.alpha = 0.72f
-                btnPlayPause.isSelected = true
+                btnPlayPause.alpha = 1.0f
                 btnPlayPause.setImageResource(R.drawable.play)
             }
             showUI()
@@ -1418,6 +1422,17 @@ class MainActivity : AppCompatActivity() {
             setSelectedPlaylistName(p.name)
             loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
         } }, source = "third_party")
+    }
+
+    private fun onBreadcrumbClick() {
+        if (isSettingsModalVisible) {
+            handleSettingsBackPress()
+            return
+        }
+        val categoryBack = findViewById<View>(R.id.tvHomeCategoryBack)
+        if (categoryBack.hasOnClickListeners()) {
+            categoryBack.performClick()
+        }
     }
 
     private fun goHomeFromLogoClick() {
@@ -2451,6 +2466,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartSubtitle.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = true)
         homeSettingsScreen.visibility = View.VISIBLE
+        findViewById<View>(R.id.settingsMainPanel).visibility = View.VISIBLE
 
         val btnPlaylistSettings = findViewById<View>(R.id.btnPlaylistSettings)
         btnPlaylistSettings.post { btnPlaylistSettings.requestFocus() }
@@ -2932,6 +2948,8 @@ class MainActivity : AppCompatActivity() {
     private fun hideSettingsScreen() {
         isSettingsModalVisible = false
         homeSettingsScreen.visibility = View.GONE
+        findViewById<View>(R.id.settingsMainPanel).visibility = View.GONE
+        findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
         findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
@@ -2950,6 +2968,7 @@ class MainActivity : AppCompatActivity() {
             logDebug("NAV", "SETTINGS_CLOSED_FROM_PLAYER")
             playerSettingsOverlay.visibility = View.GONE
             homeSettingsScreen.visibility = View.GONE
+            findViewById<View>(R.id.settingsMainPanel).visibility = View.GONE
             homePanel.visibility = View.GONE
             showUI()
             return
@@ -5469,12 +5488,12 @@ class MainActivity : AppCompatActivity() {
         }
         tvCurrentTime.visibility = View.VISIBLE
         tvProgramEndTime.visibility = View.VISIBLE
-        tvCurrentTime.text = fmt.format(Date(p.start))
         tvProgramEndTime.text = fmt.format(Date(p.stop))
+        val currentMs =
+            if (isArchivePlayback) archiveStreamStartMs + (mediaPlayer?.currentPosition
+                ?: 0L) else System.currentTimeMillis()
+        tvCurrentTime.text = fmt.format(Date(currentMs.coerceIn(p.start, p.stop)))
         if (!timelineUserSeeking) {
-            val currentMs =
-                if (isArchivePlayback) archiveStreamStartMs + (mediaPlayer?.currentPosition
-                    ?: 0L) else System.currentTimeMillis()
             val progress = (((currentMs - p.start).toDouble() / (p.stop - p.start).coerceAtLeast(1L)
                 .toDouble()) * 1000.0).toInt().coerceIn(0, 1000)
             sbTimeline.progress = progress
@@ -5677,6 +5696,8 @@ class MainActivity : AppCompatActivity() {
         settingsOpenedFromPlayer = false
         playerSettingsOverlay.visibility = View.GONE
         homeSettingsScreen.visibility = View.GONE
+        findViewById<View>(R.id.settingsMainPanel).visibility = View.GONE
+        findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
         findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
