@@ -318,20 +318,20 @@
             <FrameLayout
                 android:id="@+id/timelineTrack"
                 android:layout_width="match_parent"
-                android:layout_height="12dp"
+                android:layout_height="16dp"
                 android:layout_marginTop="@dimen/player_timeline_time_gap"
                 android:clickable="true"
                 android:focusable="false">
                 <View
                     android:id="@+id/viewTimelineStripe"
                     android:layout_width="match_parent"
-                    android:layout_height="4dp"
+                    android:layout_height="8dp"
                     android:layout_gravity="center_vertical"
                     android:background="@drawable/player_timeline_stripe_bg" />
                 <View
                     android:id="@+id/viewTimelineLive"
                     android:layout_width="0dp"
-                    android:layout_height="4dp"
+                    android:layout_height="8dp"
                     android:layout_gravity="center_vertical|start"
                     android:background="@drawable/player_timeline_live_bg" />
                 <View
@@ -919,7 +919,7 @@
             android:overScrollMode="ifContentScrolls"
             android:scrollbars="none"
             android:fillViewport="true"
-            android:paddingHorizontal="16dp"
+            android:paddingHorizontal="0dp"
             app:layout_constraintTop_toBottomOf="@id/userProfileHeaderCard"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
