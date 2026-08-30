@@ -273,6 +273,8 @@ class MainActivity : AppCompatActivity() {
     private var isArchivePlayback = false
     private var currentArchiveProgram: Program? = null
     private var timelineUserSeeking = false
+    private var timelineSeekStartProgress = -1
+    private val timelineSeekDeadband = 12
     private var seekStatusHoldUntilMs: Long = 0L
     private var shouldReloadStreamOnStart = false
     @Volatile
@@ -432,6 +434,7 @@ class MainActivity : AppCompatActivity() {
         private const val HOME_BASE_WIDTH = 1280f
         private const val HOME_BASE_HEIGHT = 720f
         private const val HOME_BOTTOM_TILE_TEXT_SP = 18f
+        private val SLEEP_TIMER_OPTIONS = intArrayOf(0, 10, 30, 60, 90, 120)
     }
 
     private val hideUiRunnable = Runnable { hideUI() }
@@ -951,6 +954,7 @@ class MainActivity : AppCompatActivity() {
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     timelineUserSeeking = true
+                    timelineSeekStartProgress = sbTimeline.progress
                     val progress = clampTimelineProgress(timelineProgressFromTouchX(view, event.x))
                     sbTimeline.progress = progress
                     applyTimelineProgressUi(progress)
@@ -967,9 +971,20 @@ class MainActivity : AppCompatActivity() {
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     val progress = clampTimelineProgress(timelineProgressFromTouchX(view, event.x))
-                    sbTimeline.progress = progress
-                    applyTimelineSeekFromProgress(progress)
-                    timelineUserSeeking = false
+                    if (timelineSeekStartProgress >= 0 &&
+                        kotlin.math.abs(progress - timelineSeekStartProgress) < timelineSeekDeadband
+                    ) {
+                        sbTimeline.progress = timelineSeekStartProgress
+                        applyTimelineProgressUi(timelineSeekStartProgress)
+                        timelineUserSeeking = false
+                        timelineSeekStartProgress = -1
+                        updateTimelineUi()
+                    } else {
+                        sbTimeline.progress = progress
+                        applyTimelineSeekFromProgress(progress)
+                        timelineUserSeeking = false
+                        timelineSeekStartProgress = -1
+                    }
                     true
                 }
                 else -> false
@@ -2366,6 +2381,7 @@ class MainActivity : AppCompatActivity() {
     private fun isSettingsSubPanelOpen(): Boolean =
         findViewById<View>(R.id.playlistSettingsPanel).visibility == View.VISIBLE ||
             findViewById<View>(R.id.epgSettingsPanel).visibility == View.VISIBLE ||
+            findViewById<View>(R.id.sleepTimerSettingsPanel).visibility == View.VISIBLE ||
             findViewById<View>(R.id.userSettingsPanel).visibility == View.VISIBLE ||
             findViewById<View>(R.id.appInfoPanel).visibility == View.VISIBLE
 
@@ -2373,6 +2389,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.userProfileHeaderCard).visibility = View.VISIBLE
         findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.sleepTimerSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
         val settingsRowIds = intArrayOf(
@@ -2558,7 +2575,6 @@ class MainActivity : AppCompatActivity() {
         val btnEpgSelect = findViewById<View>(R.id.btnEpgSelect)
         val tbStartMode = findViewById<ToggleButton>(R.id.tbStartMode)
         val sleepRow = findViewById<View>(R.id.btnSleepTimerSettings)
-        val tvSleepTimerValue = findViewById<TextView>(R.id.tvSleepTimerValue)
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
         val btnExportDebugLog = findViewById<View>(R.id.btnExportDebugLog)
@@ -2598,6 +2614,7 @@ class MainActivity : AppCompatActivity() {
         val epgSettingsPanel = findViewById<View>(R.id.epgSettingsPanel)
         playlistSettingsPanel.visibility = View.GONE
         epgSettingsPanel.visibility = View.GONE
+        findViewById<View>(R.id.sleepTimerSettingsPanel).visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
         settingsRows.forEach { it.visibility = View.VISIBLE }
         btnExportDebugLog.visibility = View.GONE
@@ -2605,61 +2622,18 @@ class MainActivity : AppCompatActivity() {
         btnExportDebugLog.isClickable = false
         btnPlaylistSettings.setOnClickListener { openPlaylistSettingsScreen() }
         btnEpgSelect.setOnClickListener { openEpgSettingsScreen() }
-        val sleepOptions = arrayOf(0, 10, 30, 60, 90, 120)
-        var sleepIndex =
-            sleepOptions.indexOf(prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)).takeIf { it >= 0 } ?: 0
-
-        fun updateSleepButtonVisual() {
-            val selected = sleepOptions[sleepIndex]
-            val active = selected > 0
-            sleepRow.setBackgroundResource(
-                if (active) R.drawable.bg_settings_grid_card_focused else R.drawable.bg_settings_grid_card_normal
-            )
-            tvSleepTimerValue.setTextColor(
-                if (active) Color.parseColor("#FFFFFF") else Color.parseColor("#99FFFFFF")
-            )
-            tvSleepTimerValue.textSize = if (active) 14f else 13f
-        }
-
-        fun applySleepSelection() {
-            val selected = sleepOptions[sleepIndex]
-            prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, selected).apply()
-            if (selected == 0) {
-                cancelSleepTimer()
-                tvSleepTimerValue.text = "выключено"
-                showAppToast("Таймер сна: выключен", 1800L)
-            } else {
-                startSleepTimer(selected)
-                tvSleepTimerValue.text = "выставлено: $selected мин"
-                showAppToast("Таймер сна: $selected мин", 1800L)
-            }
-            updateSleepButtonVisual()
-        }
-
-        fun changeSleep() {
-            sleepIndex = (sleepIndex + 1) % sleepOptions.size
-            applySleepSelection()
-        }
-        val savedMinutes = prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)
-        sleepIndex = sleepOptions.indexOf(savedMinutes).takeIf { it >= 0 } ?: 0
-        if (savedMinutes > 0) {
-            tvSleepTimerValue.text = "выставлено: $savedMinutes мин"
-        } else {
-            tvSleepTimerValue.text = "выключено"
-        }
-        updateSleepButtonVisual()
+        updateSleepTimerGridLabel()
         sleepRow.isFocusable = true
-        sleepRow.setOnClickListener { changeSleep() }
+        sleepRow.setOnClickListener { openSleepTimerSettingsScreen() }
         sleepRow.setOnKeyListener { _, keyCode, event ->
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_CENTER,
                 KeyEvent.KEYCODE_ENTER,
                 KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                    changeSleep()
+                    openSleepTimerSettingsScreen()
                     true
                 }
-
                 else -> false
             }
         }
@@ -2700,6 +2674,92 @@ class MainActivity : AppCompatActivity() {
         configureBackButtonsForSettings("showSettingsDialog_final")
     }
 
+    private fun formatSleepTimerValue(minutes: Int): String =
+        if (minutes <= 0) "выключено" else "$minutes мин"
+
+    private fun updateSleepTimerGridLabel() {
+        val minutes = prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)
+        val label = findViewById<TextView>(R.id.tvSleepTimerGridLabel)
+        val sleepRow = findViewById<View>(R.id.btnSleepTimerSettings)
+        val active = minutes > 0
+        label?.text = if (active) "Настройки таймера · $minutes мин" else "Настройки таймера"
+        sleepRow?.setBackgroundResource(
+            if (active) R.drawable.bg_settings_grid_card_focused else R.drawable.bg_settings_grid_card_normal
+        )
+    }
+
+    private fun applySleepTimerMinutes(minutes: Int) {
+        prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, minutes).apply()
+        if (minutes <= 0) {
+            cancelSleepTimer()
+        } else {
+            startSleepTimer(minutes)
+        }
+        updateSleepTimerGridLabel()
+    }
+
+    private fun openSleepTimerSettingsScreen() {
+        findViewById<View>(R.id.userProfileHeaderCard).visibility = View.VISIBLE
+        val sleepPanel = findViewById<View>(R.id.sleepTimerSettingsPanel)
+        val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
+        val settingsRows = listOf(
+            findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect),
+            findViewById<View>(R.id.btnSleepTimerSettings),
+            findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings),
+            findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo),
+            findViewById<View>(R.id.btnResetSettings), findViewById<View>(R.id.btnLogoutProfile)
+        )
+        settingsRows.forEach { it.visibility = View.GONE }
+        findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
+        userSettingsPanel.visibility = View.GONE
+        sleepPanel.visibility = View.VISIBLE
+        applyHomeAppTitleStyle(
+            settingsMode = true,
+            settingsTitle = "настройки",
+            settingsTitle2 = "настройки таймера"
+        )
+
+        val tvPanelValue = findViewById<TextView>(R.id.tvSleepTimerPanelValue)
+        var sleepIndex =
+            SLEEP_TIMER_OPTIONS.indexOf(prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)).takeIf { it >= 0 } ?: 0
+
+        fun refreshPanelValue() {
+            tvPanelValue.text = formatSleepTimerValue(SLEEP_TIMER_OPTIONS[sleepIndex])
+        }
+        refreshPanelValue()
+
+        val cycleArea = findViewById<View>(R.id.btnSleepTimerCycleArea)
+        cycleArea.setOnClickListener {
+            sleepIndex = (sleepIndex + 1) % SLEEP_TIMER_OPTIONS.size
+            val selected = SLEEP_TIMER_OPTIONS[sleepIndex]
+            applySleepTimerMinutes(selected)
+            refreshPanelValue()
+            showAppToast(
+                if (selected <= 0) "Таймер сна: выключен" else "Таймер сна: $selected мин",
+                1800L
+            )
+        }
+        cycleArea.setOnKeyListener { _, keyCode, event ->
+            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_CENTER,
+                KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    cycleArea.performClick()
+                    true
+                }
+                else -> false
+            }
+        }
+        findViewById<View>(R.id.btnBackSleepTimerSettings).setOnClickListener {
+            handleSettingsBackPress()
+        }
+        configureBackButtonsForSettings("openSleepTimerSettingsScreen")
+        cycleArea.post { cycleArea.requestFocus() }
+    }
+
     private fun openPlaylistSettingsScreen() {
         findViewById<View>(R.id.userProfileHeaderCard).visibility = View.VISIBLE
         val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
@@ -2715,6 +2775,7 @@ class MainActivity : AppCompatActivity() {
         settingsRows.forEach { it.visibility = View.GONE }
         userSettingsPanel.visibility = View.GONE
         findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
+        findViewById<View>(R.id.sleepTimerSettingsPanel).visibility = View.GONE
         playlistPanel.visibility = View.VISIBLE
         tvSettingsBack.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "настройки", settingsTitle2 = "настройки плейлистов")
@@ -2817,6 +2878,7 @@ class MainActivity : AppCompatActivity() {
         playlistPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
         findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
+        findViewById<View>(R.id.sleepTimerSettingsPanel).visibility = View.GONE
         epgPanel.visibility = View.VISIBLE
         tvSettingsBack.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "настройки", settingsTitle2 = "настройки EPG")
@@ -3032,6 +3094,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
         findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.sleepTimerSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = false)
@@ -5744,15 +5807,34 @@ class MainActivity : AppCompatActivity() {
         val clamped = clampTimelineProgress(progress)
         if (isArchivePlayback) {
             val p = currentArchiveProgram ?: return
+            val duration = (p.stop - p.start).coerceAtLeast(1L)
+            val currentOffset = mediaPlayer?.currentPosition ?: 0L
+            val currentProgress =
+                ((currentOffset.toDouble() / duration.toDouble()) * 1000.0).toInt().coerceIn(0, 1000)
+            if (kotlin.math.abs(clamped - currentProgress) < timelineSeekDeadband) {
+                updateTimelineUi()
+                return
+            }
             val target = p.start + ((p.stop - p.start) * (clamped / 1000f)).toLong()
             seekArchiveTo(target)
         } else {
+            val maxLive = maxTimelineProgressForLiveSeek()
+            if (maxLive != null && clamped >= maxLive - timelineSeekDeadband) {
+                updateTimelineUi()
+                return
+            }
             val ch = channels.getOrNull(currentChannelIndex)
             val cur =
                 ch?.let { getProgramsForDisplay(it).find { pr -> getLiveTimelinePositionMs() in pr.start until pr.stop } }
             if (ch != null && cur != null && isArchiveAvailable(ch, cur)) {
                 val target =
                     cur.start + ((cur.stop - cur.start) * (clamped / 1000f)).toLong()
+                val currentMs = getLiveTimelinePositionMs()
+                val deltaMs = kotlin.math.abs(target - currentMs)
+                if (deltaMs < 15_000L) {
+                    updateTimelineUi()
+                    return
+                }
                 playArchiveProgram(ch, cur)
                 handler.postDelayed({ seekArchiveTo(target) }, 450L)
             } else if (ch != null && cur != null) {
@@ -5890,6 +5972,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
         findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.sleepTimerSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
     }
 
