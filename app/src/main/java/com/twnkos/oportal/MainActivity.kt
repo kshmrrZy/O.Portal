@@ -695,6 +695,12 @@ class MainActivity : AppCompatActivity() {
         val widthScale = panelWidth.toFloat() / HOME_BASE_WIDTH
         val heightScale = panelHeight.toFloat() / HOME_BASE_HEIGHT
         val scale = minOf(widthScale, heightScale)
+        logDebug(
+            "HOME_SCALE",
+            "panelWidth=$panelWidth panelHeight=$panelHeight density=${resources.displayMetrics.density} " +
+                "densityDpi=${resources.displayMetrics.densityDpi} widthScale=$widthScale heightScale=$heightScale " +
+                "scale=$scale resultingTitlePx=${36f * scale}"
+        )
 
         tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 36f * scale)
         tvHomeBreadcrumbArrow.setTextSize(TypedValue.COMPLEX_UNIT_PX, 24f * scale)
@@ -1314,6 +1320,7 @@ class MainActivity : AppCompatActivity() {
     private fun showThirdPartyTilesOnHome(thirdParty: List<PlaylistProfile>) {
         showStartPage()
         showPlaylistPageHeader(false)
+        findViewById<View>(R.id.homeBottomTilesRow).visibility = View.GONE
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         homePlaylistTilesPanel.visibility = View.VISIBLE
@@ -1382,27 +1389,36 @@ class MainActivity : AppCompatActivity() {
         val token = (prefs.getString(PREF_USER_TOKEN, "") ?: "").trim()
         val thirdParty = getThirdPartyPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
         val known = getKnownServiceNames() + "Избранные"
-        val profiles = if (token.isNotBlank()) {
-            val base = getPlaylistProfiles().filter { it.name in known && it.enabled && it.value.isNotBlank() }
-            if (thirdParty.isNotEmpty()) base + listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else base
-        } else if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
-        bindHomeTiles(profiles.map { p ->
-            val displayName = when {
-                p.type == "group" && p.value == "third_party" -> "▶ Свои плейлисты"
-                p.name == "Избранные" -> "★ Избранные каналы"
-                else -> p.name
-            }
-            HomeTileItem(displayName) {
-                if (p.type == "group" && p.value == "third_party") {
-                    showThirdPartyTilesOnHome(thirdParty)
-                } else {
-                    logDebug("NAV", "playlist_click name=${p.name}")
-                    hasStartedPlaybackFromChannelClick = false
-                    setSelectedPlaylistName(p.name)
-                    loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
-                }
+        val services = if (token.isNotBlank()) {
+            getPlaylistProfiles().filter { it.name in known && it.name != "Избранные" && it.enabled && it.value.isNotBlank() }
+        } else {
+            emptyList()
+        }
+        bindHomeTiles(services.map { p ->
+            HomeTileItem(p.name) {
+                logDebug("NAV", "playlist_click name=${p.name}")
+                hasStartedPlaybackFromChannelClick = false
+                setSelectedPlaylistName(p.name)
+                loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
             }
         }, source = source, titleSizeSp = 24f)
+
+        val favoritesProfile = getPlaylistProfiles().firstOrNull { it.name == "Избранные" && it.enabled && it.value.isNotBlank() }
+        val bottomRow = findViewById<View>(R.id.homeBottomTilesRow)
+        val btnOwnPlaylistsTile = findViewById<View>(R.id.btnOwnPlaylistsTile)
+        val btnFavoritesTile = findViewById<View>(R.id.btnFavoritesTile)
+        val showOwnPlaylists = thirdParty.isNotEmpty()
+        val showFavorites = favoritesProfile != null
+        bottomRow.visibility = if (showOwnPlaylists || showFavorites) View.VISIBLE else View.GONE
+        btnOwnPlaylistsTile.visibility = if (showOwnPlaylists) View.VISIBLE else View.GONE
+        btnFavoritesTile.visibility = if (showFavorites) View.VISIBLE else View.GONE
+        btnOwnPlaylistsTile.setOnClickListener { showThirdPartyTilesOnHome(thirdParty) }
+        btnFavoritesTile.setOnClickListener {
+            logDebug("NAV", "playlist_click name=Избранные")
+            hasStartedPlaybackFromChannelClick = false
+            setSelectedPlaylistName("Избранные")
+            loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
+        }
     }
 
 
@@ -1432,6 +1448,7 @@ class MainActivity : AppCompatActivity() {
         logDebug("PLAYLIST_FLOW", "OPEN_CATEGORY_SCREEN playlist=$playlistName")
         showStartPage()
         showPlaylistPageHeader(showWelcome = true, showTitle = false)
+        findViewById<View>(R.id.homeBottomTilesRow).visibility = View.GONE
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         gvHomeChannelList.visibility = View.GONE
@@ -2784,6 +2801,10 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     portal.add(PlaylistProfile("Избранные", "url", "https://o.avff.pw/my/$cleanToken.m3u", true))
+                    logDebug(
+                        "PLAYLIST_FLOW",
+                        "SERVICES_RAW_RESPONSE names=${portal.map { it.name }} rawServicesCount=${servicesArray?.length() ?: 0}"
+                    )
                     handler.post {
                         prefs.edit().putStringSet(
                             PREF_KNOWN_SERVICE_NAMES,
