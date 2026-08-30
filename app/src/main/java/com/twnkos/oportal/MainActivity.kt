@@ -431,6 +431,7 @@ class MainActivity : AppCompatActivity() {
 
         private const val HOME_BASE_WIDTH = 1280f
         private const val HOME_BASE_HEIGHT = 720f
+        private const val HOME_BOTTOM_TILE_TEXT_SP = 18f
     }
 
     private val hideUiRunnable = Runnable { hideUI() }
@@ -754,20 +755,20 @@ class MainActivity : AppCompatActivity() {
         (findViewById<View>(R.id.userProfileHeaderCard).layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
         }
-        findViewById<View>(R.id.userProfileHeaderCard).minimumHeight = scalePx(112f, scale)
-        height(R.id.profileAvatarFrame, 72f)
+        findViewById<View>(R.id.userProfileHeaderCard).minimumHeight = scalePx(128f, scale)
+        height(R.id.profileAvatarFrame, 88f)
         (findViewById<View>(R.id.profileAvatarFrame).layoutParams as? ViewGroup.LayoutParams)?.let { lp ->
-            lp.width = scalePx(72f, scale)
+            lp.width = scalePx(88f, scale)
         }
         (findViewById<ImageView>(R.id.ivProfileAvatar).layoutParams as? ViewGroup.LayoutParams)?.let { lp ->
-            lp.width = scalePx(28f, scale)
-            lp.height = scalePx(28f, scale)
+            lp.width = scalePx(36f, scale)
+            lp.height = scalePx(36f, scale)
         }
-        textSize(R.id.tvProfileName, 22f)
-        textSize(R.id.tvProfileNickname, 14f)
-        textSize(R.id.tvProfileTokenLabel, 14f)
-        height(R.id.tvProfileTokenValue, 30f)
-        textSize(R.id.tvProfileTokenValue, 11f)
+        textSize(R.id.tvProfileName, 24f)
+        textSize(R.id.tvProfileNickname, 15f)
+        textSize(R.id.tvProfileTokenLabel, 15f)
+        height(R.id.tvProfileTokenValue, 34f)
+        textSize(R.id.tvProfileTokenValue, 12f)
 
         // Сетка настроек (6 карточек)
         listOf(
@@ -776,13 +777,13 @@ class MainActivity : AppCompatActivity() {
         ).forEach { height(it, 66f) }
 
         // Красные кнопки
-        height(R.id.btnResetSettings, 52f)
-        height(R.id.btnLogoutProfile, 52f)
+        height(R.id.btnResetSettings, 66f)
+        height(R.id.btnLogoutProfile, 66f)
 
-        // Нижний ряд (свои плейлисты / избранные)
-        height(R.id.btnOwnPlaylistsTile, 56f)
-        height(R.id.btnFavoritesTile, 56f)
-        setupHomeBottomActionTiles(computeContentDpScale())
+        // Нижний ряд (свои плейлисты / избранные) — только геометрия, текст как у плиток сервисов
+        height(R.id.btnOwnPlaylistsTile, 66f)
+        height(R.id.btnFavoritesTile, 66f)
+        setupHomeBottomActionTiles(scale, HOME_BOTTOM_TILE_TEXT_SP)
 
         // Поля EPG/плейлистов
         listOf(R.id.etEpgUrl1, R.id.etEpgUrl2, R.id.etEpgUrl3, R.id.etPlaylistUrl1, R.id.etPlaylistUrl2, R.id.etPlaylistUrl3)
@@ -850,11 +851,11 @@ class MainActivity : AppCompatActivity() {
         val bottomTileHeight = scalePx(66f, scale)
         findViewById<View>(R.id.btnOwnPlaylistsTile).layoutParams.height = bottomTileHeight
         findViewById<View>(R.id.btnFavoritesTile).layoutParams.height = bottomTileHeight
-        setupHomeBottomActionTiles(scale, scaledSp(18f))
+        setupHomeBottomActionTiles(scale, HOME_BOTTOM_TILE_TEXT_SP)
         applyHomeBottomTilesGeometry()
     }
 
-    private fun setupHomeBottomActionTiles(scale: Float = 1f, textSizeSp: Float = 18f) {
+    private fun setupHomeBottomActionTiles(scale: Float = 1f, textSizeSp: Float = HOME_BOTTOM_TILE_TEXT_SP) {
         bindHomeBottomActionTile(
             findViewById(R.id.btnOwnPlaylistsTile),
             R.drawable.ic_play,
@@ -883,6 +884,7 @@ class MainActivity : AppCompatActivity() {
         icon?.setImageResource(iconRes)
         labelView?.text = label
         labelView?.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
+        labelView?.includeFontPadding = false
         golosTypeface?.let { labelView?.typeface = Typeface.create(it, Typeface.NORMAL) }
         val iconSize = scalePx(22f, scale)
         icon?.layoutParams = icon?.layoutParams?.apply {
@@ -945,7 +947,7 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        timelineArea.setOnTouchListener { view, event ->
+        timelineTrack.setOnTouchListener { view, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     timelineUserSeeking = true
@@ -1405,7 +1407,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         val contentScale = computeContentDpScale()
-        setupHomeBottomActionTiles(contentScale, 18f * contentScale)
+        setupHomeBottomActionTiles(contentScale, HOME_BOTTOM_TILE_TEXT_SP)
     }
 
     private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic", titleSizeSp: Float = 18f) {
@@ -2616,6 +2618,7 @@ class MainActivity : AppCompatActivity() {
             tvSleepTimerValue.setTextColor(
                 if (active) Color.parseColor("#FFFFFF") else Color.parseColor("#99FFFFFF")
             )
+            tvSleepTimerValue.textSize = if (active) 14f else 13f
         }
 
         fun applySleepSelection() {
@@ -2624,9 +2627,11 @@ class MainActivity : AppCompatActivity() {
             if (selected == 0) {
                 cancelSleepTimer()
                 tvSleepTimerValue.text = "выключено"
+                showAppToast("Таймер сна: выключен", 1800L)
             } else {
                 startSleepTimer(selected)
                 tvSleepTimerValue.text = "выставлено: $selected мин"
+                showAppToast("Таймер сна: $selected мин", 1800L)
             }
             updateSleepButtonVisual()
         }
@@ -3062,6 +3067,7 @@ class MainActivity : AppCompatActivity() {
                 showPlaylistPageOnHome()
             }
             settingsOpenedFromHomeChannelList = false
+            homePanel.post { applyHomeScreenScale(force = true) }
         } else {
             tvHomeStartTitle.visibility = View.VISIBLE
             tvHomeStartSubtitle.visibility = View.VISIBLE
@@ -5674,20 +5680,20 @@ class MainActivity : AppCompatActivity() {
         }
         val thumbSize = viewTimelineThumb.width.takeIf { it > 0 }
             ?: resources.getDimensionPixelSize(R.dimen.player_timeline_thumb_size)
-        val maxOffset = (trackWidth - thumbSize).coerceAtLeast(0)
-        val offset = (maxOffset * (progress / 1000f)).toInt()
-        viewTimelineThumb.translationX = offset.toFloat()
+        val thumbCenter = trackWidth * (progress / 1000f)
+        val offset = (thumbCenter - thumbSize / 2f).coerceIn(0f, (trackWidth - thumbSize).toFloat())
+        viewTimelineThumb.translationX = offset
     }
 
     private fun applyTimelineLiveWidth(progress: Int) {
-        val trackWidth = viewTimelineStripe.width
+        val trackWidth = timelineTrack.width
         if (trackWidth <= 0) {
-            // Разметка ещё не измерена — попробуем ещё раз на следующем кадре.
-            viewTimelineStripe.post { applyTimelineLiveWidth(progress) }
+            timelineTrack.post { applyTimelineLiveWidth(progress) }
             return
         }
         val lp = viewTimelineLive.layoutParams ?: return
-        val targetWidth = (trackWidth * (progress / 1000.0)).toInt().coerceIn(0, trackWidth)
+        val thumbCenter = (trackWidth * (progress / 1000f)).toInt()
+        val targetWidth = thumbCenter.coerceIn(0, trackWidth)
         if (lp.width != targetWidth) {
             lp.width = targetWidth
             viewTimelineLive.layoutParams = lp
@@ -5749,6 +5755,9 @@ class MainActivity : AppCompatActivity() {
                     cur.start + ((cur.stop - cur.start) * (clamped / 1000f)).toLong()
                 playArchiveProgram(ch, cur)
                 handler.postDelayed({ seekArchiveTo(target) }, 450L)
+            } else if (ch != null && cur != null) {
+                showAppToast("Архив передачи недоступен для этого канала", 2500L)
+                updateTimelineUi()
             }
         }
     }
