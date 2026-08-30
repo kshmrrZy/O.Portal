@@ -684,6 +684,87 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun computeContentDpScale(): Float {
+        val dm = resources.displayMetrics
+        val widthDp = dm.widthPixels / dm.density
+        val heightDp = dm.heightPixels / dm.density
+        val rawScale = minOf(widthDp / 1280f, heightDp / 720f)
+        return rawScale.coerceIn(0.45f, 1.35f)
+    }
+
+    private fun scalePx(baseDp: Float, scale: Float): Int =
+        (baseDp * scale * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+
+    private fun applySettingsContentScale() {
+        val scale = computeContentDpScale()
+
+        fun height(id: Int, baseDp: Float) {
+            val v = findViewById<View>(id)
+            val lp = v.layoutParams ?: return
+            lp.height = scalePx(baseDp, scale)
+            v.layoutParams = lp
+        }
+        fun textSize(id: Int, baseSp: Float) {
+            findViewById<TextView>(id).setTextSize(TypedValue.COMPLEX_UNIT_PX, baseSp * scale * resources.displayMetrics.density)
+        }
+
+        // Карточка профиля
+        (findViewById<View>(R.id.userProfileHeaderCard).layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
+        }
+        findViewById<View>(R.id.userProfileHeaderCard).minimumHeight = scalePx(110f, scale)
+        height(R.id.profileAvatarFrame, 60f)
+        (findViewById<View>(R.id.profileAvatarFrame).layoutParams as? ViewGroup.LayoutParams)?.let { lp ->
+            lp.width = scalePx(60f, scale)
+        }
+        textSize(R.id.tvProfileName, 20f)
+        textSize(R.id.tvProfileNickname, 13f)
+        textSize(R.id.tvProfileTokenLabel, 13f)
+        height(R.id.tvProfileTokenValue, 22f)
+        textSize(R.id.tvProfileTokenValue, 10f)
+
+        // Сетка настроек (6 карточек)
+        listOf(
+            R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings,
+            R.id.btnUserSettings, R.id.btnAdvancedSettings, R.id.btnAppInfo
+        ).forEach { height(it, 66f) }
+
+        // Красные кнопки
+        height(R.id.btnResetSettings, 52f)
+        height(R.id.btnLogoutProfile, 52f)
+
+        // Нижний ряд (свои плейлисты / избранные)
+        height(R.id.btnOwnPlaylistsTile, 66f)
+        height(R.id.btnFavoritesTile, 66f)
+        textSize(R.id.btnOwnPlaylistsTile, 24f)
+        textSize(R.id.btnFavoritesTile, 24f)
+
+        // Поля EPG/плейлистов
+        listOf(R.id.etEpgUrl1, R.id.etEpgUrl2, R.id.etEpgUrl3, R.id.etPlaylistUrl1, R.id.etPlaylistUrl2, R.id.etPlaylistUrl3)
+            .forEach { id ->
+                height(id, 34f)
+                textSize(id, 12f)
+            }
+        listOf(R.id.ivPlaylistToggle1, R.id.ivPlaylistToggle2, R.id.ivPlaylistToggle3).forEach { height(it, 34f) }
+
+        // Кнопки-действия (Сохранить/Назад/Использовать свои/Сбросить кэш)
+        listOf(
+            R.id.btnResetEpgCache, R.id.tbEpgSourceMode, R.id.btnSaveEpgSettings, R.id.btnRefreshEpgSettings,
+            R.id.btnSavePlaylistSettings, R.id.btnRefreshPlaylistSettings
+        ).forEach { id ->
+            height(id, 66f)
+            textSize(id, 18f)
+        }
+
+        // Поля авторизации
+        listOf(R.id.etUserLoginInline, R.id.etUserTokenInline).forEach { id ->
+            height(id, 52f)
+            textSize(id, 16f)
+        }
+        height(R.id.btnUserAuthInline, 43f)
+        textSize(R.id.btnUserAuthInline, 20f)
+    }
+
     private fun applyHomeScreenScale(force: Boolean = false) {
         val panelWidth = homePanel.width.takeIf { it > 0 } ?: return
         val panelHeight = homePanel.height.takeIf { it > 0 } ?: return
@@ -2292,6 +2373,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSettingsDialog() {
         updateProfileHeaderCard()
+        applySettingsContentScale()
         showPlaylistPageHeader(showWelcome = false, showTitle = false)
         findViewById<View>(R.id.tvSettingsBack).visibility = View.GONE
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
