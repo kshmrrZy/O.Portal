@@ -727,17 +727,17 @@ class MainActivity : AppCompatActivity() {
         listOf(
             R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings,
             R.id.btnUserSettings, R.id.btnAdvancedSettings, R.id.btnAppInfo
-        ).forEach { height(it, 66f) }
+        ).forEach { height(it, 56f) }
 
         // Красные кнопки
         height(R.id.btnResetSettings, 52f)
         height(R.id.btnLogoutProfile, 52f)
 
         // Нижний ряд (свои плейлисты / избранные)
-        height(R.id.btnOwnPlaylistsTile, 66f)
-        height(R.id.btnFavoritesTile, 66f)
-        textSize(R.id.btnOwnPlaylistsTile, 24f)
-        textSize(R.id.btnFavoritesTile, 24f)
+        height(R.id.btnOwnPlaylistsTile, 56f)
+        height(R.id.btnFavoritesTile, 56f)
+        textSize(R.id.btnOwnPlaylistsTile, 21f)
+        textSize(R.id.btnFavoritesTile, 21f)
 
         // Поля EPG/плейлистов
         listOf(R.id.etEpgUrl1, R.id.etEpgUrl2, R.id.etEpgUrl3, R.id.etPlaylistUrl1, R.id.etPlaylistUrl2, R.id.etPlaylistUrl3)
@@ -752,8 +752,8 @@ class MainActivity : AppCompatActivity() {
             R.id.btnResetEpgCache, R.id.tbEpgSourceMode, R.id.btnSaveEpgSettings, R.id.btnRefreshEpgSettings,
             R.id.btnSavePlaylistSettings, R.id.btnRefreshPlaylistSettings
         ).forEach { id ->
-            height(id, 66f)
-            textSize(id, 18f)
+            height(id, 56f)
+            textSize(id, 16f)
         }
 
         // Поля авторизации
@@ -935,11 +935,13 @@ class MainActivity : AppCompatActivity() {
                 isPlaybackPaused = false
                 btnPlayPause.alpha = 1.0f
                 btnPlayPause.isSelected = false
+                btnPlayPause.setImageResource(R.drawable.pause)
             } else {
                 mediaPlayer?.pause()
                 isPlaybackPaused = true
                 btnPlayPause.alpha = 0.72f
                 btnPlayPause.isSelected = true
+                btnPlayPause.setImageResource(R.drawable.play)
             }
             showUI()
         }
@@ -1117,7 +1119,7 @@ class MainActivity : AppCompatActivity() {
         private val tileHeight: Int,
         private val spacing: Int,
         private val columns: Int,
-        private val titleSizeSp: Float = 20f
+        private val titleSizeSp: Float = 17f
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         private var tileItems: List<HomeTileItem> = emptyList()
 
@@ -1299,7 +1301,7 @@ class MainActivity : AppCompatActivity() {
         val preferredTileWidth = dpToPx(112)
         var spacing = if (columns > 1) {
             ((availableWidth - preferredTileWidth * columns) / (columns - 1))
-                .coerceIn(dpToPx(10), dpToPx(20))
+                .coerceIn(dpToPx(8), dpToPx(14))
         } else {
             0
         }
@@ -1318,7 +1320,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val tileHeight = (tileWidth * 0.46f).toInt().coerceAtLeast(dpToPx(50))
+        val tileHeight = (tileWidth * 0.34f).toInt().coerceAtLeast(dpToPx(44))
 
         return HomeGridGeometry(
             columns = columns,
@@ -1334,7 +1336,7 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic", titleSizeSp: Float = 20f) {
+    private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic", titleSizeSp: Float = 17f) {
         currentHomeTilesItems = items
         applyHomeGridContainerGeometry(source)
         if (rvHomeTiles.width <= 0) {
@@ -1406,7 +1408,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartSubtitle.visibility = View.GONE
         homePlaylistTilesPanel.visibility = View.VISIBLE
         disableHomeCategoryBack("showThirdPartyTilesOnHome_before_show")
-        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "категории", settingsTitle2 = "Плейлисты")
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "категории", settingsTitle2 = "Сторонние плейлисты")
         enableHomeCategoryBack { showPlaylistPageOnHome() }
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
         val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }
@@ -1482,7 +1484,7 @@ class MainActivity : AppCompatActivity() {
                 setSelectedPlaylistName(p.name)
                 loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
             }
-        }, source = source, titleSizeSp = 24f)
+        }, source = source, titleSizeSp = 21f)
 
         val favoritesProfile = getPlaylistProfiles().firstOrNull { it.name == "Избранные" && it.enabled && it.value.isNotBlank() }
         val bottomRow = findViewById<View>(R.id.homeBottomTilesRow)
@@ -2271,6 +2273,7 @@ class MainActivity : AppCompatActivity() {
             findViewById<View>(R.id.appInfoPanel).visibility == View.VISIBLE
 
     private fun returnToSettingsRowList() {
+        findViewById<View>(R.id.userProfileHeaderCard).visibility = View.VISIBLE
         findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
@@ -2372,6 +2375,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSettingsDialog() {
+        findViewById<View>(R.id.userProfileHeaderCard).visibility = View.VISIBLE
         updateProfileHeaderCard()
         applySettingsContentScale()
         showPlaylistPageHeader(showWelcome = false, showTitle = false)
@@ -2601,6 +2605,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openPlaylistSettingsScreen() {
+        findViewById<View>(R.id.userProfileHeaderCard).visibility = View.VISIBLE
         val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
         val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
         val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
@@ -2680,6 +2685,7 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun showAppInfoScreen() {
+        findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
         val appInfoPanel = findViewById<View>(R.id.appInfoPanel)
         val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
         val epgPanel = findViewById<View>(R.id.epgSettingsPanel)
@@ -2705,6 +2711,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openEpgSettingsScreen() {
+        findViewById<View>(R.id.userProfileHeaderCard).visibility = View.VISIBLE
         val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
         val epgPanel = findViewById<View>(R.id.epgSettingsPanel)
         val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
@@ -5446,7 +5453,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateTimelineUi() {
-        val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val p =
             if (isArchivePlayback) currentArchiveProgram else channels.getOrNull(currentChannelIndex)
                 ?.let { ch ->

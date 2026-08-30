@@ -466,7 +466,7 @@
                     android:id="@+id/btnLiveReload"
                     android:layout_width="66dp"
                     android:layout_height="30dp"
-                    android:background="@drawable/bg_player_quality_badge"
+                    android:background="@drawable/bg_player_live_badge"
                     android:defaultFocusHighlightEnabled="false"
                     android:fontFamily="@font/golos_text"
                     android:gravity="center"
@@ -773,6 +773,102 @@
             app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
             android:layout_marginTop="4dp" />
 
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/userProfileHeaderCard"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:minHeight="110dp"
+            android:background="@drawable/bg_profile_header_card"
+            android:paddingHorizontal="18dp"
+            android:paddingVertical="16dp"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
+            app:layout_constraintEnd_toEndOf="@id/ivHomePower"
+            app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle">
+
+            <FrameLayout
+                android:id="@+id/profileAvatarFrame"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:background="@drawable/bg_profile_avatar"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent">
+
+                <ImageView
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/profile"
+                    android:tint="#FFFFFF" />
+            </FrameLayout>
+
+            <TextView
+                android:id="@+id/tvProfileName"
+                style="@style/AppGolosText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="18dp"
+                android:text="Пользователь"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                app:layout_constraintStart_toEndOf="@id/profileAvatarFrame"
+                app:layout_constraintTop_toTopOf="@id/profileAvatarFrame" />
+
+            <TextView
+                android:id="@+id/tvProfileNickname"
+                style="@style/AppGolosText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:text="@nickname"
+                android:textColor="#80FFFFFF"
+                android:textSize="13sp"
+                app:layout_constraintStart_toStartOf="@id/tvProfileName"
+                app:layout_constraintTop_toBottomOf="@id/tvProfileName" />
+
+            <TextView
+                android:id="@+id/tvProfileTokenLabel"
+                style="@style/AppGolosText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Токен:"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                app:layout_constraintStart_toStartOf="@id/tvProfileName"
+                app:layout_constraintTop_toBottomOf="@id/tvProfileNickname" />
+
+            <TextView
+                android:id="@+id/tvProfileTokenValue"
+                style="@style/AppGolosText"
+                android:layout_width="200dp"
+                android:layout_height="22dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_settings_row"
+                android:gravity="center"
+                android:singleLine="true"
+                android:ellipsize="middle"
+                android:paddingHorizontal="8dp"
+                android:textColor="#80FFFFFF"
+                android:textSize="10sp"
+                app:layout_constraintStart_toEndOf="@id/tvProfileTokenLabel"
+                app:layout_constraintTop_toTopOf="@id/tvProfileTokenLabel"
+                app:layout_constraintBottom_toBottomOf="@id/tvProfileTokenLabel" />
+
+            <ImageView
+                android:id="@+id/btnProfileChangeToken"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:layout_marginStart="10dp"
+                android:src="@drawable/ic_refresh_small"
+                app:layout_constraintStart_toEndOf="@id/tvProfileTokenValue"
+                app:layout_constraintTop_toTopOf="@id/tvProfileTokenValue"
+                app:layout_constraintBottom_toBottomOf="@id/tvProfileTokenValue" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
         <ScrollView
             android:id="@+id/homeSettingsScreen"
             android:layout_width="0dp"
@@ -782,7 +878,7 @@
             android:overScrollMode="ifContentScrolls"
             android:scrollbars="none"
             android:fillViewport="true"
-            app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle"
+            app:layout_constraintTop_toBottomOf="@id/userProfileHeaderCard"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
             app:layout_constraintEnd_toEndOf="@id/ivHomePower"
             app:layout_constraintBottom_toBottomOf="parent">
@@ -886,7 +982,7 @@
                         android:layout_weight="1"
                         android:background="@drawable/bg_settings_grid_card"
                         android:gravity="center"
-                        android:text="▶ Свои плейлисты"
+                        android:text="▶ Сторонние плейлисты"
                         android:textColor="#FFFFFF"
                         android:textFontWeight="500"
                         android:textSize="24sp" />
