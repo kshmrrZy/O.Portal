@@ -43,6 +43,9 @@
         android:layout_width="0dp"
         android:layout_height="66dp"
         android:layout_marginTop="12dp"
+        android:layout_marginEnd="@dimen/settings_grid_column_gap"
+        android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
+        android:paddingVertical="@dimen/settings_grid_button_padding_v"
         android:background="@drawable/bg_settings_grid_card"
         android:gravity="center"
         android:orientation="horizontal"
@@ -80,6 +83,10 @@
         android:layout_width="0dp"
         android:layout_height="66dp"
         android:layout_marginTop="12dp"
+        android:layout_marginStart="@dimen/settings_grid_column_gap"
+        android:layout_marginEnd="@dimen/settings_grid_column_gap"
+        android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
+        android:paddingVertical="@dimen/settings_grid_button_padding_v"
         android:background="@drawable/bg_settings_grid_card"
         android:gravity="center"
         android:orientation="horizontal"
@@ -93,6 +100,9 @@
     <LinearLayout
         android:id="@+id/btnSleepTimerSettings" android:focusable="true" android:focusableInTouchMode="false"
         android:layout_width="0dp" android:layout_height="66dp" android:layout_marginTop="12dp"
+        android:layout_marginStart="@dimen/settings_grid_column_gap"
+        android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
+        android:paddingVertical="@dimen/settings_grid_button_padding_v"
         android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:orientation="vertical"
         app:layout_constraintTop_toTopOf="parent" app:layout_constraintStart_toStartOf="@id/settingsGridGuide2" app:layout_constraintEnd_toEndOf="parent">
         <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Настройки таймера" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="16sp"/>
@@ -110,6 +120,9 @@
     <LinearLayout
         android:id="@+id/btnUserSettings" android:focusable="true" android:focusableInTouchMode="false"
         android:layout_width="0dp" android:layout_height="66dp" android:layout_marginTop="12dp"
+        android:layout_marginEnd="@dimen/settings_grid_column_gap"
+        android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
+        android:paddingVertical="@dimen/settings_grid_button_padding_v"
         android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:orientation="horizontal"
         app:layout_constraintTop_toBottomOf="@id/btnPlaylistSettings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toStartOf="@id/settingsGridGuide1">
         <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Настройки профиля" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="16sp"/>
@@ -118,6 +131,10 @@
     <LinearLayout
         android:id="@+id/btnAdvancedSettings" android:focusable="true" android:focusableInTouchMode="false"
         android:layout_width="0dp" android:layout_height="66dp" android:layout_marginTop="12dp"
+        android:layout_marginStart="@dimen/settings_grid_column_gap"
+        android:layout_marginEnd="@dimen/settings_grid_column_gap"
+        android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
+        android:paddingVertical="@dimen/settings_grid_button_padding_v"
         android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:orientation="horizontal"
         app:layout_constraintTop_toBottomOf="@id/btnEpgSelect" app:layout_constraintStart_toStartOf="@id/settingsGridGuide1" app:layout_constraintEnd_toStartOf="@id/settingsGridGuide2">
         <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Экспорт лога" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="16sp"/>
@@ -126,6 +143,9 @@
     <LinearLayout
         android:id="@+id/btnAppInfo" android:focusable="true" android:focusableInTouchMode="false"
         android:layout_width="0dp" android:layout_height="66dp" android:layout_marginTop="12dp"
+        android:layout_marginStart="@dimen/settings_grid_column_gap"
+        android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
+        android:paddingVertical="@dimen/settings_grid_button_padding_v"
         android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:orientation="horizontal"
         app:layout_constraintTop_toBottomOf="@id/btnSleepTimerSettings" app:layout_constraintStart_toStartOf="@id/settingsGridGuide2" app:layout_constraintEnd_toEndOf="parent">
         <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="О приложении" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="16sp"/>
@@ -141,6 +161,9 @@
     <LinearLayout
         android:id="@+id/btnResetSettings" android:focusable="true" android:focusableInTouchMode="false"
         android:layout_width="0dp" android:layout_height="52dp" android:layout_marginTop="14dp"
+        android:layout_marginEnd="@dimen/settings_grid_column_gap"
+        android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
+        android:paddingVertical="@dimen/settings_grid_button_padding_v"
         android:background="@drawable/bg_settings_danger_card" android:gravity="center" android:orientation="horizontal"
         app:layout_constraintTop_toBottomOf="@id/btnUserSettings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toStartOf="@id/settingsGridGuideHalf">
         <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Сбросить настройки" android:textColor="#EF4444" android:textFontWeight="500" android:textSize="16sp"/>
@@ -149,6 +172,9 @@
     <LinearLayout
         android:id="@+id/btnLogoutProfile" android:focusable="true" android:focusableInTouchMode="false"
         android:layout_width="0dp" android:layout_height="52dp" android:layout_marginTop="14dp"
+        android:layout_marginStart="@dimen/settings_grid_column_gap"
+        android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
+        android:paddingVertical="@dimen/settings_grid_button_padding_v"
         android:background="@drawable/bg_settings_danger_card" android:gravity="center" android:orientation="horizontal"
         app:layout_constraintTop_toBottomOf="@id/btnUserSettings" app:layout_constraintStart_toStartOf="@id/settingsGridGuideHalf" app:layout_constraintEnd_toEndOf="parent">
         <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Выйти из профиля" android:textColor="#EF4444" android:textFontWeight="500" android:textSize="16sp"/>

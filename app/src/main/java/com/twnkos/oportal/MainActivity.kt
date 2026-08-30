@@ -27,7 +27,11 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.graphics.Paint
 import android.graphics.Rect
+import android.text.TextPaint
+import android.text.style.MetricAffectingSpan
+import android.view.ScaleGestureDetector
 import android.content.Intent
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
@@ -146,6 +150,10 @@ class MainActivity : AppCompatActivity() {
     private var forceFreshPlayerSession = false
     private var lastReleasedPlayerId: Int? = null
     private lateinit var mDetector: GestureDetectorCompat
+    private lateinit var scaleGestureDetector: ScaleGestureDetector
+    private var videoPinchScale = 1f
+    private val aspectRatioLabels = listOf("Автоматически", "Вписать в экран", "Растянуть", "Обрезать")
+    private var aspectRatioIndex = 0
 
     private var channelListDialog: AlertDialog? = null
 
@@ -175,7 +183,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvLiveStatusText: TextView
     private lateinit var liveStatusDot: View
     private lateinit var btnLock: ImageButton
-    private lateinit var btnSettings: ImageButton
+    private lateinit var btnAspectRatio: ImageButton
     private lateinit var btnCcSubtitles: TextView
     private lateinit var btnHdQuality: TextView
     private var availableQualities: List<QualityOption> = emptyList()
@@ -622,7 +630,7 @@ class MainActivity : AppCompatActivity() {
         liveStatusDot = findViewById(R.id.liveStatusDot)
         btnLock = findViewById(R.id.btnLock)
         topGradientOverlay = findViewById(R.id.topGradientOverlay)
-        btnSettings = findViewById(R.id.btnSettings)
+        btnAspectRatio = findViewById(R.id.btnAspectRatio)
         btnCcSubtitles = findViewById(R.id.btnCcSubtitles)
         btnHdQuality = findViewById(R.id.btnHdQuality)
         btnPlayPause = findViewById(R.id.btnPlayPause)
@@ -656,6 +664,7 @@ class MainActivity : AppCompatActivity() {
         applyGolosTypeface(window.decorView)
         applyHomeAppTitleStyle()
         setupHomeBottomActionTiles()
+        initAspectRatioState()
         homePanel.addOnLayoutChangeListener { _, _, _, right, bottom, _, _, oldRight, oldBottom ->
             if (right != oldRight || bottom != oldBottom) {
                 applyHomeScreenScale(force = true)
@@ -669,10 +678,17 @@ class MainActivity : AppCompatActivity() {
         settingsTitle: String = "Настройки",
         settingsTitle2: String? = null
     ) {
-        tvHomeAppTitle.typeface = golosTypefaceExtraBold ?: golosTypeface
-        tvHomeAppTitle.text = "O.Portal"
-        tvHomeSystemTime.typeface = golosTypefaceExtraBold
-            ?: Typeface.create(golosTypeface, Typeface.BOLD)
+        val logo = SpannableString("O.Portal")
+        val medium = golosTypeface
+        val bold = golosTypefaceExtraBold ?: Typeface.create(golosTypeface, Typeface.BOLD)
+        if (medium != null) {
+            logo.setSpan(CustomTypefaceSpan(medium), 0, 2, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        if (bold != null) {
+            logo.setSpan(CustomTypefaceSpan(bold), 2, logo.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        tvHomeAppTitle.text = logo
+        tvHomeSystemTime.typeface = golosTypeface ?: Typeface.DEFAULT
         tvHomeBreadcrumbArrow.visibility = if (settingsMode) View.VISIBLE else View.GONE
         tvHomeBreadcrumbPill.visibility = if (settingsMode) View.VISIBLE else View.GONE
         if (settingsMode) {
@@ -780,19 +796,19 @@ class MainActivity : AppCompatActivity() {
 
         fun scaledSp(baseSp: Float): Float = baseSp * scale
 
-        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(30f))
-        tvHomeBreadcrumbArrow.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(20f))
+        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(26f))
+        tvHomeBreadcrumbArrow.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(18f))
         tvHomeBreadcrumbPill.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(10f))
-        tvHomeBreadcrumbArrow2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(20f))
+        tvHomeBreadcrumbArrow2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(18f))
         tvHomeBreadcrumbPill2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(10f))
-        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(22f))
-        tvHomeWelcome.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(14f))
+        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(18f))
+        tvHomeWelcome.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(13f))
         tvPlaylistPageTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(22f))
         tvPlaylistPageSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(13f))
         tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(52f))
         tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(22f))
 
-        val iconSize = scalePx(28f, scale)
+        val iconSize = scalePx(24f, scale)
         ivHomeSettings.layoutParams = ivHomeSettings.layoutParams.apply {
             width = iconSize
             height = iconSize
@@ -910,8 +926,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        btnSettings.setOnClickListener { showSettingsDialog() }
-        btnSettings.setOnLongClickListener {
+        btnAspectRatio.setOnClickListener { cycleAspectRatioMode() }
+        btnAspectRatio.setOnLongClickListener {
             val next = !prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
             prefs.edit().putBoolean(PREF_HLS_ALLOW_NON_IDR, next).apply()
             logDebug("PLAYER_HLS", "runtime toggle allowNonIdr=$next")
@@ -977,6 +993,19 @@ class MainActivity : AppCompatActivity() {
             cancelSleepTimer()
             showAppToast("Таймер остановлен")
         }
+
+        scaleGestureDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                if (homePanel.visibility == View.VISIBLE || isLocked) return false
+                videoPinchScale = (videoPinchScale * detector.scaleFactor).coerceIn(0.85f, 2.6f)
+                applyVideoPinchScale()
+                return true
+            }
+
+            override fun onScaleEnd(detector: ScaleGestureDetector) {
+                finalizePinchAspectRatio()
+            }
+        })
 
         mDetector = GestureDetectorCompat(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
@@ -1218,31 +1247,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyHomeGridContainerGeometry(source: String) {
-        val root = findViewById<View>(android.R.id.content)
-        val rootLoc = IntArray(2)
-        root.getLocationOnScreen(rootLoc)
-        val rootLeft = rootLoc[0]
-        val rootWidth = root.width.coerceAtLeast(resources.displayMetrics.widthPixels)
-        val screenRightPadding = dpToPx(8)
-
-        val portalLoc = IntArray(2)
-        tvHomeAppTitle.getLocationOnScreen(portalLoc)
-        val powerLoc = IntArray(2)
-        ivHomePower.getLocationOnScreen(powerLoc)
-
-        val portalLeftGlobal = portalLoc[0]
-        val powerRightGlobal = powerLoc[0] + ivHomePower.width
-        val safeRightGlobal = minOf(powerRightGlobal, rootLeft + rootWidth - screenRightPadding)
-        val gridWidth = (safeRightGlobal - portalLeftGlobal).coerceAtLeast(dpToPx(320))
-        val startMargin = (portalLeftGlobal - rootLeft).coerceAtLeast(0)
-        val endMargin = (rootLeft + rootWidth - safeRightGlobal).coerceAtLeast(0)
-
+        val edgeMargin = resources.getDimensionPixelSize(R.dimen.home_edge_margin)
         (homePlaylistTilesPanel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.startToStart = ConstraintSet.PARENT_ID
             lp.endToEnd = ConstraintSet.PARENT_ID
             lp.width = 0
-            lp.marginStart = startMargin
-            lp.marginEnd = endMargin
+            lp.marginStart = edgeMargin
+            lp.marginEnd = edgeMargin
             homePlaylistTilesPanel.layoutParams = lp
         }
 
@@ -1256,16 +1267,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         rvHomeTiles.setPadding(0, rvHomeTiles.paddingTop, 0, rvHomeTiles.paddingBottom)
-        rvHomeTiles.post {
-            val containerLoc = IntArray(2)
-            homePlaylistTilesPanel.getLocationOnScreen(containerLoc)
-            val rvLoc = IntArray(2)
-            rvHomeTiles.getLocationOnScreen(rvLoc)
-            logDebug(
-                "NAV",
-                "GRID_CONTAINER_STATE source=$source portalLeft=$portalLeftGlobal containerLeft=${containerLoc[0]} recyclerLeft=${rvLoc[0]} containerWidth=${homePlaylistTilesPanel.width} recyclerWidth=${rvHomeTiles.width} expectedLeft=$portalLeftGlobal expectedWidth=$gridWidth"
-            )
-        }
     }
 
     private data class HomeGridGeometry(
@@ -1283,14 +1284,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun computeHomeGridGeometry(): HomeGridGeometry {
         val columns = computeHomeTileColumns()
-        val rootWidth = (findViewById<View>(android.R.id.content).width)
-            .coerceAtLeast(resources.displayMetrics.widthPixels)
-        val screenRightPadding = dpToPx(8)
-        val leftAnchor = tvHomeAppTitle.left
-        val safeRight = minOf(ivHomePower.right, rootWidth - screenRightPadding)
-        val availableWidth = (safeRight - leftAnchor).coerceAtLeast(dpToPx(320))
-        val leftInset = 0
-        val rightInset = 0
+        val edgeMargin = resources.getDimensionPixelSize(R.dimen.home_edge_margin)
+        val panelWidth = when {
+            homePlaylistTilesPanel.width > 0 -> homePlaylistTilesPanel.width
+            homePanel.width > 0 -> homePanel.width - edgeMargin * 2
+            else -> resources.displayMetrics.widthPixels - edgeMargin * 2
+        }.coerceAtLeast(dpToPx(320))
+        val availableWidth = panelWidth
         val spacing = resources.getDimensionPixelSize(R.dimen.home_tile_spacing)
         val tileHeight = resources.getDimensionPixelSize(R.dimen.home_tile_min_height)
         val tileWidth = if (columns > 1) {
@@ -1301,19 +1301,19 @@ class MainActivity : AppCompatActivity() {
 
         return HomeGridGeometry(
             columns = columns,
-            rootWidth = rootWidth,
-            leftAnchor = leftAnchor,
-            safeRight = safeRight,
+            rootWidth = panelWidth,
+            leftAnchor = edgeMargin,
+            safeRight = edgeMargin + availableWidth,
             availableWidth = availableWidth,
             spacing = spacing,
             tileWidth = tileWidth,
             tileHeight = tileHeight,
-            leftInset = leftInset,
-            rightInset = rightInset
+            leftInset = 0,
+            rightInset = 0
         )
     }
 
-    private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic", titleSizeSp: Float = 17f) {
+    private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic", titleSizeSp: Float = 18f) {
         currentHomeTilesItems = items
         applyHomeGridContainerGeometry(source)
         if (rvHomeTiles.width <= 0) {
@@ -4138,6 +4138,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyAspectRatioMode() {
         val playerView = findViewById<PlayerView>(R.id.videoLayout)
+        if (videoPinchScale <= 1.05f) {
+            playerView.scaleX = 1f
+            playerView.scaleY = 1f
+        }
         val mode = prefs.getString(PREF_ASPECT_RATIO_MODE, "auto") ?: "auto"
         val isWinkChannel = selectedPlaylistDisplayName.contains("wink", ignoreCase = true)
         playerView.resizeMode = when (mode) {
@@ -4146,6 +4150,51 @@ class MainActivity : AppCompatActivity() {
             "zoom" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             else -> if (isWinkChannel) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
         }
+    }
+
+    private fun initAspectRatioState() {
+        aspectRatioIndex = aspectRatioLabels.indexOf(
+            prefs.getString(PREF_ASPECT_RATIO_MODE, "auto").let { ASPECT_RATIO_LABEL_BY_KEY[it] ?: "Автоматически" }
+        ).coerceAtLeast(0)
+    }
+
+    private fun cycleAspectRatioMode() {
+        aspectRatioIndex = (aspectRatioIndex + 1) % aspectRatioLabels.size
+        val key = ASPECT_RATIO_KEY_BY_LABEL[aspectRatioLabels[aspectRatioIndex]] ?: "auto"
+        prefs.edit().putString(PREF_ASPECT_RATIO_MODE, key).apply()
+        videoPinchScale = 1f
+        applyAspectRatioMode()
+        showAppToast(aspectRatioLabels[aspectRatioIndex])
+        showUI()
+    }
+
+    private fun applyVideoPinchScale() {
+        val playerView = findViewById<PlayerView>(R.id.videoLayout)
+        if (videoPinchScale > 1.05f) {
+            playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            playerView.scaleX = videoPinchScale
+            playerView.scaleY = videoPinchScale
+        } else {
+            videoPinchScale = 1f
+            playerView.scaleX = 1f
+            playerView.scaleY = 1f
+            applyAspectRatioMode()
+        }
+    }
+
+    private fun finalizePinchAspectRatio() {
+        when {
+            videoPinchScale > 1.12f -> {
+                prefs.edit().putString(PREF_ASPECT_RATIO_MODE, "zoom").apply()
+                aspectRatioIndex = aspectRatioLabels.indexOf("Обрезать").coerceAtLeast(0)
+            }
+            videoPinchScale < 0.92f -> {
+                prefs.edit().putString(PREF_ASPECT_RATIO_MODE, "fit").apply()
+                aspectRatioIndex = aspectRatioLabels.indexOf("Вписать в экран").coerceAtLeast(0)
+                videoPinchScale = 1f
+            }
+        }
+        applyAspectRatioMode()
     }
 
     private fun playChannel(
@@ -5301,7 +5350,7 @@ class MainActivity : AppCompatActivity() {
         if (controlsPanel.visibility == View.VISIBLE) {
             val controlsPanelButtonIds = intArrayOf(
                 R.id.btnPlayPause, R.id.btnLiveReload, R.id.btnBackLeft,
-                R.id.btnBackRight, R.id.btnLock, R.id.btnEpgPlayer, R.id.btnSettings
+                R.id.btnBackRight, R.id.btnLock, R.id.btnEpgPlayer, R.id.btnAspectRatio
             )
             val focused = currentFocus
             val focusInControlsPanel = focused != null &&
@@ -5384,8 +5433,12 @@ class MainActivity : AppCompatActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
-    override fun onTouchEvent(e: MotionEvent): Boolean =
-        mDetector.onTouchEvent(e) || super.onTouchEvent(e)
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (::scaleGestureDetector.isInitialized) {
+            scaleGestureDetector.onTouchEvent(e)
+        }
+        return mDetector.onTouchEvent(e) || super.onTouchEvent(e)
+    }
 
     override fun onStart() {
         super.onStart()
@@ -6262,6 +6315,16 @@ class MainActivity : AppCompatActivity() {
             }
         }.onFailure { error: Throwable ->
             showAppToast("Ошибка экспорта: ${error.message}", 3500L)
+        }
+    }
+
+    private class CustomTypefaceSpan(private val typeface: Typeface) : MetricAffectingSpan() {
+        override fun updateDrawState(textPaint: TextPaint) {
+            textPaint.typeface = typeface
+        }
+
+        override fun updateMeasureState(textPaint: TextPaint) {
+            textPaint.typeface = typeface
         }
     }
 }
