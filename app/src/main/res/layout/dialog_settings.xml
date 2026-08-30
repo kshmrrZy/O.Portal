@@ -322,7 +322,8 @@
         app:layout_constraintTop_toTopOf="parent">
 
         <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Раздел для настройки EPG" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
-        <TextView android:id="@+id/tvEpgSourceHint" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="поддерживается не более 3 источников формата XML" android:textColor="#99FFFFFF" android:textSize="12sp"/>
+        <TextView android:id="@+id/tvEpgScreenSubtitle" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="поддерживается не более 3 источников формата XML" android:textColor="#99FFFFFF" android:textSize="12sp"/>
+        <TextView android:id="@+id/tvEpgSourceHint" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone"/>
 
         <EditText android:id="@+id/etEpgUrl1" android:layout_width="match_parent" android:layout_height="34dp" android:layout_marginTop="16dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="12sp"/>
         <EditText android:id="@+id/etEpgUrl2" android:layout_width="match_parent" android:layout_height="34dp" android:layout_marginTop="8dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="12sp"/>

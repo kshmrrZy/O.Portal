@@ -189,7 +189,7 @@ class MainActivity : AppCompatActivity() {
     data class QualityOption(val label: String, val height: Int, val url: String)
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnSleepTimer: ImageButton
-    private lateinit var btnLiveReload: ImageButton
+    private lateinit var btnLiveReload: TextView
     private lateinit var sbTimeline: SeekBar
     private lateinit var tvCurrentTime: TextView
     private lateinit var tvProgramEndTime: TextView
@@ -1352,7 +1352,7 @@ class MainActivity : AppCompatActivity() {
             lp.topMargin = dpToPx(
                 when {
                     showTitle -> 145
-                    showWelcome && name.isNotBlank() -> 90
+                    showWelcome && name.isNotBlank() -> 55
                     else -> 31
                 }
             )
@@ -2275,6 +2275,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSettingsDialog() {
         updateProfileHeaderCard()
+        showPlaylistPageHeader(showWelcome = false, showTitle = false)
         findViewById<View>(R.id.tvSettingsBack).visibility = View.GONE
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
             hideEpgPanel()

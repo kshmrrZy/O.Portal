@@ -172,6 +172,9 @@
             android:id="@+id/liveStatusBadge"
             android:layout_width="87dp"
             android:layout_height="40dp"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            android:clickable="false"
             android:layout_marginStart="@dimen/player_top_logo_margin_start"
             android:background="@drawable/bg_live_badge_red">
 
@@ -247,7 +250,7 @@
             android:layout_width="@dimen/player_time_width"
             android:layout_height="@dimen/player_time_height"
             android:layout_marginStart="@dimen/player_time_margin_start"
-            android:background="@drawable/time"
+            android:background="@drawable/bg_player_time_rect"
             android:gravity="center"
             android:paddingHorizontal="@dimen/player_time_pad_h">
             <TextView
@@ -340,6 +343,7 @@
                 android:layout_width="38dp"
                 android:layout_height="38dp"
                 android:background="@drawable/bg_player_button_focus"
+                android:defaultFocusHighlightEnabled="false"
                 android:src="@drawable/pause"
                 android:scaleType="fitCenter"
                 android:focusable="true"
@@ -352,6 +356,7 @@
                 android:layout_height="38dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_player_button_focus"
+                android:defaultFocusHighlightEnabled="false"
                 android:src="@drawable/backleft"
                 android:scaleType="fitCenter"
                 android:focusable="true"
@@ -364,6 +369,7 @@
                 android:layout_height="38dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_player_button_focus"
+                android:defaultFocusHighlightEnabled="false"
                 android:src="@drawable/backright"
                 android:scaleType="fitCenter"
                 android:focusable="true"
@@ -376,6 +382,7 @@
                 android:layout_height="38dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_player_button_focus"
+                android:defaultFocusHighlightEnabled="false"
                 android:src="@drawable/block"
                 android:scaleType="fitCenter"
                 android:focusable="true"
@@ -388,6 +395,7 @@
                 android:layout_height="38dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_player_button_focus"
+                android:defaultFocusHighlightEnabled="false"
                 android:src="@drawable/epgplayer"
                 android:scaleType="fitCenter"
                 android:focusable="true"
@@ -400,6 +408,7 @@
                 android:layout_height="38dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_player_button_focus"
+                android:defaultFocusHighlightEnabled="false"
                 android:src="@drawable/settingsplayer"
                 android:scaleType="fitCenter"
                 android:focusable="true"
@@ -419,6 +428,7 @@
                 android:layout_height="30dp"
                 android:layout_marginEnd="8dp"
                 android:background="@drawable/bg_player_quality_badge"
+                android:defaultFocusHighlightEnabled="false"
                 android:fontFamily="@font/golos_text"
                 android:gravity="center"
                 android:text="CC"
@@ -435,6 +445,7 @@
                 android:layout_height="30dp"
                 android:layout_marginEnd="8dp"
                 android:background="@drawable/bg_player_quality_badge"
+                android:defaultFocusHighlightEnabled="false"
                 android:fontFamily="@font/golos_text"
                 android:gravity="center"
                 android:text="HD"
@@ -445,21 +456,26 @@
 
             <LinearLayout
                 android:id="@+id/liveButtonContainer"
-                android:layout_width="66dp"
+                android:layout_width="wrap_content"
                 android:layout_height="44dp"
                 android:orientation="vertical"
                 android:gravity="center"
                 android:background="@android:color/transparent">
 
-                <ImageButton
+                <TextView
                     android:id="@+id/btnLiveReload"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:background="@drawable/bg_player_button_focus"
-                    android:src="@drawable/live"
-                    android:scaleType="fitCenter"
-                    android:padding="0dp"
+                    android:layout_width="66dp"
+                    android:layout_height="30dp"
+                    android:background="@drawable/bg_player_quality_badge"
+                    android:defaultFocusHighlightEnabled="false"
+                    android:fontFamily="@font/golos_text"
+                    android:gravity="center"
+                    android:text="LIVE"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
                     android:focusable="true"
+                    android:focusableInTouchMode="false"
                     android:clickable="true" />
             </LinearLayout>
         </LinearLayout>
@@ -852,8 +868,8 @@
             android:layout_height="0dp"
             android:visibility="gone"
             android:layout_marginTop="8dp"
-            android:numColumns="auto_fit"
-            android:columnWidth="265dp"
+            android:numColumns="4"
+            android:columnWidth="0dp"
             android:horizontalSpacing="12dp"
             android:verticalSpacing="12dp"
             android:stretchMode="columnWidth"
