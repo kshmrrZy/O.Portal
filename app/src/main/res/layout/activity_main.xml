@@ -165,8 +165,9 @@
             android:layout_width="@dimen/player_top_icon_size"
             android:layout_height="@dimen/player_top_icon_size"
             android:layout_gravity="center_vertical"
-            android:background="@null"
-            android:padding="0dp"
+            android:background="@drawable/bg_player_glass_plate"
+            android:padding="@dimen/player_top_back_padding"
+            android:scaleType="fitCenter"
             android:src="@drawable/back"
             android:contentDescription="Back to menu" />
 
@@ -342,20 +343,20 @@
 
             <ImageButton
                 android:id="@+id/btnPlayPause"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
+                android:layout_width="@dimen/player_control_button_size"
+                android:layout_height="@dimen/player_control_button_size"
                 android:background="@drawable/bg_player_glass_plate"
                 android:defaultFocusHighlightEnabled="false"
                 android:src="@drawable/pause"
                 android:scaleType="fitCenter"
                 android:focusable="true"
                 android:clickable="true"
-                android:padding="0dp" />
+                android:padding="@dimen/player_control_icon_padding" />
 
             <ImageButton
                 android:id="@+id/btnBackLeft"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
+                android:layout_width="@dimen/player_control_button_size"
+                android:layout_height="@dimen/player_control_button_size"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_player_glass_plate"
                 android:defaultFocusHighlightEnabled="false"
@@ -363,12 +364,12 @@
                 android:scaleType="fitCenter"
                 android:focusable="true"
                 android:clickable="true"
-                android:padding="0dp" />
+                android:padding="@dimen/player_control_icon_padding" />
 
             <ImageButton
                 android:id="@+id/btnBackRight"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
+                android:layout_width="@dimen/player_control_button_size"
+                android:layout_height="@dimen/player_control_button_size"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_player_glass_plate"
                 android:defaultFocusHighlightEnabled="false"
@@ -376,12 +377,12 @@
                 android:scaleType="fitCenter"
                 android:focusable="true"
                 android:clickable="true"
-                android:padding="0dp" />
+                android:padding="@dimen/player_control_icon_padding" />
 
             <ImageButton
                 android:id="@+id/btnLock"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
+                android:layout_width="@dimen/player_control_button_size"
+                android:layout_height="@dimen/player_control_button_size"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_player_glass_plate"
                 android:defaultFocusHighlightEnabled="false"
@@ -389,12 +390,12 @@
                 android:scaleType="fitCenter"
                 android:focusable="true"
                 android:clickable="true"
-                android:padding="0dp" />
+                android:padding="@dimen/player_control_icon_padding" />
 
             <ImageButton
                 android:id="@+id/btnEpgPlayer"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
+                android:layout_width="@dimen/player_control_button_size"
+                android:layout_height="@dimen/player_control_button_size"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_player_glass_plate"
                 android:defaultFocusHighlightEnabled="false"
@@ -402,12 +403,12 @@
                 android:scaleType="fitCenter"
                 android:focusable="true"
                 android:clickable="true"
-                android:padding="0dp" />
+                android:padding="@dimen/player_control_icon_padding" />
 
             <ImageButton
                 android:id="@+id/btnAspectRatio"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
+                android:layout_width="@dimen/player_control_button_size"
+                android:layout_height="@dimen/player_control_button_size"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_player_glass_plate"
                 android:defaultFocusHighlightEnabled="false"
@@ -415,7 +416,7 @@
                 android:scaleType="fitCenter"
                 android:focusable="true"
                 android:clickable="true"
-                android:padding="6dp" />
+                android:padding="@dimen/player_control_icon_padding" />
 
             <Space
                 android:layout_width="0dp"
@@ -717,7 +718,7 @@
             app:layout_constraintEnd_toStartOf="@id/ivHomeSettings"
             app:layout_constraintTop_toTopOf="@id/tvHomeAppTitle"
             app:layout_constraintBottom_toBottomOf="@id/tvHomeAppTitle"
-            android:layout_marginEnd="@dimen/home_header_icon_gap"
+            android:layout_marginEnd="@dimen/home_header_clock_gap"
             tools:text="21:00" />
 
         <ImageView
@@ -788,10 +789,10 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginTop="0dp"
-            android:minHeight="110dp"
+            android:minHeight="128dp"
             android:background="@drawable/bg_profile_header_card"
-            android:paddingHorizontal="18dp"
-            android:paddingVertical="16dp"
+            android:paddingHorizontal="20dp"
+            android:paddingVertical="18dp"
             android:visibility="gone"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
@@ -799,15 +800,16 @@
 
             <FrameLayout
                 android:id="@+id/profileAvatarFrame"
-                android:layout_width="60dp"
-                android:layout_height="60dp"
+                android:layout_width="@dimen/profile_avatar_size"
+                android:layout_height="@dimen/profile_avatar_size"
                 android:background="@drawable/bg_profile_avatar"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent">
 
                 <ImageView
-                    android:layout_width="30dp"
-                    android:layout_height="30dp"
+                    android:id="@+id/ivProfileAvatar"
+                    android:layout_width="@dimen/profile_avatar_icon_size"
+                    android:layout_height="@dimen/profile_avatar_icon_size"
                     android:layout_gravity="center"
                     android:src="@drawable/profile"
                     android:tint="#FFFFFF" />
@@ -821,7 +823,7 @@
                 android:layout_marginStart="18dp"
                 android:text="Пользователь"
                 android:textColor="#FFFFFF"
-                android:textSize="20sp"
+                android:textSize="@dimen/profile_name_size"
                 android:textStyle="bold"
                 app:layout_constraintStart_toEndOf="@id/profileAvatarFrame"
                 app:layout_constraintTop_toTopOf="@id/profileAvatarFrame" />
@@ -834,7 +836,7 @@
                 android:layout_marginTop="3dp"
                 android:text="@nickname"
                 android:textColor="#80FFFFFF"
-                android:textSize="13sp"
+                android:textSize="@dimen/profile_nickname_size"
                 app:layout_constraintStart_toStartOf="@id/tvProfileName"
                 app:layout_constraintTop_toBottomOf="@id/tvProfileName" />
 
@@ -846,23 +848,23 @@
                 android:layout_marginTop="8dp"
                 android:text="Токен:"
                 android:textColor="#FFFFFF"
-                android:textSize="13sp"
+                android:textSize="@dimen/profile_token_label_size"
                 app:layout_constraintStart_toStartOf="@id/tvProfileName"
                 app:layout_constraintTop_toBottomOf="@id/tvProfileNickname" />
 
             <TextView
                 android:id="@+id/tvProfileTokenValue"
                 style="@style/AppGolosText"
-                android:layout_width="200dp"
-                android:layout_height="22dp"
+                android:layout_width="220dp"
+                android:layout_height="@dimen/profile_token_value_height"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_settings_row"
                 android:gravity="center"
                 android:singleLine="true"
                 android:ellipsize="middle"
-                android:paddingHorizontal="8dp"
+                android:paddingHorizontal="10dp"
                 android:textColor="#80FFFFFF"
-                android:textSize="10sp"
+                android:textSize="@dimen/profile_token_value_size"
                 app:layout_constraintStart_toEndOf="@id/tvProfileTokenLabel"
                 app:layout_constraintTop_toTopOf="@id/tvProfileTokenLabel"
                 app:layout_constraintBottom_toBottomOf="@id/tvProfileTokenLabel" />
@@ -991,9 +993,8 @@
 
                     <FrameLayout
                         android:id="@+id/btnOwnPlaylistsTile"
-                        android:layout_width="0dp"
+                        android:layout_width="wrap_content"
                         android:layout_height="@dimen/home_tile_min_height"
-                        android:layout_weight="1"
                         android:background="@drawable/bg_playlist_tile"
                         android:clickable="true"
                         android:focusable="true"
@@ -1004,9 +1005,8 @@
 
                     <FrameLayout
                         android:id="@+id/btnFavoritesTile"
-                        android:layout_width="0dp"
+                        android:layout_width="wrap_content"
                         android:layout_height="@dimen/home_tile_min_height"
-                        android:layout_weight="1"
                         android:layout_marginStart="@dimen/home_tile_spacing"
                         android:background="@drawable/bg_playlist_tile"
                         android:clickable="true"

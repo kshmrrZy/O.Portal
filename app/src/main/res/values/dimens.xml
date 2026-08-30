@@ -8,7 +8,10 @@
     <dimen name="player_top_gradient_height">112dp</dimen>
     <dimen name="player_top_text_max_width">560dp</dimen>
 
+    <dimen name="player_control_button_size">38dp</dimen>
+    <dimen name="player_control_icon_padding">9dp</dimen>
     <dimen name="player_top_icon_size">40dp</dimen>
+    <dimen name="player_top_back_padding">8dp</dimen>
     <dimen name="player_top_logo_margin_start">8dp</dimen>
     <dimen name="player_top_logo_pad">1dp</dimen>
     <dimen name="player_top_text_margin_start">10dp</dimen>
@@ -26,12 +29,20 @@
     <!-- Home screen (base 1280×720 reference) -->
     <dimen name="home_edge_margin">48dp</dimen>
     <dimen name="home_header_top_margin">12dp</dimen>
-    <dimen name="home_app_title_size">16sp</dimen>
-    <dimen name="home_welcome_size">13sp</dimen>
+    <dimen name="home_app_title_size">18sp</dimen>
+    <dimen name="home_welcome_size">12sp</dimen>
     <dimen name="home_welcome_margin_top">2dp</dimen>
-    <dimen name="home_clock_size">12sp</dimen>
+    <dimen name="home_clock_size">14sp</dimen>
     <dimen name="home_header_icon_size">18dp</dimen>
-    <dimen name="home_header_icon_gap">5dp</dimen>
+    <dimen name="home_header_icon_gap">10dp</dimen>
+    <dimen name="home_header_clock_gap">10dp</dimen>
+    <dimen name="profile_avatar_size">76dp</dimen>
+    <dimen name="profile_avatar_icon_size">28dp</dimen>
+    <dimen name="profile_name_size">22sp</dimen>
+    <dimen name="profile_nickname_size">14sp</dimen>
+    <dimen name="profile_token_label_size">14sp</dimen>
+    <dimen name="profile_token_value_height">28dp</dimen>
+    <dimen name="profile_token_value_size">11sp</dimen>
     <dimen name="home_page_title_size">22sp</dimen>
     <dimen name="home_page_subtitle_size">13sp</dimen>
     <dimen name="home_page_title_margin_top">36dp</dimen>
@@ -48,7 +59,7 @@
     <dimen name="home_start_subtitle_size">16sp</dimen>
 
     <dimen name="settings_grid_column_gap">8dp</dimen>
-    <dimen name="settings_grid_button_height">74dp</dimen>
+    <dimen name="settings_grid_button_height">@dimen/home_tile_min_height</dimen>
     <dimen name="settings_grid_button_padding_h">12dp</dimen>
     <dimen name="settings_grid_button_padding_v">12dp</dimen>
 </resources>

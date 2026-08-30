@@ -739,22 +739,26 @@ class MainActivity : AppCompatActivity() {
         (findViewById<View>(R.id.userProfileHeaderCard).layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
         }
-        findViewById<View>(R.id.userProfileHeaderCard).minimumHeight = scalePx(110f, scale)
-        height(R.id.profileAvatarFrame, 60f)
+        findViewById<View>(R.id.userProfileHeaderCard).minimumHeight = scalePx(128f, scale)
+        height(R.id.profileAvatarFrame, 76f)
         (findViewById<View>(R.id.profileAvatarFrame).layoutParams as? ViewGroup.LayoutParams)?.let { lp ->
-            lp.width = scalePx(60f, scale)
+            lp.width = scalePx(76f, scale)
         }
-        textSize(R.id.tvProfileName, 20f)
-        textSize(R.id.tvProfileNickname, 13f)
-        textSize(R.id.tvProfileTokenLabel, 13f)
-        height(R.id.tvProfileTokenValue, 22f)
-        textSize(R.id.tvProfileTokenValue, 10f)
+        (findViewById<ImageView>(R.id.ivProfileAvatar).layoutParams as? ViewGroup.LayoutParams)?.let { lp ->
+            lp.width = scalePx(28f, scale)
+            lp.height = scalePx(28f, scale)
+        }
+        textSize(R.id.tvProfileName, 22f)
+        textSize(R.id.tvProfileNickname, 14f)
+        textSize(R.id.tvProfileTokenLabel, 14f)
+        height(R.id.tvProfileTokenValue, 28f)
+        textSize(R.id.tvProfileTokenValue, 11f)
 
         // Сетка настроек (6 карточек)
         listOf(
             R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings,
             R.id.btnUserSettings, R.id.btnAdvancedSettings, R.id.btnAppInfo
-        ).forEach { height(it, 74f) }
+        ).forEach { height(it, 66f) }
 
         // Красные кнопки
         height(R.id.btnResetSettings, 52f)
@@ -805,13 +809,14 @@ class MainActivity : AppCompatActivity() {
 
         fun scaledSp(baseSp: Float): Float = baseSp * scale
 
-        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(16f))
+        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(18f))
         tvHomeBreadcrumbArrow.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(12f))
         tvHomeBreadcrumbPill.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(10f))
         tvHomeBreadcrumbArrow2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(12f))
         tvHomeBreadcrumbPill2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(10f))
-        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(12f))
-        tvHomeWelcome.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(13f))
+        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(14f))
+        tvHomeWelcome.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(12f))
+        tvHomeCategoryBack.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(12f))
         tvPlaylistPageTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(22f))
         tvPlaylistPageSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(13f))
         tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(36f))
@@ -831,6 +836,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnOwnPlaylistsTile).layoutParams.height = bottomTileHeight
         findViewById<View>(R.id.btnFavoritesTile).layoutParams.height = bottomTileHeight
         setupHomeBottomActionTiles(scale)
+        applyHomeBottomTilesGeometry()
     }
 
     private fun setupHomeBottomActionTiles(scale: Float = 1f) {
@@ -1319,6 +1325,33 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun applyHomeBottomTilesGeometry() {
+        val bottomRow = findViewById<View>(R.id.homeBottomTilesRow)
+        if (bottomRow.visibility != View.VISIBLE) return
+
+        val geometry = computeHomeGridGeometry()
+        val btnOwn = findViewById<View>(R.id.btnOwnPlaylistsTile)
+        val btnFav = findViewById<View>(R.id.btnFavoritesTile)
+
+        fun applyTileSize(view: View, width: Int, height: Int) {
+            view.layoutParams = view.layoutParams.apply {
+                this.width = width
+                this.height = height
+            }
+        }
+
+        if (btnOwn.visibility == View.VISIBLE) {
+            applyTileSize(btnOwn, geometry.tileWidth, geometry.tileHeight)
+        }
+        if (btnFav.visibility == View.VISIBLE) {
+            applyTileSize(btnFav, geometry.tileWidth, geometry.tileHeight)
+            (btnFav.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+                lp.marginStart = if (btnOwn.visibility == View.VISIBLE) geometry.spacing else 0
+                btnFav.layoutParams = lp
+            }
+        }
+    }
+
     private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic", titleSizeSp: Float = 18f) {
         currentHomeTilesItems = items
         applyHomeGridContainerGeometry(source)
@@ -1495,6 +1528,11 @@ class MainActivity : AppCompatActivity() {
             hasStartedPlaybackFromChannelClick = false
             setSelectedPlaylistName("Избранные")
             loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
+        }
+        if (homePlaylistTilesPanel.width > 0) {
+            applyHomeBottomTilesGeometry()
+        } else {
+            homePlaylistTilesPanel.post { applyHomeBottomTilesGeometry() }
         }
     }
 
@@ -1779,7 +1817,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showTimerDialog() {
-        val options = arrayOf(10, 20, 30, 60, 90, 120, 240)
+        val options = arrayOf(10, 30, 60, 90, 120)
         val view = layoutInflater.inflate(R.layout.dialog_timer, null)
         val spinner = view.findViewById<Spinner>(R.id.spTimerMinutes)
         val btnApply = view.findViewById<TextView>(R.id.btnApplyTimer)
@@ -1798,7 +1836,9 @@ class MainActivity : AppCompatActivity() {
 
         btnApply.setOnClickListener {
             val idx = spinner.selectedItemPosition.coerceIn(options.indices)
-            startSleepTimer(options[idx])
+            val minutes = options[idx]
+            prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, minutes).apply()
+            startSleepTimer(minutes)
             dialog.dismiss()
         }
         btnClose.setOnClickListener { dialog.dismiss() }
