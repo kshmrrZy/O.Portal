@@ -158,15 +158,35 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvSystemTime: TextView
     private lateinit var tvHomeSystemTime: TextView
     private lateinit var tvHomeAppTitle: TextView
+    private lateinit var tvHomeBreadcrumbArrow: TextView
+    private lateinit var tvHomeBreadcrumbPill: TextView
+    private lateinit var tvHomeBreadcrumbArrow2: TextView
+    private lateinit var tvHomeBreadcrumbPill2: TextView
     private lateinit var tvHomeStartTitle: TextView
+    private lateinit var tvHomeWelcome: TextView
+    private lateinit var tvPlaylistPageTitle: TextView
+    private lateinit var tvPlaylistPageSubtitle: TextView
     private lateinit var tvHomeStartSubtitle: TextView
     private lateinit var homePlaylistTilesPanel: View
     private lateinit var gvHomeChannelList: GridView
     private lateinit var rvHomeTiles: RecyclerView
     private lateinit var tvHomeCategoryBack: TextView
-    private lateinit var ivLogo: ImageView
+    private lateinit var liveStatusBadge: View
+    private lateinit var tvLiveStatusText: TextView
+    private lateinit var liveStatusDot: View
     private lateinit var btnLock: ImageButton
     private lateinit var btnSettings: ImageButton
+    private lateinit var btnCcSubtitles: TextView
+    private lateinit var btnHdQuality: TextView
+    private var availableQualities: List<QualityOption> = emptyList()
+    private var currentQualityIndex: Int = -1
+    private var availableSubtitleUrl: String? = null
+    private var subtitlesEnabled: Boolean = false
+    private var qualityFetchToken: Int = 0
+    private var manualQualityOverrideUrl: String? = null
+    private var manualQualityOverrideChannelIndex: Int = -1
+
+    data class QualityOption(val label: String, val height: Int, val url: String)
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnSleepTimer: ImageButton
     private lateinit var btnLiveReload: ImageButton
@@ -367,6 +387,8 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_EPG_SOURCES_FINGERPRINT = "pref_epg_sources_fingerprint"
         private const val PREF_EPG_REFRESH_INTERVAL_DAYS = "pref_epg_refresh_interval_days"
         private const val PREF_USER_LOGIN = "pref_user_login"
+        private const val PREF_KNOWN_SERVICE_NAMES = "pref_known_service_names"
+        private val DEFAULT_SERVICE_NAMES = setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4")
         private const val PREF_USER_TOKEN = "pref_user_token"
         private const val PREF_USER_NAME = "pref_user_name"
         private const val PREF_USER_PLAYLIST = "pref_user_playlist"
@@ -563,20 +585,34 @@ class MainActivity : AppCompatActivity() {
         tvSystemTime = findViewById(R.id.tvSystemTime)
         tvHomeSystemTime = findViewById(R.id.tvHomeSystemTime)
         tvHomeAppTitle = findViewById(R.id.tvHomeAppTitle)
+        tvHomeAppTitle.isClickable = true
+        tvHomeAppTitle.isFocusable = false
+        tvHomeAppTitle.setOnClickListener { goHomeFromLogoClick() }
+        tvHomeBreadcrumbArrow = findViewById(R.id.tvHomeBreadcrumbArrow)
+        tvHomeBreadcrumbPill = findViewById(R.id.tvHomeBreadcrumbPill)
+        tvHomeBreadcrumbArrow2 = findViewById(R.id.tvHomeBreadcrumbArrow2)
+        tvHomeBreadcrumbPill2 = findViewById(R.id.tvHomeBreadcrumbPill2)
         tvHomeAppTitle.text = SpannableString("O.Portal").apply {
             setSpan(StyleSpan(Typeface.BOLD), 2, length, 0)
             tvHomeAppTitle.typeface = Typeface.create(tvHomeAppTitle.typeface, 800, false)
         }
         tvHomeStartTitle = findViewById(R.id.tvHomeStartTitle)
+        tvHomeWelcome = findViewById(R.id.tvHomeWelcome)
+        tvPlaylistPageTitle = findViewById(R.id.tvPlaylistPageTitle)
+        tvPlaylistPageSubtitle = findViewById(R.id.tvPlaylistPageSubtitle)
         tvHomeStartSubtitle = findViewById(R.id.tvHomeStartSubtitle)
         homePlaylistTilesPanel = findViewById(R.id.homePlaylistTilesPanel)
         gvHomeChannelList = findViewById(R.id.gvHomeChannelList)
         rvHomeTiles = findViewById(R.id.rvHomeTiles)
         tvHomeCategoryBack = findViewById(R.id.tvHomeCategoryBack)
-        ivLogo = findViewById(R.id.ivChannelLogo)
+        liveStatusBadge = findViewById(R.id.liveStatusBadge)
+        tvLiveStatusText = findViewById(R.id.tvLiveStatusText)
+        liveStatusDot = findViewById(R.id.liveStatusDot)
         btnLock = findViewById(R.id.btnLock)
         topGradientOverlay = findViewById(R.id.topGradientOverlay)
         btnSettings = findViewById(R.id.btnSettings)
+        btnCcSubtitles = findViewById(R.id.btnCcSubtitles)
+        btnHdQuality = findViewById(R.id.btnHdQuality)
         btnPlayPause = findViewById(R.id.btnPlayPause)
         btnSleepTimer = findViewById(R.id.btnSleepTimer)
         btnLiveReload = findViewById(R.id.btnLiveReload)
@@ -620,10 +656,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyHomeAppTitleStyle(
         settingsMode: Boolean = false,
-        settingsTitle: String = "Настройки"
+        settingsTitle: String = "Настройки",
+        settingsTitle2: String? = null
     ) {
-        val rawTitle = if (settingsMode) "O.Portal > $settingsTitle" else "O.Portal"
-        val title = SpannableString(rawTitle)
+        val title = SpannableString("O.Portal")
         golosTypeface?.let { font ->
             tvHomeAppTitle.typeface = Typeface.create(font, Typeface.NORMAL)
             title.setSpan(
@@ -634,21 +670,18 @@ class MainActivity : AppCompatActivity() {
             )
             tvHomeSystemTime.typeface = Typeface.create(font, Typeface.BOLD)
         } ?: title.setSpan(StyleSpan(Typeface.BOLD), 2, 8, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        if (settingsMode) {
-            title.setSpan(
-                TypefaceSpan(Typeface.create(golosTypeface, Typeface.BOLD)),
-                11,
-                title.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            title.setSpan(
-                RelativeSizeSpan(0.52f),
-                11,
-                title.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-        }
         tvHomeAppTitle.text = title
+        tvHomeBreadcrumbArrow.visibility = if (settingsMode) View.VISIBLE else View.GONE
+        tvHomeBreadcrumbPill.visibility = if (settingsMode) View.VISIBLE else View.GONE
+        if (settingsMode) {
+            tvHomeBreadcrumbPill.text = settingsTitle.lowercase(Locale.getDefault())
+        }
+        val showSecondLevel = settingsMode && !settingsTitle2.isNullOrBlank()
+        tvHomeBreadcrumbArrow2.visibility = if (showSecondLevel) View.VISIBLE else View.GONE
+        tvHomeBreadcrumbPill2.visibility = if (showSecondLevel) View.VISIBLE else View.GONE
+        if (showSecondLevel) {
+            tvHomeBreadcrumbPill2.text = settingsTitle2!!.lowercase(Locale.getDefault())
+        }
     }
 
     private fun applyHomeScreenScale(force: Boolean = false) {
@@ -663,17 +696,23 @@ class MainActivity : AppCompatActivity() {
         val heightScale = panelHeight.toFloat() / HOME_BASE_HEIGHT
         val scale = minOf(widthScale, heightScale)
 
-        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 42f * scale)
-        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_PX, 34f * scale)
-        tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 52f * scale)
-        tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 22f * scale)
+        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 36f * scale)
+        tvHomeBreadcrumbArrow.setTextSize(TypedValue.COMPLEX_UNIT_PX, 24f * scale)
+        tvHomeBreadcrumbPill.setTextSize(TypedValue.COMPLEX_UNIT_PX, 10f * scale)
+        tvHomeBreadcrumbArrow2.setTextSize(TypedValue.COMPLEX_UNIT_PX, 24f * scale)
+        tvHomeBreadcrumbPill2.setTextSize(TypedValue.COMPLEX_UNIT_PX, 10f * scale)
+        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_PX, 28f * scale)
+        tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 48f * scale)
+        tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 16f * scale)
 
 
 
 
-        setHomeFrame(tvHomeAppTitle, 61f, 47f, null, null, widthScale, heightScale)
-        setHomeFrame(tvHomeSystemTime, 1045f, 47f, null, null, widthScale, heightScale)
-        setHomeFrame(ivHomeSettings, 1140f, 47f, 40f, 40f, widthScale, heightScale)
+        setHomeFrame(tvHomeAppTitle, 61f, 37f, null, null, widthScale, heightScale)
+        setHomeFrame(tvHomeBreadcrumbArrow, 218f, 44f, null, null, widthScale, heightScale)
+        setHomeFrame(tvHomeBreadcrumbPill, 243f, 47f, null, null, widthScale, heightScale)
+        setHomeFrame(tvHomeSystemTime, 1067f, 42f, null, null, widthScale, heightScale)
+        setHomeFrame(ivHomeSettings, 1157f, 47f, 40f, 40f, widthScale, heightScale)
         setHomeFrame(ivHomePower, 1196f, 47f, 40f, 40f, widthScale, heightScale)
         setHomeFrame(tvHomeStartTitle, 257f, 321f, 765f, null, widthScale, heightScale)
 
@@ -851,6 +890,9 @@ class MainActivity : AppCompatActivity() {
             showUI()
         }
 
+        btnCcSubtitles.setOnClickListener { toggleSubtitles() }
+        btnHdQuality.setOnClickListener { cycleQuality() }
+
         btnStopTimer.setOnClickListener {
             cancelSleepTimer()
             showAppToast("Таймер остановлен")
@@ -918,6 +960,7 @@ class MainActivity : AppCompatActivity() {
     private var homeTilesColumnsApplied: Int = -1
     private var homeTilesWidthApplied: Int = -1
     private var homeTilesHeightApplied: Int = -1
+    private var homeTilesTitleSizeApplied: Float = -1f
     private var homeTilesSpacingApplied: Int = -1
     private var homeTilesSpacingDecoration: RecyclerView.ItemDecoration? = null
     private var currentHomeTilesItems: List<HomeTileItem> = emptyList()
@@ -947,10 +990,38 @@ class MainActivity : AppCompatActivity() {
         ) {
             val position = parent.getChildAdapterPosition(view)
             if (position == RecyclerView.NO_POSITION) return
-            val col = if (columns > 0) position % columns else 0
+            val lm = parent.layoutManager as? GridLayoutManager
+            val spanCount = lm?.spanCount ?: columns
+            val lookup = lm?.spanSizeLookup
+            val spanIndex = lookup?.getSpanIndex(position, spanCount) ?: (position % columns)
+            val spanSize = lookup?.getSpanSize(position) ?: 1
             outRect.left = 0
-            outRect.right = if (col == columns - 1) 0 else spacingPx
+            outRect.right = if (spanIndex + spanSize >= spanCount) 0 else spacingPx
             outRect.bottom = spacingPx
+        }
+    }
+
+    /**
+     * Последняя неполная строка сетки плиток растягивается на всю ширину, а не остаётся
+     * "прибитой" к левому краю — если категорий не кратно числу колонок, последние 1-2
+     * плитки делят строку между собой (или одна занимает её целиком).
+     */
+    private inner class HomeTileSpanSizeLookup(
+        private val columns: Int,
+        private val itemCountProvider: () -> Int
+    ) : GridLayoutManager.SpanSizeLookup() {
+        init { isSpanIndexCacheEnabled = true }
+        override fun getSpanSize(position: Int): Int {
+            val spanCount = columns * 2
+            val total = itemCountProvider()
+            if (columns <= 0 || total <= 0) return spanCount
+            val leftover = total % columns
+            val lastRowStart = total - leftover
+            return if (leftover != 0 && position >= lastRowStart) {
+                spanCount / leftover
+            } else {
+                spanCount / columns
+            }
         }
     }
 
@@ -958,7 +1029,8 @@ class MainActivity : AppCompatActivity() {
         private val tileWidth: Int,
         private val tileHeight: Int,
         private val spacing: Int,
-        private val columns: Int
+        private val columns: Int,
+        private val titleSizeSp: Float = 20f
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         private var tileItems: List<HomeTileItem> = emptyList()
 
@@ -977,8 +1049,8 @@ class MainActivity : AppCompatActivity() {
             val tv = TextView(parent.context)
             tv.setTextColor(Color.WHITE)
             tv.gravity = Gravity.CENTER
-            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            tv.typeface = golosTypeface?.let { Typeface.create(it, Typeface.BOLD) } ?: Typeface.DEFAULT_BOLD
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, titleSizeSp)
+            tv.typeface = golosTypeface?.let { Typeface.create(it, Typeface.NORMAL) } ?: Typeface.DEFAULT
             tv.isFocusable = false
             tv.isFocusableInTouchMode = false
             tv.isClickable = false
@@ -1175,13 +1247,13 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic") {
+    private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic", titleSizeSp: Float = 20f) {
         currentHomeTilesItems = items
         applyHomeGridContainerGeometry(source)
         if (rvHomeTiles.width <= 0) {
             rvHomeTiles.post {
                 if (currentHomeTilesItems === items || currentHomeTilesItems == items) {
-                    bindHomeTiles(currentHomeTilesItems, source)
+                    bindHomeTiles(currentHomeTilesItems, source, titleSizeSp)
                 }
             }
             return
@@ -1197,7 +1269,9 @@ class MainActivity : AppCompatActivity() {
         rvHomeTiles.clipToPadding = false
 
         if (homeTilesColumnsApplied != columns) {
-            rvHomeTiles.layoutManager = GridLayoutManager(this, columns)
+            val gridLayoutManager = GridLayoutManager(this, columns * 2)
+            gridLayoutManager.spanSizeLookup = HomeTileSpanSizeLookup(columns) { currentHomeTilesItems.size }
+            rvHomeTiles.layoutManager = gridLayoutManager
             homeTilesColumnsApplied = columns
         }
 
@@ -1209,12 +1283,13 @@ class MainActivity : AppCompatActivity() {
         }
         logDebug("NAV", "HOME_GRID_DECORATION_COUNT source=$source count=${rvHomeTiles.itemDecorationCount} spacing=$spacing")
 
-        if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight) {
+        if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight || homeTilesTitleSizeApplied != titleSizeSp) {
             rvHomeTiles.setHasFixedSize(true)
             rvHomeTiles.itemAnimator = null
-            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, spacing, columns)
+            homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, spacing, columns, titleSizeSp)
             homeTilesWidthApplied = tileWidth
             homeTilesHeightApplied = tileHeight
+            homeTilesTitleSizeApplied = titleSizeSp
             rvHomeTiles.adapter = homeTilesAdapter
         }
 
@@ -1238,11 +1313,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun showThirdPartyTilesOnHome(thirdParty: List<PlaylistProfile>) {
         showStartPage()
+        showPlaylistPageHeader(false)
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         homePlaylistTilesPanel.visibility = View.VISIBLE
         disableHomeCategoryBack("showThirdPartyTilesOnHome_before_show")
-        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории (Плейлисты)")
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "категории", settingsTitle2 = "Плейлисты")
         enableHomeCategoryBack { showPlaylistPageOnHome() }
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
         val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }
@@ -1254,8 +1330,39 @@ class MainActivity : AppCompatActivity() {
         } }, source = "third_party")
     }
 
+    private fun goHomeFromLogoClick() {
+        if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) hideChannelListPanel()
+        if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) hideEpgPanel()
+        if (isSettingsModalVisible) {
+            hideSettingsScreen()
+            return
+        }
+        val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
+        val hasThirdParty = getThirdPartyPlaylistProfiles().isNotEmpty()
+        if (isAuthorizedUser || hasThirdParty) showPlaylistPageOnHome() else showStartPage()
+    }
+
+    private fun showPlaylistPageHeader(showWelcome: Boolean, showTitle: Boolean = showWelcome) {
+        val name = prefs.getString(PREF_USER_NAME, "") ?: ""
+        tvHomeWelcome.visibility = if (showWelcome && name.isNotBlank()) View.VISIBLE else View.GONE
+        tvHomeWelcome.text = "Добро пожаловать, $name!"
+        tvPlaylistPageTitle.visibility = if (showTitle) View.VISIBLE else View.GONE
+        tvPlaylistPageSubtitle.visibility = if (showTitle) View.VISIBLE else View.GONE
+        (homePlaylistTilesPanel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            lp.topMargin = dpToPx(
+                when {
+                    showTitle -> 145
+                    showWelcome && name.isNotBlank() -> 90
+                    else -> 31
+                }
+            )
+            homePlaylistTilesPanel.layoutParams = lp
+        }
+    }
+
     private fun showPlaylistPageOnHome(source: String = "playlist_page") {
         showStartPage()
+        showPlaylistPageHeader(true)
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         ivHomeSettings.alpha = 1f
@@ -1274,28 +1381,28 @@ class MainActivity : AppCompatActivity() {
         ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
         val token = (prefs.getString(PREF_USER_TOKEN, "") ?: "").trim()
         val thirdParty = getThirdPartyPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
+        val known = getKnownServiceNames() + "Избранные"
         val profiles = if (token.isNotBlank()) {
-            val base = listOf(
-                PlaylistProfile("Избранные", "url", "https://o.avff.pw/my/$token.m3u", true),
-                PlaylistProfile("Wink", "url", "https://o.avff.pw/list/wink.m3u8?token=$token", true),
-                PlaylistProfile("iLook", "url", "https://o.avff.pw/list/ilook.m3u8?token=$token", true),
-                PlaylistProfile("Сервис В", "url", "https://o.avff.pw/list/servicev.m3u8?token=$token", true),
-                PlaylistProfile("Lime TV", "url", "https://o.avff.pw/list/limetv.m3u8?token=$token", true),
-                PlaylistProfile("Only4", "url", "https://o.avff.pw/list/only4.m3u8?token=$token", true)
-            )
+            val base = getPlaylistProfiles().filter { it.name in known && it.enabled && it.value.isNotBlank() }
             if (thirdParty.isNotEmpty()) base + listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else base
         } else if (thirdParty.isNotEmpty()) listOf(PlaylistProfile("Плейлисты", "group", "third_party", true)) else getPlaylistProfiles().filter { it.value.isNotBlank() && it.enabled }.take(6)
-        if (token.isNotBlank()) savePlaylistProfiles((profiles.filter { it.type != "group" } + thirdParty).distinctBy { it.name })
-        bindHomeTiles(profiles.map { p -> HomeTileItem(p.name) {
-            if (p.type == "group" && p.value == "third_party") {
-                showThirdPartyTilesOnHome(thirdParty)
-            } else {
-                logDebug("NAV", "playlist_click name=${p.name}")
-                hasStartedPlaybackFromChannelClick = false
-                setSelectedPlaylistName(p.name)
-                loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
+        bindHomeTiles(profiles.map { p ->
+            val displayName = when {
+                p.type == "group" && p.value == "third_party" -> "▶ Свои плейлисты"
+                p.name == "Избранные" -> "★ Избранные каналы"
+                else -> p.name
             }
-        } }, source = source)
+            HomeTileItem(displayName) {
+                if (p.type == "group" && p.value == "third_party") {
+                    showThirdPartyTilesOnHome(thirdParty)
+                } else {
+                    logDebug("NAV", "playlist_click name=${p.name}")
+                    hasStartedPlaybackFromChannelClick = false
+                    setSelectedPlaylistName(p.name)
+                    loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
+                }
+            }
+        }, source = source, titleSizeSp = 24f)
     }
 
 
@@ -1324,12 +1431,13 @@ class MainActivity : AppCompatActivity() {
     ) {
         logDebug("PLAYLIST_FLOW", "OPEN_CATEGORY_SCREEN playlist=$playlistName")
         showStartPage()
+        showPlaylistPageHeader(showWelcome = true, showTitle = false)
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         gvHomeChannelList.visibility = View.GONE
         gvHomeChannelList.adapter = null
         homePlaylistTilesPanel.visibility = View.VISIBLE
-        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории ($playlistName)")
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "категории", settingsTitle2 = playlistName)
         enableHomeCategoryBack { showPlaylistPageOnHome() }
 
         val allChannels = groupedCategories.values.flatten()
@@ -1379,11 +1487,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun returnToCategoryTilesOnHome() {
+        showPlaylistPageHeader(false)
         gvHomeChannelList.visibility = View.GONE
         gvHomeChannelList.adapter = null
         homePlaylistTilesPanel.visibility = View.VISIBLE
         val playlistName = getSelectedPlaylistName()
-        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Категории ($playlistName)")
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "категории", settingsTitle2 = playlistName)
         enableHomeCategoryBack { showPlaylistPageOnHome() }
         bindCategoryTilesOnHome()
     }
@@ -1392,11 +1501,16 @@ class MainActivity : AppCompatActivity() {
         programs.filter { it.start >= afterMs }.minByOrNull { it.start }
 
     private fun showHomeChannelList(category: String, channelsForCategory: List<Channel>) {
+        showPlaylistPageHeader(showWelcome = true, showTitle = false)
         channels.clear()
         channels.addAll(channelsForCategory)
         selectedCategoryName = category
         lastChannelListCategory = category
-        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = category)
+        applyHomeAppTitleStyle(
+            settingsMode = true,
+            settingsTitle = getSelectedPlaylistName(),
+            settingsTitle2 = category
+        )
         enableHomeCategoryBack { returnToCategoryTilesOnHome() }
         homePlaylistTilesPanel.visibility = View.GONE
         gvHomeChannelList.visibility = View.VISIBLE
@@ -1425,11 +1539,14 @@ class MainActivity : AppCompatActivity() {
                 val ivLogo = itemView.findViewById<ImageView>(R.id.cardLogo)
                 val tvName = itemView.findViewById<TextView>(R.id.cardName)
                 val tvCurrent = itemView.findViewById<TextView>(R.id.cardCurrentProgram)
-                val tvNext = itemView.findViewById<TextView>(R.id.cardNextProgram)
+                val archiveBadge = itemView.findViewById<View>(R.id.cardArchiveBadge)
 
                 tvName.text = channel.name
                 tvName.isSelected = true
                 loadLogoWithGlide(channel.logoFromEpg ?: channel.logoFromPlaylist, ivLogo)
+
+                archiveBadge.visibility =
+                    if (channel.catchupDays > 0 && !channel.catchupSource.isNullOrBlank()) View.VISIBLE else View.GONE
 
                 val now = System.currentTimeMillis()
                 val realPrograms = getProgramsForChannel(channel)
@@ -1438,22 +1555,11 @@ class MainActivity : AppCompatActivity() {
                 val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
                 if (cur != null) {
                     tvCurrent.text =
-                        "Сейчас: ${fmt.format(Date(cur.start))} - ${fmt.format(Date(cur.stop))} - ${cur.title}"
+                        "${fmt.format(Date(cur.start))} - ${fmt.format(Date(cur.stop))} - ${cur.title}"
                     tvCurrent.visibility = View.VISIBLE
-                    val next = findNextProgram(displayPrograms, cur.stop)
-                    if (next != null) {
-                        tvNext.text =
-                            "Далее: ${fmt.format(Date(next.start))} - ${fmt.format(Date(next.stop))} - ${next.title}"
-                        tvNext.visibility = View.VISIBLE
-                    } else {
-                        tvNext.text = ""
-                        tvNext.visibility = View.INVISIBLE
-                    }
                 } else {
                     tvCurrent.text = epgUnavailableMessage()
                     tvCurrent.visibility = View.VISIBLE
-                    tvNext.text = ""
-                    tvNext.visibility = View.INVISIBLE
                 }
 
                 itemView.setOnClickListener {
@@ -2073,8 +2179,8 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
         val settingsRowIds = intArrayOf(
             R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings,
-            R.id.itemStartMode, R.id.itemAspectRatio, R.id.btnAdvancedSettings, R.id.btnUserSettings,
-            R.id.btnAppInfo
+            R.id.btnAdvancedSettings, R.id.btnUserSettings,
+            R.id.btnAppInfo, R.id.btnResetSettings, R.id.btnLogoutProfile
         )
         settingsRowIds.forEach { findViewById<View>(it).visibility = View.VISIBLE }
         findViewById<View>(R.id.tvSettingsBack).visibility = View.GONE
@@ -2101,9 +2207,9 @@ class MainActivity : AppCompatActivity() {
         val btnBackToMenu = findViewById<View>(R.id.btnBackToMenu)
         val tvHomeCategoryBack = findViewById<View>(R.id.tvHomeCategoryBack)
 
-        tvSettingsBack.visibility = View.VISIBLE
-        tvSettingsBack.isEnabled = true
-        tvSettingsBack.isClickable = true
+        tvSettingsBack.visibility = View.GONE
+        tvSettingsBack.isEnabled = false
+        tvSettingsBack.isClickable = false
         tvSettingsBack.setOnClickListener { handleSettingsBackPress() }
 
         btnBackToMenu.visibility = View.GONE
@@ -2119,7 +2225,56 @@ class MainActivity : AppCompatActivity() {
         logVisibleBackButtonIds(stage)
     }
 
+    private fun performLogout() {
+        prefs.edit().remove(PREF_USER_NAME).remove(PREF_USER_TOKEN).remove(PREF_USER_LOGIN).remove(PREF_USER_PLAYLIST).apply()
+        val known = getKnownServiceNames() + "Избранные"
+        val profiles = getPlaylistProfiles().filterNot { it.name in known }
+        savePlaylistProfiles(profiles)
+        prefs.edit().remove(PREF_KNOWN_SERVICE_NAMES).apply()
+        setSelectedPlaylistName(profiles.firstOrNull()?.name ?: "")
+        currentPlaylistText = ""
+        channels.clear()
+        synchronized(epgDataLock) { epgData.clear() }
+        loadPlaylist(forceReload = true, showErrors = false, autoPlay = false)
+        hideSettingsScreen()
+        showStartPage()
+    }
+
+    private fun performFullReset() {
+        prefs.edit().clear().apply()
+        currentPlaylistText = ""
+        channels.clear()
+        selectedEpgSources.clear()
+        synchronized(epgDataLock) { epgData.clear() }
+        hideSettingsScreen()
+        showStartPage()
+    }
+
+    private fun updateProfileHeaderCard() {
+        val name = (prefs.getString(PREF_USER_NAME, "") ?: "").ifBlank { "Гость" }
+        val login = prefs.getString(PREF_USER_LOGIN, "") ?: ""
+        val token = prefs.getString(PREF_USER_TOKEN, "") ?: ""
+        findViewById<TextView>(R.id.tvProfileName).text = name
+        val tvNickname = findViewById<TextView>(R.id.tvProfileNickname)
+        tvNickname.text = if (login.isNotBlank()) "@$login" else "не авторизован"
+        val tokenRowViews = listOf(
+            findViewById<View>(R.id.tvProfileTokenLabel),
+            findViewById<View>(R.id.tvProfileTokenValue),
+            findViewById<View>(R.id.btnProfileChangeToken)
+        )
+        if (token.isNotBlank()) {
+            tokenRowViews.forEach { it.visibility = View.VISIBLE }
+            findViewById<TextView>(R.id.tvProfileTokenValue).text = token
+        } else {
+            tokenRowViews.forEach { it.visibility = View.GONE }
+        }
+        findViewById<View>(R.id.btnProfileChangeToken).setOnClickListener {
+            findViewById<View>(R.id.btnUserSettings).performClick()
+        }
+    }
+
     private fun showSettingsDialog() {
+        updateProfileHeaderCard()
         findViewById<View>(R.id.tvSettingsBack).visibility = View.GONE
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
             hideEpgPanel()
@@ -2201,15 +2356,11 @@ class MainActivity : AppCompatActivity() {
         val tbStartMode = findViewById<ToggleButton>(R.id.tbStartMode)
         val sleepRow = findViewById<View>(R.id.btnSleepTimerSettings)
         val tvSleepTimerValue = findViewById<TextView>(R.id.tvSleepTimerValue)
-        val tvSleepTimerTitle = findViewById<TextView>(R.id.tvSleepTimerTitle)
-        val btnSleepUp = findViewById<View>(R.id.btnSleepUp)
-        val btnSleepDown = findViewById<View>(R.id.btnSleepDown)
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
         val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
         val btnExportDebugLog = findViewById<View>(R.id.btnExportDebugLog)
         val btnAppInfo = findViewById<View>(R.id.btnAppInfo)
-        val itemAspectRatio = findViewById<View>(R.id.itemAspectRatio)
-        val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, findViewById<View>(R.id.itemStartMode), itemAspectRatio, btnAdvancedSettings, btnUserSettings, btnAppInfo)
+        val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, btnAdvancedSettings, btnUserSettings, btnAppInfo, findViewById<View>(R.id.btnResetSettings), findViewById<View>(R.id.btnLogoutProfile))
 
         configureBackButtonsForSettings("showSettingsDialog_after_back_config")
         userSettingsPanel.visibility = View.GONE
@@ -2261,30 +2412,27 @@ class MainActivity : AppCompatActivity() {
             tvSleepTimerValue.text = if (selected == 0) "выключено" else "$selected мин"
         }
 
-        fun refreshSleepTitle() {
+        fun refreshSleepValueFromPrefs() {
             val selected = prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)
-            tvSleepTimerTitle.text =
-                if (selected > 0) "Таймер запущен на $selected минут" else "Таймер сна"
+            tvSleepTimerValue.text = if (selected > 0) "выставлено: $selected мин" else "выключено"
         }
 
-        fun showSleepTitleTemporary(message: String) {
+        fun showSleepStatusTemporary(message: String) {
             sleepTitleResetRunnable?.let { handler.removeCallbacks(it) }
-            tvSleepTimerTitle.text = message
-            sleepTitleResetRunnable = Runnable { refreshSleepTitle() }
+            tvSleepTimerValue.text = message
+            sleepTitleResetRunnable = Runnable { refreshSleepValueFromPrefs() }
             handler.postDelayed(sleepTitleResetRunnable!!, 5000L)
         }
 
         fun applySleepSelection() {
             val selected = sleepOptions[sleepIndex]
             prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, selected).apply()
-            updateSleepValueText()
-            refreshSleepTitle()
             if (selected == 0) {
                 cancelSleepTimer()
-                showSleepTitleTemporary("Таймер отключен")
+                showSleepStatusTemporary("Таймер отключен")
             } else {
                 startSleepTimer(selected)
-                showSleepTitleTemporary("Таймер запущен на $selected минут")
+                showSleepStatusTemporary("Таймер запущен на $selected минут")
             }
         }
 
@@ -2299,10 +2447,7 @@ class MainActivity : AppCompatActivity() {
             updateSleepValueText()
             scheduleSleepApply()
         }
-        updateSleepValueText()
-        refreshSleepTitle()
-        btnSleepUp.setOnClickListener { changeSleep() }
-        btnSleepDown.setOnClickListener { changeSleep() }
+        refreshSleepValueFromPrefs()
         sleepRow.isFocusable = true
         sleepRow.setOnClickListener { changeSleep() }
         sleepRow.setOnKeyListener { _, keyCode, event ->
@@ -2320,13 +2465,35 @@ class MainActivity : AppCompatActivity() {
         }
         btnAdvancedSettings.setOnClickListener { exportDebugLogToDownloads() }
         btnAppInfo.setOnClickListener { showAppInfoScreen() }
+
+        findViewById<View>(R.id.btnLogoutProfile).setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Выйти из профиля?")
+                .setMessage("Вы перестанете быть авторизованы, но ваши сторонние плейлисты сохранятся.")
+                .setPositiveButton("Выйти") { _, _ -> performLogout() }
+                .setNegativeButton("Отмена", null)
+                .show()
+        }
+
+        findViewById<View>(R.id.btnResetSettings).setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Сбросить все настройки?")
+                .setMessage("Приложение вернётся в состояние первой установки: пропадут все плейлисты, авторизация и настройки. Это необратимо.")
+                .setPositiveButton("Сбросить") { _, _ -> performFullReset() }
+                .setNegativeButton("Отмена", null)
+                .show()
+        }
         fun openUserSettingsScreen() {
             settingsRows.forEach { it.visibility = View.GONE }
             findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
             userSettingsPanel.visibility = View.VISIBLE
-            tvSettingsBack.visibility = View.VISIBLE
+            tvSettingsBack.visibility = View.GONE
             tvSettingsBack.setOnClickListener { hideSettingsScreen() }
-            applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройка пользователя")
+            val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
+            applyHomeAppTitleStyle(
+                settingsMode = true,
+                settingsTitle = if (isAuthorizedUser) "профиль" else "авторизация"
+            )
             bindInlineUserSettings(userSettingsPanel)
         }
         btnUserSettings.setOnClickListener { openUserSettingsScreen() }
@@ -2339,36 +2506,45 @@ class MainActivity : AppCompatActivity() {
         val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
         val settingsRows = listOf(
             findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect),
-            findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode), findViewById<View>(R.id.itemAspectRatio),
+            findViewById<View>(R.id.btnSleepTimerSettings),
             findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings),
-            findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo)
+            findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo),
+            findViewById<View>(R.id.btnResetSettings), findViewById<View>(R.id.btnLogoutProfile)
         )
         settingsRows.forEach { it.visibility = View.GONE }
         userSettingsPanel.visibility = View.GONE
         findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
         playlistPanel.visibility = View.VISIBLE
         tvSettingsBack.visibility = View.GONE
-        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки плейлистов")
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "настройки", settingsTitle2 = "настройки плейлистов")
 
-        val names = listOf<EditText>(findViewById(R.id.etPlaylistName1), findViewById(R.id.etPlaylistName2), findViewById(R.id.etPlaylistName3))
+        fun deriveNameFromUrl(url: String): String {
+            val afterScheme = url.substringAfter("://", url)
+            return afterScheme.substringBefore("/").ifBlank { url }
+        }
+
         val urls = listOf<EditText>(findViewById(R.id.etPlaylistUrl1), findViewById(R.id.etPlaylistUrl2), findViewById(R.id.etPlaylistUrl3))
-        val toggles = listOf<ImageView>(findViewById(R.id.ivPlaylistToggle1), findViewById(R.id.ivPlaylistToggle2), findViewById(R.id.ivPlaylistToggle3))
+        val toggles = listOf<View>(findViewById(R.id.ivPlaylistToggle1), findViewById(R.id.ivPlaylistToggle2), findViewById(R.id.ivPlaylistToggle3))
+        val dots = listOf<View>(findViewById(R.id.dotPlaylistActive1), findViewById(R.id.dotPlaylistActive2), findViewById(R.id.dotPlaylistActive3))
         val states = MutableList(3) { false }
+
+        fun updateDot(i: Int) {
+            dots[i].visibility = if (states[i]) View.VISIBLE else View.GONE
+        }
 
         fun bindData() {
             val profiles = getThirdPartyPlaylistProfiles()
             for (i in 0..2) {
                 val p = profiles.getOrNull(i)
-                names[i].setText(p?.name ?: "")
                 urls[i].setText(p?.value ?: "")
                 states[i] = p?.enabled == true && !p.value.isNullOrBlank()
-                toggles[i].setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft)
+                updateDot(i)
             }
         }
-        toggles.forEachIndexed { i, iv ->
-            iv.setOnClickListener {
-                states[i] =
-                    !states[i]; iv.setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft)
+        toggles.forEachIndexed { i, v ->
+            v.setOnClickListener {
+                states[i] = !states[i]
+                updateDot(i)
             }
         }
         urls.forEachIndexed { i, et ->
@@ -2378,26 +2554,25 @@ class MainActivity : AppCompatActivity() {
                 override fun afterTextChanged(s: android.text.Editable?) {
                     if (!s.isNullOrBlank() && !states[i]) {
                         states[i] = true
-                        toggles[i].setImageResource(R.drawable.toggleright)
+                        updateDot(i)
                     }
                 }
             })
         }
 
         findViewById<View>(R.id.btnSavePlaylistSettings).setOnClickListener {
-            val items = (0..2).map { i ->
-                PlaylistProfile(
-                    names[i].text.toString().trim(),
-                    "url",
-                    urls[i].text.toString().trim(),
-                    states[i]
-                )
+            val items = (0..2).mapNotNull { i ->
+                val url = urls[i].text.toString().trim()
+                if (url.isBlank()) return@mapNotNull null
+                PlaylistProfile(deriveNameFromUrl(url), "url", url, states[i])
             }
-                .filter { it.name.isNotBlank() && it.value.isNotBlank() }
             saveThirdPartyPlaylistProfiles(items)
             showAppToast("Сторонние плейлисты сохранены")
+            loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
         }
-        findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener { loadPlaylist(forceReload = true, showErrors = true, autoPlay = false) }
+        findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener {
+            handleSettingsBackPress()
+        }
 
         configureBackButtonsForSettings("openPlaylistSettingsScreen")
         bindData()
@@ -2411,9 +2586,10 @@ class MainActivity : AppCompatActivity() {
         val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
         val settingsRows = listOf(
             findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect),
-            findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode), findViewById<View>(R.id.itemAspectRatio),
+            findViewById<View>(R.id.btnSleepTimerSettings),
             findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings),
-            findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo)
+            findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo),
+            findViewById<View>(R.id.btnResetSettings), findViewById<View>(R.id.btnLogoutProfile)
         )
         settingsRows.forEach { it.visibility = View.GONE }
         playlistPanel.visibility = View.GONE
@@ -2433,14 +2609,14 @@ class MainActivity : AppCompatActivity() {
         val epgPanel = findViewById<View>(R.id.epgSettingsPanel)
         val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
         val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
-        val settingsRows = listOf(findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect), findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.itemStartMode), findViewById<View>(R.id.itemAspectRatio), findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings), findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo))
+        val settingsRows = listOf(findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect), findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings), findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo), findViewById<View>(R.id.btnResetSettings), findViewById<View>(R.id.btnLogoutProfile))
         settingsRows.forEach { it.visibility = View.GONE }
         playlistPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
         findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
         epgPanel.visibility = View.VISIBLE
         tvSettingsBack.visibility = View.GONE
-        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки EPG")
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "настройки", settingsTitle2 = "настройки EPG")
 
         val urls = listOf<EditText>(findViewById(R.id.etEpgUrl1), findViewById(R.id.etEpgUrl2), findViewById(R.id.etEpgUrl3))
         val toggles = listOf<ImageView>(findViewById(R.id.ivEpgToggle1), findViewById(R.id.ivEpgToggle2), findViewById(R.id.ivEpgToggle3))
@@ -2536,13 +2712,6 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<View>(R.id.btnSaveEpgSettings).setOnClickListener {
             val links = urls.mapIndexedNotNull { i, et -> et.text.toString().trim().takeIf { it.isNotBlank() && states[i] } }.distinct()
-            saveCustomEpgSources(links)
-            selectedEpgSources = links.toMutableSet()
-            saveSelectedEpgSources(selectedEpgSources)
-            showAppToast("Ссылки EPG сохранены")
-        }
-        findViewById<View>(R.id.btnRefreshEpgSettings).setOnClickListener {
-            val links = urls.mapIndexedNotNull { i, et -> et.text.toString().trim().takeIf { it.isNotBlank() && states[i] } }.distinct()
             if (links.isNotEmpty()) {
                 saveCustomEpgSources(links)
                 selectedEpgSources = links.toMutableSet()
@@ -2551,7 +2720,7 @@ class MainActivity : AppCompatActivity() {
             if (selectedEpgSources.isNotEmpty()) {
                 synchronized(epgDataLock) { epgData.clear() }
                 fetchEpgSources(selectedEpgSources.toList(), mutableMapOf())
-                showAppToast("Ссылки сохранены, обновление EPG запущено")
+                showAppToast("Настройки сохранены, обновление EPG запущено")
             } else {
                 showAppToast(
                     "Нет выбранных источников EPG — включите переключатель у нужной ссылки",
@@ -2559,14 +2728,28 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+        findViewById<View>(R.id.btnRefreshEpgSettings).setOnClickListener {
+            handleSettingsBackPress()
+        }
+        findViewById<View>(R.id.btnResetEpgCache).setOnClickListener {
+            synchronized(epgDataLock) { epgData.clear() }
+            showAppToast("Кэш EPG очищен")
+        }
 
         configureBackButtonsForSettings("openEpgSettingsScreen")
     }
 
-    private fun getThirdPartyPlaylistProfiles(): List<PlaylistProfile> = getPlaylistProfiles().filter { it.name !in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные", "Пользователь", "По умолчанию") }
+    private fun getKnownServiceNames(): Set<String> =
+        prefs.getStringSet(PREF_KNOWN_SERVICE_NAMES, null) ?: DEFAULT_SERVICE_NAMES
+
+    private fun getThirdPartyPlaylistProfiles(): List<PlaylistProfile> {
+        val known = getKnownServiceNames() + setOf("Избранные", "Пользователь", "По умолчанию")
+        return getPlaylistProfiles().filter { it.name !in known }
+    }
 
     private fun saveThirdPartyPlaylistProfiles(thirdParty: List<PlaylistProfile>) {
-        val systemProfiles = getPlaylistProfiles().filter { it.name in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные", "Пользователь", "По умолчанию") }
+        val known = getKnownServiceNames() + setOf("Избранные", "Пользователь", "По умолчанию")
+        val systemProfiles = getPlaylistProfiles().filter { it.name in known }
         savePlaylistProfiles(systemProfiles + thirdParty.take(3))
     }
 
@@ -2574,17 +2757,52 @@ class MainActivity : AppCompatActivity() {
     private fun syncPortalPlaylistsForAuthorizedUser(token: String) {
         val cleanToken = token.trim()
         if (cleanToken.isBlank()) return
-        val existing = getPlaylistProfiles().toMutableList()
-        val thirdParty = existing.filter { it.name !in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные") }
-        val portal = listOf(
-            PlaylistProfile("Wink", "url", "https://o.avff.pw/list/wink.m3u8?token=$cleanToken", true),
-            PlaylistProfile("iLook", "url", "https://o.avff.pw/list/ilook.m3u8?token=$cleanToken", true),
-            PlaylistProfile("Сервис В", "url", "https://o.avff.pw/list/servicev.m3u8?token=$cleanToken", true),
-            PlaylistProfile("Lime TV", "url", "https://o.avff.pw/list/limetv.m3u8?token=$cleanToken", true),
-            PlaylistProfile("Only4", "url", "https://o.avff.pw/list/only4.m3u8?token=$cleanToken", true),
-            PlaylistProfile("Избранные", "url", "https://o.avff.pw/my/$cleanToken.m3u", true)
-        )
-        savePlaylistProfiles((portal + thirdParty).distinctBy { it.name })
+        val login = prefs.getString(PREF_USER_LOGIN, "") ?: ""
+        thread {
+            runCatching {
+                val url = "https://o.avff.pw/api.php?module=app&action=services&token=${
+                    Uri.encode(cleanToken)
+                }&login=${Uri.encode(login)}"
+                JSONObject(URL(url).readText())
+            }.onSuccess { json ->
+                if (json.optBoolean("success", false)) {
+                    val servicesArray = json.optJSONArray("services")
+                    val portal = mutableListOf<PlaylistProfile>()
+                    if (servicesArray != null) {
+                        for (i in 0 until servicesArray.length()) {
+                            val svc = servicesArray.optJSONObject(i) ?: continue
+                            val code = svc.optString("code").trim()
+                            val title = svc.optString("title").trim()
+                            if (code.isBlank() || title.isBlank()) continue
+                            portal.add(
+                                PlaylistProfile(
+                                    title, "url",
+                                    "https://o.avff.pw/list/$code.m3u8?token=$cleanToken", true
+                                )
+                            )
+                        }
+                    }
+                    portal.add(PlaylistProfile("Избранные", "url", "https://o.avff.pw/my/$cleanToken.m3u", true))
+                    handler.post {
+                        prefs.edit().putStringSet(
+                            PREF_KNOWN_SERVICE_NAMES,
+                            portal.map { it.name }.toSet() - "Избранные"
+                        ).apply()
+                        val known = getKnownServiceNames() + setOf("Избранные", "Пользователь", "По умолчанию")
+                        val existing = getPlaylistProfiles().filter { it.name !in known }
+                        savePlaylistProfiles((portal + existing).distinctBy { it.name })
+                        logDebug("PLAYLIST_FLOW", "SERVICES_SYNCED count=${portal.size}")
+                        if (homePlaylistTilesPanel.visibility == View.VISIBLE) {
+                            showPlaylistPageOnHome()
+                        }
+                    }
+                } else {
+                    logDebug("PLAYLIST_FLOW", "SERVICES_SYNC_FAILED message=${json.optString("message")}")
+                }
+            }.onFailure { e ->
+                logDebug("PLAYLIST_FLOW", "SERVICES_SYNC_ERROR ${e.message}")
+            }
+        }
     }
 
     private fun logVisibleBackButtonIds(stage: String) {
@@ -2659,14 +2877,6 @@ class MainActivity : AppCompatActivity() {
             lp.marginStart = 0
             tvSettingsBack.layoutParams = lp
         }
-        val rowIds = intArrayOf(R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings, R.id.itemStartMode, R.id.itemAspectRatio, R.id.btnAdvancedSettings, R.id.btnUserSettings, R.id.btnAppInfo)
-        rowIds.forEachIndexed { i, id ->
-            val row = findViewById<View>(id)
-            val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
-            lp.height = dpToPx(46)
-            lp.topMargin = if (i == 0) dpToPx(6) else dpToPx(8)
-            row.layoutParams = lp
-        }
     }
 
     private fun tunePlayerSettingsRows() {
@@ -2679,8 +2889,6 @@ class MainActivity : AppCompatActivity() {
             R.id.btnPlaylistSettings,
             R.id.btnEpgSelect,
             R.id.btnSleepTimerSettings,
-            R.id.itemStartMode,
-            R.id.itemAspectRatio,
             R.id.btnAdvancedSettings,
             R.id.btnUserSettings,
             R.id.btnAppInfo,
@@ -2751,17 +2959,6 @@ class MainActivity : AppCompatActivity() {
             backLabel.layoutParams = lp
         }
 
-        rowIds.forEachIndexed { index, id ->
-            val row = findViewById<View>(id)
-            val lp = row.layoutParams as? ConstraintLayout.LayoutParams ?: return@forEachIndexed
-            lp.height = rowHeight
-            lp.topMargin = if (index == 0) dpToPx(2) else rowMargin
-            lp.marginStart = dpToPx(12)
-            lp.marginEnd = dpToPx(12)
-            lp.bottomToBottom = ConstraintSet.UNSET
-            lp.bottomMargin = 0
-            row.layoutParams = lp
-        }
     }
 
     private fun dpToPx(value: Int): Int = (resources.displayMetrics.density * value).toInt()
@@ -2898,17 +3095,8 @@ class MainActivity : AppCompatActivity() {
         tvAuthorizedPlaylistValue.text = prefs.getString(PREF_USER_PLAYLIST, "") ?: ""
         etToken.isEnabled = true
         btnChangeUser.setOnClickListener {
-            prefs.edit().remove(PREF_USER_NAME).remove(PREF_USER_TOKEN).remove(PREF_USER_LOGIN).remove(PREF_USER_PLAYLIST).apply()
-            val profiles = getPlaylistProfiles().filterNot { it.name in setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4", "Избранные") }
-            savePlaylistProfiles(profiles)
-            setSelectedPlaylistName(profiles.firstOrNull()?.name ?: "")
-            currentPlaylistText = ""
-            channels.clear()
-            synchronized(epgDataLock) { epgData.clear() }
+            performLogout()
             bindInlineUserSettings(panel)
-            loadPlaylist(forceReload = true, showErrors = false, autoPlay = false)
-            hideSettingsScreen()
-            showStartPage()
         }
         btnChangeToken.setOnClickListener {
             prefs.edit().remove(PREF_USER_NAME).apply()
@@ -3828,6 +4016,7 @@ class MainActivity : AppCompatActivity() {
             handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
             isPlaybackPaused = false
             isArchivePlayback = true
+            updateLiveStatusBadge()
             currentArchiveProgram = program
             archiveStreamStartMs = program.start
             btnPlayPause.alpha = 1.0f
@@ -3879,12 +4068,23 @@ class MainActivity : AppCompatActivity() {
             }
             ensurePlayerReadyForPlayback(preferSoftwareDecoder = shouldUseSoftware)
             mediaPlayer?.stop()
-            lastRequestedPlaybackUrl = ch.url
-            startupPlaybackUrlLock = ch.url
+            val isQualityOverrideForThisChannel =
+                manualQualityOverrideChannelIndex == currentChannelIndex && manualQualityOverrideUrl != null
+            lastRequestedPlaybackUrl = if (isQualityOverrideForThisChannel) {
+                manualQualityOverrideUrl!!
+            } else {
+                manualQualityOverrideChannelIndex = -1
+                manualQualityOverrideUrl = null
+                ch.url
+            }
+            if (!isQualityOverrideForThisChannel) {
+                fetchStreamQualityInfo(ch.url)
+            }
+            startupPlaybackUrlLock = lastRequestedPlaybackUrl
             videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
             videoOnlyMinimalNoFrameRunnable = null
-            logHlsManifestPreview(ch.url)
-            dumpDebugTsSegments(ch.url, "problem")
+            logHlsManifestPreview(lastRequestedPlaybackUrl)
+            dumpDebugTsSegments(lastRequestedPlaybackUrl, "problem")
             firstFrameRendered = false
             handler.removeCallbacks(startupSlowStreamRunnable)
             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
@@ -3901,8 +4101,8 @@ class MainActivity : AppCompatActivity() {
             }
 
             val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
-            logPathState("STARTUP_PATH before_set_source allowNonIdr=${allowNonIdr || shouldAllowNonIdrForStream(ch.url)} forcePlay=$forcePlay")
-            player.setMediaSource(buildHlsMediaSource(ch.url, allowNonIdr))
+            logPathState("STARTUP_PATH before_set_source allowNonIdr=${allowNonIdr || shouldAllowNonIdrForStream(lastRequestedPlaybackUrl)} forcePlay=$forcePlay")
+            player.setMediaSource(buildHlsMediaSource(lastRequestedPlaybackUrl, allowNonIdr))
             player.seekToDefaultPosition()
             logPathState("STARTUP_PATH after_seek_default")
             player.prepare()
@@ -3919,6 +4119,7 @@ class MainActivity : AppCompatActivity() {
             isArchivePlayback = false
             currentArchiveProgram = null
             archiveStreamStartMs = 0L
+            updateLiveStatusBadge()
             btnPlayPause.alpha = 1.0f
 
             tvChannelName.text = "${currentChannelIndex + 1}. ${ch.name}"
@@ -4086,10 +4287,122 @@ class MainActivity : AppCompatActivity() {
         Glide.with(this).load(glideUrl).placeholder(R.mipmap.ic_launcher).into(target)
     }
 
-    private fun refreshLogo() {
-        val ch = channels.getOrNull(currentChannelIndex) ?: return
-        loadLogoWithGlide(ch.logoFromEpg ?: ch.logoFromPlaylist, ivLogo)
+    private fun qualityLabelForHeight(height: Int): String = when {
+        height <= 576 -> "SD"
+        height <= 720 -> "HD"
+        height <= 1080 -> "FHD"
+        else -> "4K"
     }
+
+    private fun resolvePlaylistUrl(baseUrl: String, line: String): String {
+        if (line.startsWith("http://") || line.startsWith("https://")) return line
+        val cutIndex = baseUrl.lastIndexOf('/')
+        return if (cutIndex >= 0) baseUrl.substring(0, cutIndex + 1) + line else line
+    }
+
+    private fun fetchStreamQualityInfo(baseUrl: String) {
+        val myToken = ++qualityFetchToken
+        availableQualities = emptyList()
+        currentQualityIndex = -1
+        availableSubtitleUrl = null
+        subtitlesEnabled = false
+        btnCcSubtitles.visibility = View.GONE
+        btnHdQuality.visibility = View.GONE
+        thread {
+            runCatching {
+                val separator = if (baseUrl.contains("?")) "&" else "?"
+                val masterUrl = "$baseUrl${separator}v=3"
+                val text = URL(masterUrl).readText()
+                val lines = text.lines()
+                var subtitleUrl: String? = null
+                val qualities = mutableListOf<QualityOption>()
+                for (i in lines.indices) {
+                    val line = lines[i].trim()
+                    if (line.startsWith("#EXT-X-MEDIA:") && line.contains("TYPE=SUBTITLES")) {
+                        subtitleUrl = Regex("URI=\"([^\"]+)\"").find(line)?.groupValues?.get(1)
+                            ?.let { resolvePlaylistUrl(masterUrl, it) }
+                    } else if (line.startsWith("#EXT-X-STREAM-INF:")) {
+                        val height = Regex("RESOLUTION=\\d+x(\\d+)").find(line)?.groupValues?.get(1)?.toIntOrNull()
+                            ?: continue
+                        val nextLine = lines.getOrNull(i + 1)?.trim()
+                        if (nextLine.isNullOrBlank() || nextLine.startsWith("#")) continue
+                        qualities.add(
+                            QualityOption(
+                                qualityLabelForHeight(height),
+                                height,
+                                resolvePlaylistUrl(masterUrl, nextLine)
+                            )
+                        )
+                    }
+                }
+                Pair(subtitleUrl, qualities.distinctBy { it.height }.sortedByDescending { it.height })
+            }.onSuccess { (subUrl, qualities) ->
+                handler.post {
+                    if (myToken != qualityFetchToken) return@post
+                    availableSubtitleUrl = subUrl
+                    availableQualities = qualities
+                    currentQualityIndex = if (qualities.isNotEmpty()) 0 else -1
+                    updateCcHdButtons()
+                }
+            }.onFailure {
+                logDebug(
+                    "PLAYER_QUALITY",
+                    "fetchStreamQualityInfo failed url=${redactSensitive(baseUrl)} error=${it.message}"
+                )
+            }
+        }
+    }
+
+    private fun updateCcHdButtons() {
+        btnCcSubtitles.visibility = if (availableSubtitleUrl != null) View.VISIBLE else View.GONE
+        btnCcSubtitles.alpha = if (subtitlesEnabled) 1f else 0.5f
+        if (availableQualities.isEmpty()) {
+            btnHdQuality.visibility = View.GONE
+        } else {
+            btnHdQuality.visibility = View.VISIBLE
+            val current = availableQualities.getOrNull(currentQualityIndex)
+            btnHdQuality.text = current?.label ?: "HD"
+            btnHdQuality.alpha = if (availableQualities.size > 1) 1f else 0.6f
+        }
+    }
+
+    private fun toggleSubtitles() {
+        if (availableSubtitleUrl == null) return
+        subtitlesEnabled = !subtitlesEnabled
+        val player = mediaPlayer
+        if (player != null) {
+            player.trackSelectionParameters = player.trackSelectionParameters
+                .buildUpon()
+                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, !subtitlesEnabled)
+                .build()
+        }
+        updateCcHdButtons()
+        showAppToast(if (subtitlesEnabled) "Субтитры включены" else "Субтитры выключены")
+    }
+
+    private fun cycleQuality() {
+        if (availableQualities.size <= 1) return
+        currentQualityIndex = (currentQualityIndex + 1) % availableQualities.size
+        val target = availableQualities[currentQualityIndex]
+        updateCcHdButtons()
+        showAppToast("Качество: ${target.label}")
+        manualQualityOverrideUrl = target.url
+        manualQualityOverrideChannelIndex = currentChannelIndex
+        playChannel(forcePlay = true)
+    }
+
+    private fun updateLiveStatusBadge() {
+        if (isArchivePlayback) {
+            liveStatusBadge.setBackgroundResource(R.drawable.bg_live_badge_blue)
+            liveStatusDot.setBackgroundResource(R.drawable.dot_live_blue)
+            tvLiveStatusText.text = "АРХИВ"
+        } else {
+            liveStatusBadge.setBackgroundResource(R.drawable.bg_live_badge_red)
+            liveStatusDot.setBackgroundResource(R.drawable.dot_live_red)
+            tvLiveStatusText.text = "LIVE"
+        }
+    }
+    private fun refreshLogo() = updateLiveStatusBadge()
 
     private fun startClockUpdater() {
         handler.post(object : Runnable {
@@ -4890,6 +5203,8 @@ class MainActivity : AppCompatActivity() {
             val focusInControlsPanel = focused != null &&
                 controlsPanelButtonIds.any { findViewById<View>(it) === focused }
             if (focusInControlsPanel) {
+                handler.removeCallbacks(hideUiRunnable)
+                handler.postDelayed(hideUiRunnable, 5000)
                 return super.onKeyDown(keyCode, event)
             }
         }
@@ -5429,11 +5744,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun enableHomeCategoryBack(onClick: () -> Unit) {
-        tvHomeCategoryBack.visibility = View.VISIBLE
-        tvHomeCategoryBack.isEnabled = true
-        tvHomeCategoryBack.isFocusable = true
-        tvHomeCategoryBack.isFocusableInTouchMode = true
-        tvHomeCategoryBack.isClickable = true
+        // "Назад" больше не показываем нигде — эту функцию теперь выполняет клик по "O.Portal".
+        tvHomeCategoryBack.visibility = View.GONE
+        tvHomeCategoryBack.isEnabled = false
+        tvHomeCategoryBack.isFocusable = false
+        tvHomeCategoryBack.isFocusableInTouchMode = false
+        tvHomeCategoryBack.isClickable = false
         tvHomeCategoryBack.setOnClickListener { onClick() }
     }
 

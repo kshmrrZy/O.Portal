@@ -38,186 +38,225 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/userProfileHeaderCard"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:minHeight="110dp"
+        android:background="@drawable/bg_profile_header_card"
+        android:paddingHorizontal="18dp"
+        android:paddingVertical="16dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <FrameLayout
+            android:id="@+id/profileAvatarFrame"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:background="@drawable/bg_profile_avatar"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:layout_gravity="center"
+                android:src="@drawable/profile"
+                android:tint="#FFFFFF" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/tvProfileName"
+            style="@style/AppGolosText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="18dp"
+            android:text="Пользователь"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            app:layout_constraintStart_toEndOf="@id/profileAvatarFrame"
+            app:layout_constraintTop_toTopOf="@id/profileAvatarFrame" />
+
+        <TextView
+            android:id="@+id/tvProfileNickname"
+            style="@style/AppGolosText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:text="@nickname"
+            android:textColor="#80FFFFFF"
+            android:textSize="13sp"
+            app:layout_constraintStart_toStartOf="@id/tvProfileName"
+            app:layout_constraintTop_toBottomOf="@id/tvProfileName" />
+
+        <TextView
+            android:id="@+id/tvProfileTokenLabel"
+            style="@style/AppGolosText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Токен:"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            app:layout_constraintStart_toStartOf="@id/tvProfileName"
+            app:layout_constraintTop_toBottomOf="@id/tvProfileNickname" />
+
+        <TextView
+            android:id="@+id/tvProfileTokenValue"
+            style="@style/AppGolosText"
+            android:layout_width="200dp"
+            android:layout_height="22dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_settings_row"
+            android:gravity="center"
+            android:singleLine="true"
+            android:ellipsize="middle"
+            android:paddingHorizontal="8dp"
+            android:textColor="#80FFFFFF"
+            android:textSize="10sp"
+            app:layout_constraintStart_toEndOf="@id/tvProfileTokenLabel"
+            app:layout_constraintTop_toTopOf="@id/tvProfileTokenLabel"
+            app:layout_constraintBottom_toBottomOf="@id/tvProfileTokenLabel" />
+
+        <ImageView
+            android:id="@+id/btnProfileChangeToken"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:layout_marginStart="10dp"
+            android:src="@drawable/ic_refresh_small"
+            app:layout_constraintStart_toEndOf="@id/tvProfileTokenValue"
+            app:layout_constraintTop_toTopOf="@id/tvProfileTokenValue"
+            app:layout_constraintBottom_toBottomOf="@id/tvProfileTokenValue" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
     <LinearLayout
         android:id="@+id/btnPlaylistSettings" android:focusable="true" android:focusableInTouchMode="false"
         android:layout_width="0dp"
-        android:layout_height="46dp"
-        android:layout_marginTop="4dp"
-        android:background="@drawable/bg_settings_row"
-        android:gravity="center_vertical"
+        android:layout_height="66dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_settings_grid_card"
+        android:gravity="center"
         android:orientation="horizontal"
-        android:paddingHorizontal="12dp"
-        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/settingsGridGuide1"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tvSettingsBack">
-
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:src="@drawable/list"
-            android:tint="#FFFFFF" />
+        app:layout_constraintTop_toBottomOf="@id/userProfileHeaderCard">
 
         <TextView
             style="@style/AppGolosText"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="14dp"
-            android:layout_weight="1"
-            android:text="Настроить плейлисты"
+            android:gravity="center"
+            android:text="Настройки плейлистов"
             android:textColor="#FFFFFF"
             android:textFontWeight="500"
-            android:textSize="14sp" />
+            android:textSize="18sp" />
     </LinearLayout>
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/settingsGridGuide1"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent="0.335" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/settingsGridGuide2"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent="0.665" />
 
     <LinearLayout
         android:id="@+id/btnEpgSelect" android:focusable="true" android:focusableInTouchMode="false"
         android:layout_width="0dp"
-        android:layout_height="46dp"
-        android:layout_marginTop="8dp"
-        android:background="@drawable/bg_settings_row"
-        android:gravity="center_vertical"
+        android:layout_height="66dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_settings_grid_card"
+        android:gravity="center"
         android:orientation="horizontal"
-        android:paddingHorizontal="12dp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/btnPlaylistSettings">
+        app:layout_constraintStart_toStartOf="@id/settingsGridGuide1"
+        app:layout_constraintEnd_toStartOf="@id/settingsGridGuide2"
+        app:layout_constraintTop_toBottomOf="@id/userProfileHeaderCard">
 
-        <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/epg" android:tint="#FFFFFF"/>
-        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Настройка программы передач (EPG)" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
+        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Настройки EPG" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="18sp"/>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/btnSleepTimerSettings" android:focusable="true" android:focusableInTouchMode="false"
-        android:layout_width="0dp" android:layout_height="46dp" android:layout_marginTop="8dp"
-        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp"
-        app:layout_constraintTop_toBottomOf="@id/btnEpgSelect" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
-        <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/timer" android:tint="#FFFFFF"/>
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="14dp"
-            android:layout_weight="1"
-            android:orientation="vertical">
-            <TextView android:id="@+id/tvSleepTimerTitle" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Таймер сна" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
-            <TextView
-                android:id="@+id/tvSleepTimerHint"
-                style="@style/AppGolosText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Телефон: нажимайте на пункт для смены значения • Пульт: нажимайте ОК для смены значения"
-                android:textColor="#99FFFFFF"
-                android:textSize="6sp" />
-        </LinearLayout>
-        <LinearLayout
+        android:layout_width="0dp" android:layout_height="66dp" android:layout_marginTop="12dp"
+        android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:orientation="vertical"
+        app:layout_constraintTop_toBottomOf="@id/userProfileHeaderCard" app:layout_constraintStart_toStartOf="@id/settingsGridGuide2" app:layout_constraintEnd_toEndOf="parent">
+        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Настройки таймера" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="18sp"/>
+        <TextView
+            android:id="@+id/tvSleepTimerValue"
+            style="@style/AppGolosText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-            <TextView
-                android:id="@+id/tvSleepTimerValue"
-                style="@style/AppGolosText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="выключено"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp" />
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginStart="10dp">
-                <TextView
-                    android:id="@+id/btnSleepUp"
-                    android:layout_width="26dp"
-                    android:layout_height="18dp"
-                    android:gravity="center"
-                    android:text="▲"
-                    android:textColor="#FFFFFF" />
-                <TextView
-                    android:id="@+id/btnSleepDown"
-                    android:layout_width="26dp"
-                    android:layout_height="18dp"
-                    android:gravity="center"
-                    android:text="▼"
-                    android:textColor="#FFFFFF" />
-            </LinearLayout>
-        </LinearLayout>
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/itemStartMode" android:focusable="true" android:focusableInTouchMode="false"
-        android:layout_width="0dp" android:layout_height="46dp" android:layout_marginTop="8dp"
-        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp"
-        app:layout_constraintTop_toBottomOf="@id/btnSleepTimerSettings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
-        <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/folder" android:tint="#FFFFFF"/>
-        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Выбор страницы при открытии приложения" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
-        <ToggleButton
-            android:id="@+id/tbStartMode"
-            android:layout_width="wrap_content"
-            android:layout_height="30dp"
-            android:minWidth="190dp"
-            android:background="@drawable/bg_settings_row"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            android:textOff="Стартовая страница"
-            android:textOn="Последний канал"
+            android:layout_marginTop="2dp"
+            android:text="выключено"
+            android:textColor="#99FFFFFF"
             android:textSize="12sp" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/itemAspectRatio" android:focusable="true" android:focusableInTouchMode="false"
-        android:layout_width="0dp" android:layout_height="46dp" android:layout_marginTop="8dp"
-        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp"
-        app:layout_constraintTop_toBottomOf="@id/itemStartMode" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
-        <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/folder" android:tint="#FFFFFF"/>
-        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Соотношение сторон видео" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
-        <ToggleButton
-            android:id="@+id/tbAspectRatio"
-            android:layout_width="wrap_content"
-            android:layout_height="30dp"
-            android:minWidth="190dp"
-            android:background="@drawable/bg_settings_row"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            android:textOff="Автоматически"
-            android:textOn="Автоматически"
-            android:textSize="12sp" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/btnAdvancedSettings" android:focusable="true" android:focusableInTouchMode="false"
-        android:layout_width="0dp" android:layout_height="46dp" android:layout_marginTop="8dp"
-        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp"
-        app:layout_constraintTop_toBottomOf="@id/itemAspectRatio" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
-        <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/settings" android:tint="#FFFFFF"/>
-        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Экспорт лога" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/btnUserSettings" android:focusable="true" android:focusableInTouchMode="false"
-        android:layout_width="0dp" android:layout_height="46dp" android:layout_marginTop="8dp"
-        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp"
-        app:layout_constraintTop_toBottomOf="@id/btnAdvancedSettings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
-        <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/profile" android:tint="#FFFFFF"/>
-        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Настроить пользователя" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
+        android:layout_width="0dp" android:layout_height="66dp" android:layout_marginTop="12dp"
+        android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:orientation="horizontal"
+        app:layout_constraintTop_toBottomOf="@id/btnPlaylistSettings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toStartOf="@id/settingsGridGuide1">
+        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Настройки профиля" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="18sp"/>
     </LinearLayout>
 
     <LinearLayout
-        android:id="@+id/btnExportDebugLog" android:focusable="true" android:focusableInTouchMode="false"
-        android:layout_width="0dp" android:layout_height="46dp" android:layout_marginTop="8dp"
-        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp"
-        app:layout_constraintTop_toBottomOf="@id/btnUserSettings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
-        <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/folder" android:tint="#FFFFFF"/>
-        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Экспорт debug лога" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
+        android:id="@+id/btnAdvancedSettings" android:focusable="true" android:focusableInTouchMode="false"
+        android:layout_width="0dp" android:layout_height="66dp" android:layout_marginTop="12dp"
+        android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:orientation="horizontal"
+        app:layout_constraintTop_toBottomOf="@id/btnEpgSelect" app:layout_constraintStart_toStartOf="@id/settingsGridGuide1" app:layout_constraintEnd_toStartOf="@id/settingsGridGuide2">
+        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Экспорт лога" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="18sp"/>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/btnAppInfo" android:focusable="true" android:focusableInTouchMode="false"
-        android:layout_width="0dp" android:layout_height="46dp" android:layout_marginTop="8dp"
-        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp"
-        app:layout_constraintTop_toBottomOf="@id/btnExportDebugLog" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
-        <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/alert" android:tint="#FFFFFF"/>
-        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Информация о приложении" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
+        android:layout_width="0dp" android:layout_height="66dp" android:layout_marginTop="12dp"
+        android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:orientation="horizontal"
+        app:layout_constraintTop_toBottomOf="@id/btnSleepTimerSettings" app:layout_constraintStart_toStartOf="@id/settingsGridGuide2" app:layout_constraintEnd_toEndOf="parent">
+        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="О приложении" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="18sp"/>
+    </LinearLayout>
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/settingsGridGuideHalf"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent="0.5" />
+
+    <LinearLayout
+        android:id="@+id/btnResetSettings" android:focusable="true" android:focusableInTouchMode="false"
+        android:layout_width="0dp" android:layout_height="52dp" android:layout_marginTop="14dp"
+        android:background="@drawable/bg_settings_danger_card" android:gravity="center" android:orientation="horizontal"
+        app:layout_constraintTop_toBottomOf="@id/btnUserSettings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toStartOf="@id/settingsGridGuideHalf">
+        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Сбросить настройки" android:textColor="#EF4444" android:textFontWeight="500" android:textSize="16sp"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/btnLogoutProfile" android:focusable="true" android:focusableInTouchMode="false"
+        android:layout_width="0dp" android:layout_height="52dp" android:layout_marginTop="14dp"
+        android:background="@drawable/bg_settings_danger_card" android:gravity="center" android:orientation="horizontal"
+        app:layout_constraintTop_toBottomOf="@id/btnUserSettings" app:layout_constraintStart_toStartOf="@id/settingsGridGuideHalf" app:layout_constraintEnd_toEndOf="parent">
+        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Выйти из профиля" android:textColor="#EF4444" android:textFontWeight="500" android:textSize="16sp"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/btnExportDebugLog" android:focusable="true" android:focusableInTouchMode="false"
+        android:layout_width="0dp" android:layout_height="0dp"
+        android:background="@drawable/bg_settings_grid_card" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/btnUserSettings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
+        <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/folder" android:tint="#FFFFFF"/>
+        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Экспорт debug лога" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
     </LinearLayout>
 
     <LinearLayout
@@ -232,60 +271,40 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <TextView
-            style="@style/AppGolosText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Сторонние плейлисты"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp" />
+        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Раздел для настройки плейлистов" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
+        <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="поддерживается не более 3 источников формата M3U/M3U8" android:textColor="#99FFFFFF" android:textSize="12sp"/>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-            <EditText android:id="@+id/etPlaylistName1" android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="0.33" android:background="@drawable/bg_settings_row" android:hint="название плейлиста" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF" android:textSize="16sp"/>
-            <EditText android:id="@+id/etPlaylistUrl1" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginStart="8dp" android:layout_weight="0.67" android:background="@drawable/bg_settings_row" android:hint="введите ссылку на плейлист вида https://example.com/playlist.m3u8" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF" android:textSize="16sp"/>
-            <ImageView android:id="@+id/ivPlaylistToggle1" android:layout_width="48dp" android:layout_height="28dp" android:layout_marginStart="8dp" android:src="@drawable/toggleright"/>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:gravity="center_vertical" android:orientation="horizontal">
+            <EditText android:id="@+id/etPlaylistUrl1" android:layout_width="0dp" android:layout_height="34dp" android:layout_weight="1" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="12sp"/>
+            <FrameLayout android:id="@+id/ivPlaylistToggle1" android:focusable="true" android:focusableInTouchMode="false" android:layout_width="34dp" android:layout_height="34dp" android:layout_marginStart="8dp" android:background="@drawable/bg_epg_url_field">
+                <View android:id="@+id/dotPlaylistActive1" android:layout_width="10dp" android:layout_height="10dp" android:layout_gravity="center" android:background="@drawable/bg_playlist_active_dot" android:visibility="visible"/>
+            </FrameLayout>
         </LinearLayout>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-            <EditText android:id="@+id/etPlaylistName2" android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="0.33" android:background="@drawable/bg_settings_row" android:hint="название плейлиста" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF" android:textSize="16sp"/>
-            <EditText android:id="@+id/etPlaylistUrl2" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginStart="8dp" android:layout_weight="0.67" android:background="@drawable/bg_settings_row" android:hint="введите ссылку на плейлист вида https://example.com/playlist.m3u8" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF" android:textSize="16sp"/>
-            <ImageView android:id="@+id/ivPlaylistToggle2" android:layout_width="48dp" android:layout_height="28dp" android:layout_marginStart="8dp" android:src="@drawable/toggleright"/>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center_vertical" android:orientation="horizontal">
+            <EditText android:id="@+id/etPlaylistUrl2" android:layout_width="0dp" android:layout_height="34dp" android:layout_weight="1" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="12sp"/>
+            <FrameLayout android:id="@+id/ivPlaylistToggle2" android:focusable="true" android:focusableInTouchMode="false" android:layout_width="34dp" android:layout_height="34dp" android:layout_marginStart="8dp" android:background="@drawable/bg_epg_url_field">
+                <View android:id="@+id/dotPlaylistActive2" android:layout_width="10dp" android:layout_height="10dp" android:layout_gravity="center" android:background="@drawable/bg_playlist_active_dot" android:visibility="gone"/>
+            </FrameLayout>
         </LinearLayout>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-            <EditText android:id="@+id/etPlaylistName3" android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="0.33" android:background="@drawable/bg_settings_row" android:hint="название плейлиста" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF" android:textSize="16sp"/>
-            <EditText android:id="@+id/etPlaylistUrl3" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginStart="8dp" android:layout_weight="0.67" android:background="@drawable/bg_settings_row" android:hint="введите ссылку на плейлист вида https://example.com/playlist.m3u8" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF" android:textSize="16sp"/>
-            <ImageView android:id="@+id/ivPlaylistToggle3" android:layout_width="48dp" android:layout_height="28dp" android:layout_marginStart="8dp" android:src="@drawable/toggleright"/>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center_vertical" android:orientation="horizontal">
+            <EditText android:id="@+id/etPlaylistUrl3" android:layout_width="0dp" android:layout_height="34dp" android:layout_weight="1" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="12sp"/>
+            <FrameLayout android:id="@+id/ivPlaylistToggle3" android:focusable="true" android:focusableInTouchMode="false" android:layout_width="34dp" android:layout_height="34dp" android:layout_marginStart="8dp" android:background="@drawable/bg_epg_url_field">
+                <View android:id="@+id/dotPlaylistActive3" android:layout_width="10dp" android:layout_height="10dp" android:layout_gravity="center" android:background="@drawable/bg_playlist_active_dot" android:visibility="gone"/>
+            </FrameLayout>
         </LinearLayout>
 
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:gravity="end">
-            <TextView android:id="@+id/btnSavePlaylistSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="160dp" android:layout_height="42dp" android:background="@drawable/bg_settings_row" android:gravity="center" android:text="Сохранить" android:textColor="#FFFFFF" android:textSize="16sp"/>
-            <TextView android:id="@+id/btnRefreshPlaylistSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="160dp" android:layout_height="42dp" android:layout_marginStart="10dp" android:background="@drawable/bg_settings_row" android:gravity="center" android:text="Обновить" android:textColor="#FFFFFF" android:textSize="16sp"/>
-        </LinearLayout>
+        <EditText android:id="@+id/etPlaylistName1" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone"/>
+        <EditText android:id="@+id/etPlaylistName2" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone"/>
+        <EditText android:id="@+id/etPlaylistName3" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone"/>
 
-        <TextView
-            style="@style/AppGolosText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="На текущий момент можно добавить до 3 плейлистов, поддерживаются форматы M3U/M3U8"
-            android:textColor="#B3FFFFFF"
-            android:textSize="14sp" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:minHeight="8dp" android:orientation="vertical"/>
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <TextView android:id="@+id/btnSavePlaylistSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="66dp" android:layout_weight="1" android:background="@drawable/bg_settings_action_green" android:gravity="center" android:text="Сохранить настройки" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="18sp"/>
+            <TextView android:id="@+id/btnRefreshPlaylistSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="66dp" android:layout_weight="1" android:layout_marginStart="10dp" android:background="@drawable/bg_settings_action_red" android:gravity="center" android:text="Назад" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="18sp"/>
+        </LinearLayout>
     </LinearLayout>
 
     
@@ -302,33 +321,31 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
-            <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Источник EPG" android:textColor="#FFFFFF" android:textSize="14sp"/>
-            <ToggleButton android:id="@+id/tbEpgSourceMode" android:focusable="true" android:focusableInTouchMode="false" android:layout_width="wrap_content" android:layout_height="30dp" android:minWidth="190dp" android:background="@drawable/bg_settings_row" android:textAllCaps="false" android:textColor="#FFFFFF" android:textOff="Из плейлиста" android:textOn="Указать вручную" android:textSize="12sp"/>
-        </LinearLayout>
-        <TextView android:id="@+id/tvEpgSourceHint" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="" android:textColor="#99FFFFFF" android:textSize="12sp"/>
+        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Раздел для настройки EPG" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
+        <TextView android:id="@+id/tvEpgSourceHint" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="поддерживается не более 3 источников формата XML" android:textColor="#99FFFFFF" android:textSize="12sp"/>
 
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:gravity="center_vertical" android:orientation="horizontal">
-            <ImageView android:id="@+id/ivEpgToggle1" android:layout_width="48dp" android:layout_height="28dp" android:src="@drawable/toggleright"/>
-            <EditText android:id="@+id/etEpgUrl1" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginStart="8dp" android:layout_weight="1" android:background="@drawable/bg_settings_row" android:hint="введите ссылку EPG" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF" android:textSize="16sp"/>
-        </LinearLayout>
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:gravity="center_vertical" android:orientation="horizontal">
-            <ImageView android:id="@+id/ivEpgToggle2" android:layout_width="48dp" android:layout_height="28dp" android:src="@drawable/toggleright"/>
-            <EditText android:id="@+id/etEpgUrl2" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginStart="8dp" android:layout_weight="1" android:background="@drawable/bg_settings_row" android:hint="введите ссылку EPG" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF" android:textSize="16sp"/>
-        </LinearLayout>
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:gravity="center_vertical" android:orientation="horizontal">
-            <ImageView android:id="@+id/ivEpgToggle3" android:layout_width="48dp" android:layout_height="28dp" android:src="@drawable/toggleright"/>
-            <EditText android:id="@+id/etEpgUrl3" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginStart="8dp" android:layout_weight="1" android:background="@drawable/bg_settings_row" android:hint="введите ссылку EPG" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF" android:textSize="16sp"/>
-        </LinearLayout>
+        <EditText android:id="@+id/etEpgUrl1" android:layout_width="match_parent" android:layout_height="34dp" android:layout_marginTop="16dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="12sp"/>
+        <EditText android:id="@+id/etEpgUrl2" android:layout_width="match_parent" android:layout_height="34dp" android:layout_marginTop="8dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="12sp"/>
+        <EditText android:id="@+id/etEpgUrl3" android:layout_width="match_parent" android:layout_height="34dp" android:layout_marginTop="8dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="12sp"/>
 
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:gravity="center_vertical" android:orientation="horizontal">
-            <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Интервал обновления" android:textColor="#FFFFFF" android:textSize="14sp"/>
-            <ToggleButton android:id="@+id/tbEpgRefreshInterval" android:focusable="true" android:focusableInTouchMode="false" android:layout_width="wrap_content" android:layout_height="30dp" android:minWidth="150dp" android:background="@drawable/bg_settings_row" android:textAllCaps="false" android:textColor="#FFFFFF" android:textOff="1 день" android:textOn="1 день" android:textSize="12sp"/>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:minHeight="8dp" android:orientation="vertical"/>
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <ImageView android:id="@+id/ivEpgToggle1" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:src="@drawable/toggleright"/>
+            <ImageView android:id="@+id/ivEpgToggle2" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:src="@drawable/toggleright"/>
+            <ImageView android:id="@+id/ivEpgToggle3" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:src="@drawable/toggleright"/>
+            <ToggleButton android:id="@+id/tbEpgRefreshInterval" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:textOff="1 день" android:textOn="1 день"/>
+
+            <TextView
+                android:id="@+id/btnResetEpgCache" android:focusable="true" android:focusableInTouchMode="false"
+                style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="66dp" android:layout_weight="1"
+                android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:text="Сбросить кэш EPG" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="18sp"/>
         </LinearLayout>
 
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:gravity="end">
-            <TextView android:id="@+id/btnSaveEpgSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="160dp" android:layout_height="42dp" android:background="@drawable/bg_settings_row" android:gravity="center" android:text="Сохранить" android:textColor="#FFFFFF" android:textSize="16sp"/>
-            <TextView android:id="@+id/btnRefreshEpgSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="160dp" android:layout_height="42dp" android:layout_marginStart="10dp" android:background="@drawable/bg_settings_row" android:gravity="center" android:text="Обновить" android:textColor="#FFFFFF" android:textSize="16sp"/>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:orientation="horizontal">
+            <ToggleButton android:id="@+id/tbEpgSourceMode" android:focusable="true" android:focusableInTouchMode="false" android:layout_width="0dp" android:layout_height="66dp" android:layout_weight="1" android:background="@drawable/bg_settings_grid_card" android:textAllCaps="false" android:textColor="#FFFFFF" android:textOff="Использовать свои источники" android:textOn="Использовать встроенные источники" android:textSize="18sp"/>
+            <TextView android:id="@+id/btnSaveEpgSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="66dp" android:layout_weight="1" android:layout_marginStart="10dp" android:background="@drawable/bg_settings_action_green" android:gravity="center" android:text="Сохранить настройки" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="18sp"/>
+            <TextView android:id="@+id/btnRefreshEpgSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="66dp" android:layout_weight="1" android:layout_marginStart="10dp" android:background="@drawable/bg_settings_action_red" android:gravity="center" android:text="Назад" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="18sp"/>
         </LinearLayout>
     </LinearLayout>
 <ScrollView
@@ -344,49 +361,55 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Описание" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
-            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Приложение предназначено для просмотра IPTV-каналов с портала O.Portal" android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Описание" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Приложение предназначено для просмотра IPTV-каналов с портала O.Portal" android:textColor="#CCFFFFFF" android:textSize="16sp"/>
 
-            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Рекомендуемые параметры" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
-            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Операционная система не ниже Android 7.0, не менее 1 ГБ ОЗУ, не менее 500 МБ для установки" android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Рекомендуемые параметры" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Операционная система не ниже Android 7.0, не менее 1 ГБ ОЗУ, не менее 500 МБ для установки" android:textColor="#CCFFFFFF" android:textSize="16sp"/>
 
-            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Где взять логин и токен" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
-            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="На сайте o.avff.pw в разделе Профиль после авторизации с помощью VK или Telegram" android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Где взять логин и токен" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="На сайте o.avff.pw в разделе Профиль после авторизации с помощью VK или Telegram" android:textColor="#CCFFFFFF" android:textSize="16sp"/>
 
-            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Где проверить обновление приложения" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
-            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="По технической возможности направляем OTA-уведомление для скачивания, но новую версию можно скачать по ссылке o.avff.pw/app" android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Где проверить обновление приложения" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="По технической возможности направляем OTA-уведомление для скачивания, но новую версию можно скачать по ссылке o.avff.pw/app" android:textColor="#CCFFFFFF" android:textSize="16sp"/>
 
             <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="18dp" android:background="#33FFFFFF"/>
 
-            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="1. Назначение приложения" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
-            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Приложение O.Portal представляет собой программный проигрыватель (плеер), предназначенный для воспроизведения медиаплейлистов в формате IPTV (M3U/M3U8 и аналогичных), которые пользователь самостоятельно добавляет по ссылкам, полученным из сети Интернет. Приложение не хранит, не размещает, не распространяет и не индексирует какой-либо медиаконтент, а также не предоставляет собственных каналов, плейлистов или трансляций." android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="А если остались вопросы?" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Добро пожаловать в поддержку в Telegram-боте @oportal_bot — там ответят админы и помогут разобраться." android:textColor="#CCFFFFFF" android:textSize="16sp"/>
 
-            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="2. Источник контента" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
-            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Все плейлисты и ссылки на потоковые трансляции добавляются пользователем самостоятельно. Разработчик приложения не имеет отношения к созданию, размещению или поддержке источников контента, на которые ссылаются добавленные пользователем плейлисты, и не осуществляет предварительную проверку, модерацию или контроль содержимого таких источников." android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="18dp" android:background="#33FFFFFF"/>
 
-            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="3. Ограничение ответственности" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
-            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Разработчик приложения не несёт ответственности за:\n• содержание, легальность и происхождение контента, доступного по добавленным пользователем ссылкам;\n• цели, для которых пользователь использует приложение;\n• возможные нарушения авторских и смежных прав, допущенные при использовании сторонних источников контента.\n\nПриложение является технологическим инструментом (плеером) и не осуществляет и не может осуществлять контроль над тем, какие именно ссылки добавляет пользователь и какой контент по ним доступен." android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="1. Назначение приложения" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Приложение O.Portal представляет собой программный проигрыватель (плеер), предназначенный для воспроизведения медиаплейлистов в формате IPTV (M3U/M3U8 и аналогичных), которые пользователь самостоятельно добавляет по ссылкам, полученным из сети Интернет. Приложение не хранит, не размещает, не распространяет и не индексирует какой-либо медиаконтент, а также не предоставляет собственных каналов, плейлистов или трансляций." android:textColor="#CCFFFFFF" android:textSize="16sp"/>
 
-            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="4. Отсутствие технической возможности контроля" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
-            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="В силу технической архитектуры приложения (пользователь самостоятельно вводит внешние ссылки на потоки) у разработчика отсутствует техническая возможность проверять правовой статус контента, транслируемого по указанным пользователем источникам, до момента его воспроизведения." android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="2. Источник контента" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Все плейлисты и ссылки на потоковые трансляции добавляются пользователем самостоятельно. Разработчик приложения не имеет отношения к созданию, размещению или поддержке источников контента, на которые ссылаются добавленные пользователем плейлисты, и не осуществляет предварительную проверку, модерацию или контроль содержимого таких источников." android:textColor="#CCFFFFFF" android:textSize="16sp"/>
 
-            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="5. Обязанности пользователя" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
-            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Используя приложение, пользователь подтверждает, что:\n• самостоятельно несёт ответственность за выбор источников контента и соблюдение применимого законодательства, включая законодательство об авторском праве;\n• обязуется не использовать приложение для доступа к контенту, распространяемому с нарушением прав правообладателей;\n• использует приложение на свой риск." android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="3. Ограничение ответственности" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Разработчик приложения не несёт ответственности за:\n• содержание, легальность и происхождение контента, доступного по добавленным пользователем ссылкам;\n• цели, для которых пользователь использует приложение;\n• возможные нарушения авторских и смежных прав, допущенные при использовании сторонних источников контента.\n\nПриложение является технологическим инструментом (плеером) и не осуществляет и не может осуществлять контроль над тем, какие именно ссылки добавляет пользователь и какой контент по ним доступен." android:textColor="#CCFFFFFF" android:textSize="16sp"/>
 
-            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="6. Обращения правообладателей" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
-            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Если вы являетесь правообладателем и полагаете, что функционирование приложения каким-либо образом затрагивает ваши права, вы можете связаться с разработчиками приложения через Telegram: t.me/oportal_bot. Разработчик готов оперативно рассматривать поступившие обращения и, при наличии технической возможности, предпринимать разумные меры реагирования, несмотря на то что сам разработчик не размещает и не контролирует контент, доступный по ссылкам, добавленным пользователями." android:textColor="#CCFFFFFF" android:textSize="14sp"/>
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="4. Отсутствие технической возможности контроля" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="В силу технической архитектуры приложения (пользователь самостоятельно вводит внешние ссылки на потоки) у разработчика отсутствует техническая возможность проверять правовой статус контента, транслируемого по указанным пользователем источникам, до момента его воспроизведения." android:textColor="#CCFFFFFF" android:textSize="16sp"/>
 
-            <TextView android:id="@+id/tvAppInfoDevelopers" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="Developments: TwojNochnojKoshmar, avtnmis" android:textColor="#99FFFFFF" android:textSize="12sp"/>
-            <TextView android:id="@+id/tvAppInfoFeedback" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="Feedback: t.me/@oportal_bot" android:textColor="#99FFFFFF" android:textSize="12sp"/>
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="5. Обязанности пользователя" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Используя приложение, пользователь подтверждает, что:\n• самостоятельно несёт ответственность за выбор источников контента и соблюдение применимого законодательства, включая законодательство об авторском праве;\n• обязуется не использовать приложение для доступа к контенту, распространяемому с нарушением прав правообладателей;\n• использует приложение на свой риск." android:textColor="#CCFFFFFF" android:textSize="16sp"/>
+
+            <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="6. Обращения правообладателей" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Если вы являетесь правообладателем и полагаете, что функционирование приложения каким-либо образом затрагивает ваши права, вы можете связаться с разработчиками приложения через Telegram: t.me/oportal_bot. Разработчик готов оперативно рассматривать поступившие обращения и, при наличии технической возможности, предпринимать разумные меры реагирования, несмотря на то что сам разработчик не размещает и не контролирует контент, доступный по ссылкам, добавленным пользователями." android:textColor="#CCFFFFFF" android:textSize="16sp"/>
+
+            <TextView android:id="@+id/tvAppInfoDevelopers" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="Developments: TwojNochnojKoshmar, avtnmis" android:textColor="#FFFFFF" android:textSize="16sp"/>
+            <TextView android:id="@+id/tvAppInfoFeedback" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="Feedback: t.me/@oportal_bot" android:textColor="#FFFFFF" android:textSize="16sp"/>
 
             <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="16dp" android:background="#33FFFFFF"/>
 
-            <TextView android:id="@+id/tvAppInfoVersion" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="center" android:text="O.Portal App v. 0.1" android:textColor="#99FFFFFF" android:textSize="13sp"/>
+            <TextView android:id="@+id/tvAppInfoVersion" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="end" android:text="O.Portal App v. 0.1" android:textColor="#FFFFFF" android:textSize="16sp"/>
         </LinearLayout>
     </ScrollView>
 <ScrollView
@@ -413,10 +436,10 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
         <TextView android:id="@+id/tvUserSectionState" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Имя пользователя" android:textColor="#FFFFFF" android:textSize="16sp"/>
-            <EditText android:id="@+id/etUserLoginInline" android:layout_width="match_parent" android:layout_height="40dp" android:layout_marginTop="6dp" android:background="@drawable/bg_settings_row" android:hint="введите логин" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF"/>
-            <TextView android:id="@+id/tvUserTokenLabel" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="Токен" android:textColor="#FFFFFF" android:textSize="16sp"/>
-            <EditText android:id="@+id/etUserTokenInline" android:layout_width="match_parent" android:layout_height="40dp" android:layout_marginTop="6dp" android:background="@drawable/bg_settings_row" android:hint="введите токен с сайта o.avff.ru" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#66FFFFFF"/>
-            <TextView android:id="@+id/btnUserAuthInline" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="128dp" android:layout_height="38dp" android:layout_gravity="end" android:layout_marginTop="16dp" android:background="@drawable/bg_settings_row" android:gravity="center" android:text="Войти" android:textColor="#FFFFFF" android:textSize="16sp"/>
+            <EditText android:id="@+id/etUserLoginInline" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="6dp" android:background="@drawable/bg_login_field" android:hint="введите логин" android:paddingHorizontal="16dp" android:textColor="#FFFFFF" android:textColorHint="#666666" android:textSize="16sp"/>
+            <TextView android:id="@+id/tvUserTokenLabel" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:text="Токен" android:textColor="#FFFFFF" android:textSize="16sp"/>
+            <EditText android:id="@+id/etUserTokenInline" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="6dp" android:background="@drawable/bg_login_field" android:hint="введите токен с сайта o.avff.pw" android:paddingHorizontal="16dp" android:textColor="#FFFFFF" android:textColorHint="#666666" android:textSize="16sp"/>
+            <TextView android:id="@+id/btnUserAuthInline" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="140dp" android:layout_height="43dp" android:layout_gravity="end" android:layout_marginTop="20dp" android:background="@drawable/bg_login_field" android:gravity="center" android:text="Войти" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="20sp"/>
         </LinearLayout>
         <LinearLayout
             android:id="@+id/userAuthorizedView"
@@ -441,6 +464,47 @@
             </LinearLayout>
             <TextView android:id="@+id/tvAuthorizedHint" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="двойной тап позволяет скопировать ссылку на плейлист или токен, но с пульта даже не пытайтесь. вот так." android:textColor="#B3FFFFFF" android:textSize="10sp"/>
         </LinearLayout>
+
+        <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="20dp" android:background="#33FFFFFF"/>
+
+        <LinearLayout
+            android:id="@+id/itemStartMode" android:focusable="true" android:focusableInTouchMode="false"
+            android:layout_width="match_parent" android:layout_height="46dp" android:layout_marginTop="16dp"
+            android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp">
+            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/folder" android:tint="#FFFFFF"/>
+            <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Выбор страницы при открытии приложения" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
+            <ToggleButton
+                android:id="@+id/tbStartMode"
+                android:layout_width="wrap_content"
+                android:layout_height="30dp"
+                android:minWidth="190dp"
+                android:background="@drawable/bg_settings_row"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textOff="Стартовая страница"
+                android:textOn="Последний канал"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/itemAspectRatio" android:focusable="true" android:focusableInTouchMode="false"
+            android:layout_width="match_parent" android:layout_height="46dp" android:layout_marginTop="8dp"
+            android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp">
+            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/folder" android:tint="#FFFFFF"/>
+            <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Соотношение сторон видео" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
+            <ToggleButton
+                android:id="@+id/tbAspectRatio"
+                android:layout_width="wrap_content"
+                android:layout_height="30dp"
+                android:minWidth="190dp"
+                android:background="@drawable/bg_settings_row"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textOff="Автоматически"
+                android:textOn="Автоматически"
+                android:textSize="12sp" />
+        </LinearLayout>
+
         <TextView android:id="@+id/tvUserFooterHint" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="Данные для входа в приложение можно получить на сайте o.avff.pw, авторизовавшись через VK или Telegram\nTelegram-бот для поддержки @oportal_bot" android:textColor="#B3FFFFFF" android:textSize="12sp"/>
     </LinearLayout>
 

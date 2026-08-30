@@ -168,14 +168,33 @@
             android:src="@drawable/back"
             android:contentDescription="Back to menu" />
 
-        <ImageView
-            android:id="@+id/ivChannelLogo"
-            android:layout_width="@dimen/player_top_icon_size"
-            android:layout_height="@dimen/player_top_icon_size"
+        <FrameLayout
+            android:id="@+id/liveStatusBadge"
+            android:layout_width="87dp"
+            android:layout_height="40dp"
             android:layout_marginStart="@dimen/player_top_logo_margin_start"
-            android:background="@drawable/channel_logo_frame"
-            android:padding="@dimen/player_top_logo_pad"
-            android:scaleType="fitCenter" />
+            android:background="@drawable/bg_live_badge_red">
+
+            <View
+                android:id="@+id/liveStatusDot"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:layout_gravity="center_vertical|start"
+                android:layout_marginStart="14dp"
+                android:background="@drawable/dot_live_red" />
+
+            <TextView
+                android:id="@+id/tvLiveStatusText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginStart="8dp"
+                android:fontFamily="@font/golos_text"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="13sp"
+                android:text="LIVE" />
+        </FrameLayout>
 
 
         <LinearLayout
@@ -320,19 +339,114 @@
                 android:id="@+id/btnPlayPause"
                 android:layout_width="38dp"
                 android:layout_height="38dp"
-                android:background="@android:color/transparent"
+                android:background="@drawable/bg_player_button_focus"
                 android:src="@drawable/pause"
                 android:scaleType="fitCenter"
                 android:focusable="true"
                 android:clickable="true"
-                android:backgroundTint="@android:color/transparent"
                 android:padding="0dp" />
+
+            <ImageButton
+                android:id="@+id/btnBackLeft"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_player_button_focus"
+                android:src="@drawable/backleft"
+                android:scaleType="fitCenter"
+                android:focusable="true"
+                android:clickable="true"
+                android:padding="0dp" />
+
+            <ImageButton
+                android:id="@+id/btnBackRight"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_player_button_focus"
+                android:src="@drawable/backright"
+                android:scaleType="fitCenter"
+                android:focusable="true"
+                android:clickable="true"
+                android:padding="0dp" />
+
+            <ImageButton
+                android:id="@+id/btnLock"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_player_button_focus"
+                android:src="@drawable/block"
+                android:scaleType="fitCenter"
+                android:focusable="true"
+                android:clickable="true"
+                android:padding="0dp" />
+
+            <ImageButton
+                android:id="@+id/btnEpgPlayer"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_player_button_focus"
+                android:src="@drawable/epgplayer"
+                android:scaleType="fitCenter"
+                android:focusable="true"
+                android:clickable="true"
+                android:padding="0dp" />
+
+            <ImageButton
+                android:id="@+id/btnSettings"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_player_button_focus"
+                android:src="@drawable/settingsplayer"
+                android:scaleType="fitCenter"
+                android:focusable="true"
+                android:clickable="true"
+                android:padding="0dp" />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/btnCcSubtitles"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:layout_width="48dp"
+                android:layout_height="30dp"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/bg_player_quality_badge"
+                android:fontFamily="@font/golos_text"
+                android:gravity="center"
+                android:text="CC"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/btnHdQuality"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:layout_width="48dp"
+                android:layout_height="30dp"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/bg_player_quality_badge"
+                android:fontFamily="@font/golos_text"
+                android:gravity="center"
+                android:text="HD"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
 
             <LinearLayout
                 android:id="@+id/liveButtonContainer"
                 android:layout_width="66dp"
                 android:layout_height="44dp"
-                android:layout_marginStart="8dp"
                 android:orientation="vertical"
                 android:gravity="center"
                 android:background="@android:color/transparent">
@@ -341,83 +455,13 @@
                     android:id="@+id/btnLiveReload"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:background="@android:color/transparent"
-                    android:backgroundTint="@android:color/transparent"
+                    android:background="@drawable/bg_player_button_focus"
                     android:src="@drawable/live"
                     android:scaleType="fitCenter"
                     android:padding="0dp"
                     android:focusable="true"
                     android:clickable="true" />
             </LinearLayout>
-
-            <ImageButton
-                android:id="@+id/btnBackLeft"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:layout_marginStart="8dp"
-                android:background="@android:color/transparent"
-                android:src="@drawable/backleft"
-                android:scaleType="fitCenter"
-                android:focusable="true"
-                android:clickable="true"
-                android:backgroundTint="@android:color/transparent"
-                android:padding="0dp" />
-
-            <ImageButton
-                android:id="@+id/btnBackRight"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:layout_marginStart="8dp"
-                android:background="@android:color/transparent"
-                android:src="@drawable/backright"
-                android:scaleType="fitCenter"
-                android:focusable="true"
-                android:clickable="true"
-                android:backgroundTint="@android:color/transparent"
-                android:padding="0dp" />
-
-            <ImageButton
-                android:id="@+id/btnLock"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:layout_marginStart="8dp"
-                android:background="@android:color/transparent"
-                android:src="@drawable/block"
-                android:scaleType="fitCenter"
-                android:focusable="true"
-                android:clickable="true"
-                android:backgroundTint="@android:color/transparent"
-                android:padding="0dp" />
-
-            <ImageButton
-                android:id="@+id/btnEpgPlayer"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:layout_marginStart="8dp"
-                android:background="@android:color/transparent"
-                android:src="@drawable/epgplayer"
-                android:scaleType="fitCenter"
-                android:focusable="true"
-                android:clickable="true"
-                android:backgroundTint="@android:color/transparent"
-                android:padding="0dp" />
-
-            <Space
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <ImageButton
-                android:id="@+id/btnSettings"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:background="@android:color/transparent"
-                android:src="@drawable/settingsplayer"
-                android:scaleType="fitCenter"
-                android:focusable="true"
-                android:clickable="true"
-                android:backgroundTint="@android:color/transparent"
-                android:padding="0dp" />
         </LinearLayout>
 
         <SeekBar
@@ -584,6 +628,66 @@
             app:layout_constraintVertical_bias="0.055" />
 
         <TextView
+            android:id="@+id/tvHomeBreadcrumbArrow"
+            style="@style/AppGolosText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:text="&gt;"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/tvHomeBreadcrumbPill"
+            style="@style/AppGolosText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_breadcrumb_pill"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="3dp"
+            android:textColor="#FFFFFF"
+            android:textSize="10sp"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/tvHomeBreadcrumbArrow2"
+            style="@style/AppGolosText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:includeFontPadding="false"
+            android:text="&gt;"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:visibility="gone"
+            app:layout_constraintStart_toEndOf="@id/tvHomeBreadcrumbPill"
+            app:layout_constraintTop_toTopOf="@id/tvHomeBreadcrumbPill" />
+
+        <TextView
+            android:id="@+id/tvHomeBreadcrumbPill2"
+            style="@style/AppGolosText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_breadcrumb_pill"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="3dp"
+            android:textColor="#FFFFFF"
+            android:textSize="10sp"
+            android:visibility="gone"
+            app:layout_constraintStart_toEndOf="@id/tvHomeBreadcrumbArrow2"
+            app:layout_constraintTop_toTopOf="@id/tvHomeBreadcrumbPill" />
+
+        <TextView
             android:id="@+id/tvHomeSystemTime"
             style="@style/AppGolosText"
             android:layout_width="wrap_content"
@@ -673,6 +777,50 @@
 
 
 
+        <TextView
+            android:id="@+id/tvHomeWelcome"
+            style="@style/AppGolosText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
+            app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle" />
+
+        <TextView
+            android:id="@+id/tvPlaylistPageTitle"
+            style="@style/AppGolosText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="90dp"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="Доступные сервисы для просмотра"
+            android:textColor="#FFFFFF"
+            android:textSize="28sp"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
+            app:layout_constraintEnd_toEndOf="@id/ivHomePower"
+            app:layout_constraintTop_toBottomOf="@id/tvHomeAppTitle" />
+
+        <TextView
+            android:id="@+id/tvPlaylistPageSubtitle"
+            style="@style/AppGolosText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="выберите один из сервисов для просмотра категорий каналов"
+            android:textColor="#80FFFFFF"
+            android:textSize="14sp"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
+            app:layout_constraintEnd_toEndOf="@id/ivHomePower"
+            app:layout_constraintTop_toBottomOf="@id/tvPlaylistPageTitle" />
+
         <ScrollView
             android:id="@+id/homePlaylistTilesPanel"
             android:layout_width="0dp"
@@ -705,7 +853,7 @@
             android:visibility="gone"
             android:layout_marginTop="8dp"
             android:numColumns="auto_fit"
-            android:columnWidth="230dp"
+            android:columnWidth="265dp"
             android:horizontalSpacing="12dp"
             android:verticalSpacing="12dp"
             android:stretchMode="columnWidth"
@@ -721,7 +869,7 @@
             android:drawSelectorOnTop="true"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
             app:layout_constraintEnd_toEndOf="@id/ivHomePower"
-            app:layout_constraintTop_toBottomOf="@id/tvHomeCategoryBack"
+            app:layout_constraintTop_toBottomOf="@id/tvHomeWelcome"
             app:layout_constraintBottom_toBottomOf="parent" />
 
         <TextView

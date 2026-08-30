@@ -34,7 +34,7 @@
             android:layout_height="wrap_content"
             android:fontFamily="@font/golos_text"
             android:textColor="#FFFFFF"
-            android:textSize="13sp"
+            android:textSize="16sp"
             android:textStyle="bold"
             android:singleLine="true"
             android:ellipsize="end" />
@@ -45,22 +45,25 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
             android:fontFamily="@font/golos_text"
-            android:textColor="#CCFFFFFF"
-            android:textSize="10.5sp"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/cardNextProgram"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="1dp"
-            android:fontFamily="@font/golos_text"
-            android:textColor="#80FFFFFF"
-            android:textSize="10.5sp"
+            android:textColor="#B3FFFFFF"
+            android:textSize="10sp"
             android:maxLines="1"
             android:ellipsize="end"
             android:visibility="gone" />
     </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/cardArchiveBadge"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_marginStart="6dp"
+        android:background="@drawable/bg_archive_badge_circle"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="17dp"
+            android:layout_height="17dp"
+            android:layout_gravity="center"
+            android:src="@drawable/ic_clock_backward" />
+    </FrameLayout>
 </LinearLayout>
