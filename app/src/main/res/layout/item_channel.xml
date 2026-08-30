@@ -20,7 +20,7 @@
         android:layout_height="wrap_content"
         android:textColor="#FFFFFF"
         android:gravity="center"
-        android:textStyle="bold"
+        android:textFontWeight="500"
         android:maxLines="1"
         android:ellipsize="marquee"
         android:marqueeRepeatLimit="marquee_forever"

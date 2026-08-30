@@ -203,6 +203,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvProgramEndTime: TextView
     private lateinit var viewTimelineStripe: View
     private lateinit var viewTimelineLive: View
+    private lateinit var viewTimelineThumb: View
     private lateinit var timelineTrack: View
     private lateinit var timelineArea: View
     private lateinit var btnBackLeft: ImageButton
@@ -429,6 +430,10 @@ class MainActivity : AppCompatActivity() {
     private val applySeekDeltaRunnable = Runnable {
         val player = mediaPlayer ?: return@Runnable
         if (pendingSeekDeltaSec != 0) {
+            if (!isArchivePlayback && pendingSeekDeltaSec > 0) {
+                pendingSeekDeltaSec = 0
+                return@Runnable
+            }
             val target = (player.currentPosition + pendingSeekDeltaSec * 1000L).coerceAtLeast(0L)
             player.seekTo(target)
             val deltaMin = kotlin.math.abs(pendingSeekDeltaSec) / 60
@@ -645,6 +650,7 @@ class MainActivity : AppCompatActivity() {
         tvProgramEndTime = findViewById(R.id.tvProgramEndInfo)
         viewTimelineStripe = findViewById(R.id.viewTimelineStripe)
         viewTimelineLive = findViewById(R.id.viewTimelineLive)
+        viewTimelineThumb = findViewById(R.id.viewTimelineThumb)
         timelineTrack = findViewById(R.id.timelineTrack)
         timelineArea = findViewById(R.id.timelineArea)
         btnBackLeft = findViewById(R.id.btnBackLeft)
@@ -739,20 +745,20 @@ class MainActivity : AppCompatActivity() {
         (findViewById<View>(R.id.userProfileHeaderCard).layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
         }
-        findViewById<View>(R.id.userProfileHeaderCard).minimumHeight = scalePx(128f, scale)
-        height(R.id.profileAvatarFrame, 76f)
+        findViewById<View>(R.id.userProfileHeaderCard).minimumHeight = scalePx(140f, scale)
+        height(R.id.profileAvatarFrame, 88f)
         (findViewById<View>(R.id.profileAvatarFrame).layoutParams as? ViewGroup.LayoutParams)?.let { lp ->
-            lp.width = scalePx(76f, scale)
+            lp.width = scalePx(88f, scale)
         }
         (findViewById<ImageView>(R.id.ivProfileAvatar).layoutParams as? ViewGroup.LayoutParams)?.let { lp ->
-            lp.width = scalePx(28f, scale)
-            lp.height = scalePx(28f, scale)
+            lp.width = scalePx(32f, scale)
+            lp.height = scalePx(32f, scale)
         }
-        textSize(R.id.tvProfileName, 22f)
-        textSize(R.id.tvProfileNickname, 14f)
-        textSize(R.id.tvProfileTokenLabel, 14f)
-        height(R.id.tvProfileTokenValue, 28f)
-        textSize(R.id.tvProfileTokenValue, 11f)
+        textSize(R.id.tvProfileName, 24f)
+        textSize(R.id.tvProfileNickname, 15f)
+        textSize(R.id.tvProfileTokenLabel, 15f)
+        height(R.id.tvProfileTokenValue, 32f)
+        textSize(R.id.tvProfileTokenValue, 12f)
 
         // Сетка настроек (6 карточек)
         listOf(
@@ -815,7 +821,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeBreadcrumbArrow2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(12f))
         tvHomeBreadcrumbPill2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(10f))
         tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(14f))
-        tvHomeWelcome.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(12f))
+        tvHomeWelcome.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(11f))
         tvHomeCategoryBack.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(12f))
         tvPlaylistPageTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(22f))
         tvPlaylistPageSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(13f))
@@ -903,7 +909,11 @@ class MainActivity : AppCompatActivity() {
         sbTimeline.max = 1000
         sbTimeline.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                applyTimelineLiveWidth(progress)
+                val clamped = clampTimelineProgress(progress)
+                if (fromUser && clamped != progress) {
+                    seekBar?.progress = clamped
+                }
+                applyTimelineProgressUi(clamped)
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {
                 timelineUserSeeking = true
@@ -919,20 +929,23 @@ class MainActivity : AppCompatActivity() {
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     timelineUserSeeking = true
-                    val progress = timelineProgressFromTouchX(view, event.x)
+                    val progress = clampTimelineProgress(timelineProgressFromTouchX(view, event.x))
                     sbTimeline.progress = progress
+                    applyTimelineProgressUi(progress)
                     previewTimelineSeekText(progress)
                     showUI()
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val progress = timelineProgressFromTouchX(view, event.x)
+                    val progress = clampTimelineProgress(timelineProgressFromTouchX(view, event.x))
                     sbTimeline.progress = progress
+                    applyTimelineProgressUi(progress)
                     previewTimelineSeekText(progress)
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val progress = timelineProgressFromTouchX(view, event.x)
+                    val progress = clampTimelineProgress(timelineProgressFromTouchX(view, event.x))
+                    sbTimeline.progress = progress
                     applyTimelineSeekFromProgress(progress)
                     timelineUserSeeking = false
                     true
@@ -975,6 +988,11 @@ class MainActivity : AppCompatActivity() {
             showUI()
         }
         btnBackRight.setOnClickListener {
+            if (!isArchivePlayback) {
+                showAppToast("Перемотка вперёд недоступна в прямом эфире")
+                showUI()
+                return@setOnClickListener
+            }
             pendingSeekDeltaSec += 60
             tvEpg.text =
                 "Перематываем передачу на ${formatMinutesRu(kotlin.math.abs(pendingSeekDeltaSec) / 60)}"
@@ -1332,6 +1350,7 @@ class MainActivity : AppCompatActivity() {
         val geometry = computeHomeGridGeometry()
         val btnOwn = findViewById<View>(R.id.btnOwnPlaylistsTile)
         val btnFav = findViewById<View>(R.id.btnFavoritesTile)
+        val showBoth = btnOwn.visibility == View.VISIBLE && btnFav.visibility == View.VISIBLE
 
         fun applyTileSize(view: View, width: Int, height: Int) {
             view.layoutParams = view.layoutParams.apply {
@@ -1340,14 +1359,24 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        if (btnOwn.visibility == View.VISIBLE) {
-            applyTileSize(btnOwn, geometry.tileWidth, geometry.tileHeight)
-        }
-        if (btnFav.visibility == View.VISIBLE) {
-            applyTileSize(btnFav, geometry.tileWidth, geometry.tileHeight)
-            (btnFav.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
-                lp.marginStart = if (btnOwn.visibility == View.VISIBLE) geometry.spacing else 0
-                btnFav.layoutParams = lp
+        when {
+            showBoth -> {
+                applyTileSize(btnOwn, geometry.tileWidth, geometry.tileHeight)
+                applyTileSize(btnFav, geometry.tileWidth, geometry.tileHeight)
+                (btnFav.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+                    lp.marginStart = geometry.spacing
+                    btnFav.layoutParams = lp
+                }
+            }
+            btnFav.visibility == View.VISIBLE -> {
+                applyTileSize(btnFav, geometry.availableWidth, geometry.tileHeight)
+                (btnFav.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+                    lp.marginStart = 0
+                    btnFav.layoutParams = lp
+                }
+            }
+            btnOwn.visibility == View.VISIBLE -> {
+                applyTileSize(btnOwn, geometry.availableWidth, geometry.tileHeight)
             }
         }
     }
@@ -1410,6 +1439,7 @@ class MainActivity : AppCompatActivity() {
                 "HOME_GRID_GEOMETRY source=$source leftAnchor=${geometry.leftAnchor} rightAnchor=${geometry.safeRight} availableWidth=${geometry.availableWidth} columns=${geometry.columns} tileWidth=${geometry.tileWidth} spacing=${geometry.spacing} firstTileLeft=$firstLeft lastTileRight=$lastRight rootWidth=${geometry.rootWidth}"
             )
             logHomeGridRealCoords(source, tileWidth, columns)
+            applyHomeBottomTilesGeometry()
             if (!rvHomeTiles.hasFocus()) {
                 first?.requestFocus()
             }
@@ -2005,6 +2035,7 @@ class MainActivity : AppCompatActivity() {
                 holder.tvNumber.text = (position + 1).toString()
                 holder.tvName.text = channel.name
                 holder.tvName.isSelected = true
+                golosTypeface?.let { holder.tvName.typeface = Typeface.create(it, Typeface.NORMAL) }
                 loadLogoWithGlide(
                     channel.logoFromEpg ?: channel.logoFromPlaylist,
                     holder.ivLogo
@@ -4596,6 +4627,7 @@ class MainActivity : AppCompatActivity() {
             liveStatusDot.setBackgroundResource(R.drawable.dot_live_red)
             tvLiveStatusText.text = "LIVE"
         }
+        liveStatusBadge.requestLayout()
     }
     private fun refreshLogo() = updateLiveStatusBadge()
 
@@ -5566,8 +5598,45 @@ class MainActivity : AppCompatActivity() {
         if (!timelineUserSeeking) {
             val progress = (((currentMs - p.start).toDouble() / (p.stop - p.start).coerceAtLeast(1L)
                 .toDouble()) * 1000.0).toInt().coerceIn(0, 1000)
-            sbTimeline.progress = progress
+            val clamped = clampTimelineProgress(progress)
+            sbTimeline.progress = clamped
+            applyTimelineProgressUi(clamped)
         }
+    }
+
+    private fun maxTimelineProgressForLiveSeek(): Int? {
+        if (isArchivePlayback) return null
+        val ch = channels.getOrNull(currentChannelIndex) ?: return 0
+        val cur =
+            getProgramsForDisplay(ch).find { System.currentTimeMillis() in it.start until it.stop }
+                ?: return 0
+        if (!isArchiveAvailable(ch, cur)) return 0
+        val duration = (cur.stop - cur.start).coerceAtLeast(1L)
+        return (((System.currentTimeMillis() - cur.start).toDouble() / duration) * 1000.0)
+            .toInt().coerceIn(0, 1000)
+    }
+
+    private fun clampTimelineProgress(progress: Int): Int {
+        val maxLive = maxTimelineProgressForLiveSeek()
+        return if (maxLive != null) progress.coerceIn(0, maxLive) else progress.coerceIn(0, 1000)
+    }
+
+    private fun applyTimelineProgressUi(progress: Int) {
+        applyTimelineLiveWidth(progress)
+        applyTimelineThumbPosition(progress)
+    }
+
+    private fun applyTimelineThumbPosition(progress: Int) {
+        val trackWidth = timelineTrack.width
+        if (trackWidth <= 0) {
+            timelineTrack.post { applyTimelineThumbPosition(progress) }
+            return
+        }
+        val thumbSize = viewTimelineThumb.width.takeIf { it > 0 }
+            ?: resources.getDimensionPixelSize(R.dimen.player_timeline_thumb_size)
+        val maxOffset = (trackWidth - thumbSize).coerceAtLeast(0)
+        val offset = (maxOffset * (progress / 1000f)).toInt()
+        viewTimelineThumb.translationX = offset.toFloat()
     }
 
     private fun applyTimelineLiveWidth(progress: Int) {
@@ -5619,16 +5688,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun previewTimelineSeekText(progress: Int) {
+        val clamped = clampTimelineProgress(progress)
         val (programStart, programStop, currentAbsoluteMs) = currentTimelineSeekableProgram() ?: return
-        val target = programStart + ((programStop - programStart) * (progress / 1000f)).toLong()
+        val target = programStart + ((programStop - programStart) * (clamped / 1000f)).toLong()
         val deltaMin = kotlin.math.abs((target - currentAbsoluteMs) / 60_000L).toInt()
         tvEpg.text = "Перематываем передачу на ${formatMinutesRu(deltaMin)}"
     }
 
     private fun applyTimelineSeekFromProgress(progress: Int) {
+        val clamped = clampTimelineProgress(progress)
         if (isArchivePlayback) {
             val p = currentArchiveProgram ?: return
-            val target = p.start + ((p.stop - p.start) * (progress / 1000f)).toLong()
+            val target = p.start + ((p.stop - p.start) * (clamped / 1000f)).toLong()
             seekArchiveTo(target)
         } else {
             val ch = channels.getOrNull(currentChannelIndex)
@@ -5636,7 +5707,7 @@ class MainActivity : AppCompatActivity() {
                 ch?.let { getProgramsForDisplay(it).find { pr -> System.currentTimeMillis() in pr.start until pr.stop } }
             if (ch != null && cur != null && isArchiveAvailable(ch, cur)) {
                 val target =
-                    cur.start + ((cur.stop - cur.start) * (progress / 1000f)).toLong()
+                    cur.start + ((cur.stop - cur.start) * (clamped / 1000f)).toLong()
                 playArchiveProgram(ch, cur)
                 handler.postDelayed({ seekArchiveTo(target) }, 450L)
             }

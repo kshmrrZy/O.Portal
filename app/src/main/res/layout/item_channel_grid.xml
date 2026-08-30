@@ -49,7 +49,7 @@
             android:fontFamily="@font/golos_text"
             android:textColor="#FFFFFF"
             android:textSize="15sp"
-            android:textStyle="bold"
+            android:textFontWeight="500"
             android:singleLine="true"
             android:ellipsize="end" />
 

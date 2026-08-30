@@ -61,7 +61,9 @@
             android:text="Настройки плейлистов"
             android:textColor="#FFFFFF"
             android:textFontWeight="500"
-            android:textSize="16sp" />
+            android:textSize="15sp"
+            android:maxLines="2"
+            android:ellipsize="none" />
     </LinearLayout>
 
     <androidx.constraintlayout.widget.Guideline
@@ -94,7 +96,7 @@
         app:layout_constraintEnd_toStartOf="@id/settingsGridGuide2"
         app:layout_constraintTop_toTopOf="parent">
 
-        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Настройки EPG" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="16sp"/>
+        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Настройки EPG" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="15sp" android:maxLines="2" android:ellipsize="none"/>
     </LinearLayout>
 
     <LinearLayout
@@ -105,7 +107,7 @@
         android:paddingVertical="@dimen/settings_grid_button_padding_v"
         android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:orientation="vertical"
         app:layout_constraintTop_toTopOf="parent" app:layout_constraintStart_toStartOf="@id/settingsGridGuide2" app:layout_constraintEnd_toEndOf="parent">
-        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Настройки таймера" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="16sp"/>
+        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Настройки таймера" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="15sp" android:maxLines="2" android:ellipsize="none"/>
         <TextView
             android:id="@+id/tvSleepTimerValue"
             style="@style/AppGolosText"
@@ -125,7 +127,7 @@
         android:paddingVertical="@dimen/settings_grid_button_padding_v"
         android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:orientation="horizontal"
         app:layout_constraintTop_toBottomOf="@id/btnPlaylistSettings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toStartOf="@id/settingsGridGuide1">
-        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Настройки профиля" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="16sp"/>
+        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Настройки профиля" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="15sp" android:maxLines="2" android:ellipsize="none"/>
     </LinearLayout>
 
     <LinearLayout
@@ -137,7 +139,7 @@
         android:paddingVertical="@dimen/settings_grid_button_padding_v"
         android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:orientation="horizontal"
         app:layout_constraintTop_toBottomOf="@id/btnEpgSelect" app:layout_constraintStart_toStartOf="@id/settingsGridGuide1" app:layout_constraintEnd_toStartOf="@id/settingsGridGuide2">
-        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Экспорт лога" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="16sp"/>
+        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Экспорт лога" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="15sp" android:maxLines="2" android:ellipsize="none"/>
     </LinearLayout>
 
     <LinearLayout
@@ -148,7 +150,7 @@
         android:paddingVertical="@dimen/settings_grid_button_padding_v"
         android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:orientation="horizontal"
         app:layout_constraintTop_toBottomOf="@id/btnSleepTimerSettings" app:layout_constraintStart_toStartOf="@id/settingsGridGuide2" app:layout_constraintEnd_toEndOf="parent">
-        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="О приложении" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="16sp"/>
+        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="О приложении" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="15sp" android:maxLines="2" android:ellipsize="none"/>
     </LinearLayout>
 
     <androidx.constraintlayout.widget.Guideline
