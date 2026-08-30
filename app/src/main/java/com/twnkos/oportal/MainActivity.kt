@@ -758,19 +758,19 @@ class MainActivity : AppCompatActivity() {
         (findViewById<View>(R.id.userProfileHeaderCard).layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
         }
-        findViewById<View>(R.id.userProfileHeaderCard).minimumHeight = scalePx(128f, scale)
-        height(R.id.profileAvatarFrame, 88f)
+        findViewById<View>(R.id.userProfileHeaderCard).minimumHeight = scalePx(100f, scale)
+        height(R.id.profileAvatarFrame, 72f)
         (findViewById<View>(R.id.profileAvatarFrame).layoutParams as? ViewGroup.LayoutParams)?.let { lp ->
-            lp.width = scalePx(88f, scale)
+            lp.width = scalePx(72f, scale)
         }
         (findViewById<ImageView>(R.id.ivProfileAvatar).layoutParams as? ViewGroup.LayoutParams)?.let { lp ->
-            lp.width = scalePx(36f, scale)
-            lp.height = scalePx(36f, scale)
+            lp.width = scalePx(32f, scale)
+            lp.height = scalePx(32f, scale)
         }
-        textSize(R.id.tvProfileName, 24f)
-        textSize(R.id.tvProfileNickname, 15f)
-        textSize(R.id.tvProfileTokenLabel, 15f)
-        height(R.id.tvProfileTokenValue, 34f)
+        textSize(R.id.tvProfileName, 22f)
+        textSize(R.id.tvProfileNickname, 14f)
+        textSize(R.id.tvProfileTokenLabel, 14f)
+        height(R.id.tvProfileTokenValue, 32f)
         textSize(R.id.tvProfileTokenValue, 12f)
 
         // Сетка настроек (6 карточек)
@@ -801,8 +801,8 @@ class MainActivity : AppCompatActivity() {
             R.id.btnResetEpgCache, R.id.tbEpgSourceMode, R.id.btnSaveEpgSettings, R.id.btnRefreshEpgSettings,
             R.id.btnSavePlaylistSettings, R.id.btnRefreshPlaylistSettings
         ).forEach { id ->
-            height(id, 56f)
-            textSize(id, 16f)
+            height(id, 66f)
+            textSize(id, 15f)
         }
 
         // Поля авторизации
@@ -1007,7 +1007,10 @@ class MainActivity : AppCompatActivity() {
                 mediaPlayer?.play()
                 if (!videoOnlyMinimalMode) handler.postDelayed(startupSlowStreamRunnable, 45_000L)
                 isPlaybackPaused = false
-                liveTimelineAnchorMs = 0L
+                if (isArchivePlayback) {
+                    liveTimelineAnchorMs = 0L
+                }
+                updateTimelineUi()
             } else {
                 mediaPlayer?.pause()
                 isPlaybackPaused = true
@@ -1403,8 +1406,9 @@ class MainActivity : AppCompatActivity() {
 
         when {
             showBoth -> {
-                applyTileSize(btnOwn, geometry.tileWidth, geometry.tileHeight)
-                applyTileSize(btnFav, geometry.tileWidth, geometry.tileHeight)
+                val halfWidth = (geometry.availableWidth - geometry.spacing) / 2
+                applyTileSize(btnOwn, halfWidth, geometry.tileHeight)
+                applyTileSize(btnFav, halfWidth, geometry.tileHeight)
                 (btnFav.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
                     lp.marginStart = geometry.spacing
                     btnFav.layoutParams = lp
@@ -2381,7 +2385,6 @@ class MainActivity : AppCompatActivity() {
     private fun isSettingsSubPanelOpen(): Boolean =
         findViewById<View>(R.id.playlistSettingsPanel).visibility == View.VISIBLE ||
             findViewById<View>(R.id.epgSettingsPanel).visibility == View.VISIBLE ||
-            findViewById<View>(R.id.sleepTimerSettingsPanel).visibility == View.VISIBLE ||
             findViewById<View>(R.id.userSettingsPanel).visibility == View.VISIBLE ||
             findViewById<View>(R.id.appInfoPanel).visibility == View.VISIBLE
 
@@ -2389,7 +2392,6 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.userProfileHeaderCard).visibility = View.VISIBLE
         findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
-        findViewById<View>(R.id.sleepTimerSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
         val settingsRowIds = intArrayOf(
@@ -2614,7 +2616,6 @@ class MainActivity : AppCompatActivity() {
         val epgSettingsPanel = findViewById<View>(R.id.epgSettingsPanel)
         playlistSettingsPanel.visibility = View.GONE
         epgSettingsPanel.visibility = View.GONE
-        findViewById<View>(R.id.sleepTimerSettingsPanel).visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
         settingsRows.forEach { it.visibility = View.VISIBLE }
         btnExportDebugLog.visibility = View.GONE
@@ -2622,16 +2623,50 @@ class MainActivity : AppCompatActivity() {
         btnExportDebugLog.isClickable = false
         btnPlaylistSettings.setOnClickListener { openPlaylistSettingsScreen() }
         btnEpgSelect.setOnClickListener { openEpgSettingsScreen() }
-        updateSleepTimerGridLabel()
+
+        val tvSleepTimerValue = findViewById<TextView>(R.id.tvSleepTimerValue)
+        var sleepIndex =
+            SLEEP_TIMER_OPTIONS.indexOf(prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)).takeIf { it >= 0 } ?: 0
+
+        fun updateSleepButtonVisual() {
+            val selected = SLEEP_TIMER_OPTIONS[sleepIndex]
+            val active = selected > 0
+            sleepRow.setBackgroundResource(
+                if (active) R.drawable.bg_settings_grid_card_focused else R.drawable.bg_settings_grid_card_normal
+            )
+            tvSleepTimerValue.text = formatSleepTimerValue(selected)
+            tvSleepTimerValue.setTextColor(
+                if (active) Color.parseColor("#FFFFFF") else Color.parseColor("#99FFFFFF")
+            )
+        }
+
+        fun applySleepSelection() {
+            val selected = SLEEP_TIMER_OPTIONS[sleepIndex]
+            applySleepTimerMinutes(selected)
+            tvSleepTimerValue.text = formatSleepTimerValue(selected)
+            updateSleepButtonVisual()
+            showAppToast(
+                if (selected <= 0) "Таймер сна: выключен" else "Таймер сна: $selected мин",
+                1800L
+            )
+        }
+
+        fun changeSleep() {
+            sleepIndex = (sleepIndex + 1) % SLEEP_TIMER_OPTIONS.size
+            applySleepSelection()
+        }
+
+        sleepIndex = SLEEP_TIMER_OPTIONS.indexOf(prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)).takeIf { it >= 0 } ?: 0
+        updateSleepButtonVisual()
         sleepRow.isFocusable = true
-        sleepRow.setOnClickListener { openSleepTimerSettingsScreen() }
+        sleepRow.setOnClickListener { changeSleep() }
         sleepRow.setOnKeyListener { _, keyCode, event ->
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_CENTER,
                 KeyEvent.KEYCODE_ENTER,
                 KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                    openSleepTimerSettingsScreen()
+                    changeSleep()
                     true
                 }
                 else -> false
@@ -2677,17 +2712,6 @@ class MainActivity : AppCompatActivity() {
     private fun formatSleepTimerValue(minutes: Int): String =
         if (minutes <= 0) "выключено" else "$minutes мин"
 
-    private fun updateSleepTimerGridLabel() {
-        val minutes = prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)
-        val label = findViewById<TextView>(R.id.tvSleepTimerGridLabel)
-        val sleepRow = findViewById<View>(R.id.btnSleepTimerSettings)
-        val active = minutes > 0
-        label?.text = if (active) "Настройки таймера · $minutes мин" else "Настройки таймера"
-        sleepRow?.setBackgroundResource(
-            if (active) R.drawable.bg_settings_grid_card_focused else R.drawable.bg_settings_grid_card_normal
-        )
-    }
-
     private fun applySleepTimerMinutes(minutes: Int) {
         prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, minutes).apply()
         if (minutes <= 0) {
@@ -2695,69 +2719,11 @@ class MainActivity : AppCompatActivity() {
         } else {
             startSleepTimer(minutes)
         }
-        updateSleepTimerGridLabel()
-    }
-
-    private fun openSleepTimerSettingsScreen() {
-        findViewById<View>(R.id.userProfileHeaderCard).visibility = View.VISIBLE
-        val sleepPanel = findViewById<View>(R.id.sleepTimerSettingsPanel)
-        val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
-        val settingsRows = listOf(
-            findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect),
-            findViewById<View>(R.id.btnSleepTimerSettings),
-            findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings),
-            findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo),
-            findViewById<View>(R.id.btnResetSettings), findViewById<View>(R.id.btnLogoutProfile)
+        val sleepRow = findViewById<View>(R.id.btnSleepTimerSettings)
+        val active = minutes > 0
+        sleepRow?.setBackgroundResource(
+            if (active) R.drawable.bg_settings_grid_card_focused else R.drawable.bg_settings_grid_card_normal
         )
-        settingsRows.forEach { it.visibility = View.GONE }
-        findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
-        findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
-        findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
-        userSettingsPanel.visibility = View.GONE
-        sleepPanel.visibility = View.VISIBLE
-        applyHomeAppTitleStyle(
-            settingsMode = true,
-            settingsTitle = "настройки",
-            settingsTitle2 = "настройки таймера"
-        )
-
-        val tvPanelValue = findViewById<TextView>(R.id.tvSleepTimerPanelValue)
-        var sleepIndex =
-            SLEEP_TIMER_OPTIONS.indexOf(prefs.getInt(PREF_SLEEP_TIMER_MINUTES, 0)).takeIf { it >= 0 } ?: 0
-
-        fun refreshPanelValue() {
-            tvPanelValue.text = formatSleepTimerValue(SLEEP_TIMER_OPTIONS[sleepIndex])
-        }
-        refreshPanelValue()
-
-        val cycleArea = findViewById<View>(R.id.btnSleepTimerCycleArea)
-        cycleArea.setOnClickListener {
-            sleepIndex = (sleepIndex + 1) % SLEEP_TIMER_OPTIONS.size
-            val selected = SLEEP_TIMER_OPTIONS[sleepIndex]
-            applySleepTimerMinutes(selected)
-            refreshPanelValue()
-            showAppToast(
-                if (selected <= 0) "Таймер сна: выключен" else "Таймер сна: $selected мин",
-                1800L
-            )
-        }
-        cycleArea.setOnKeyListener { _, keyCode, event ->
-            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
-            when (keyCode) {
-                KeyEvent.KEYCODE_DPAD_CENTER,
-                KeyEvent.KEYCODE_ENTER,
-                KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                    cycleArea.performClick()
-                    true
-                }
-                else -> false
-            }
-        }
-        findViewById<View>(R.id.btnBackSleepTimerSettings).setOnClickListener {
-            handleSettingsBackPress()
-        }
-        configureBackButtonsForSettings("openSleepTimerSettingsScreen")
-        cycleArea.post { cycleArea.requestFocus() }
     }
 
     private fun openPlaylistSettingsScreen() {
@@ -2775,7 +2741,6 @@ class MainActivity : AppCompatActivity() {
         settingsRows.forEach { it.visibility = View.GONE }
         userSettingsPanel.visibility = View.GONE
         findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
-        findViewById<View>(R.id.sleepTimerSettingsPanel).visibility = View.GONE
         playlistPanel.visibility = View.VISIBLE
         tvSettingsBack.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "настройки", settingsTitle2 = "настройки плейлистов")
@@ -2830,7 +2795,6 @@ class MainActivity : AppCompatActivity() {
             }
             saveThirdPartyPlaylistProfiles(items)
             showAppToast("Сторонние плейлисты сохранены")
-            loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
         }
         findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener {
             handleSettingsBackPress()
@@ -2857,6 +2821,7 @@ class MainActivity : AppCompatActivity() {
         settingsRows.forEach { it.visibility = View.GONE }
         playlistPanel.visibility = View.GONE
         epgPanel.visibility = View.GONE
+        findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
         appInfoPanel.visibility = View.VISIBLE
         appInfoPanel.isFocusable = true
@@ -2878,7 +2843,6 @@ class MainActivity : AppCompatActivity() {
         playlistPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
         findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
-        findViewById<View>(R.id.sleepTimerSettingsPanel).visibility = View.GONE
         epgPanel.visibility = View.VISIBLE
         tvSettingsBack.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "настройки", settingsTitle2 = "настройки EPG")
@@ -3094,7 +3058,6 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
         findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
-        findViewById<View>(R.id.sleepTimerSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = false)
@@ -3818,8 +3781,10 @@ class MainActivity : AppCompatActivity() {
                         tvEpg.text = "Каналы не найдены в плейлисте"
                     } else if (!autoPlay) {
                         selectedPlaylistDisplayName = getSelectedPlaylistName()
-                        logDebug("NAV", "open_categories_screen")
-                        showCategoryTilesOnHome(selectedPlaylistDisplayName, groupedCategories)
+                        if (!isSettingsModalVisible) {
+                            logDebug("NAV", "open_categories_screen")
+                            showCategoryTilesOnHome(selectedPlaylistDisplayName, groupedCategories)
+                        }
                     } else {
                         logDebug("NAV", "startup_load_ready_without_autonavigation")
                     }
@@ -4728,6 +4693,23 @@ class MainActivity : AppCompatActivity() {
             tvLiveStatusText.text = "LIVE"
         }
         liveStatusBadge.requestLayout()
+    }
+
+    private fun liveProgressInProgram(p: Program): Int {
+        val liveMs = minOf(System.currentTimeMillis(), p.stop)
+        val duration = (p.stop - p.start).coerceAtLeast(1L)
+        return (((liveMs - p.start).toDouble() / duration.toDouble()) * 1000.0)
+            .toInt().coerceIn(0, 1000)
+    }
+
+    private fun switchToLivePlayback() {
+        if (!isArchivePlayback) return
+        isArchivePlayback = false
+        currentArchiveProgram = null
+        archiveStreamStartMs = 0L
+        liveTimelineAnchorMs = 0L
+        isPlaybackPaused = false
+        playChannel(forcePlay = true, reason = PlayerOpenReason.LIVE_RETRY)
     }
     private fun refreshLogo() = updateLiveStatusBadge()
 
@@ -5807,6 +5789,11 @@ class MainActivity : AppCompatActivity() {
         val clamped = clampTimelineProgress(progress)
         if (isArchivePlayback) {
             val p = currentArchiveProgram ?: return
+            val liveProgress = liveProgressInProgram(p)
+            if (clamped >= liveProgress - timelineSeekDeadband) {
+                switchToLivePlayback()
+                return
+            }
             val duration = (p.stop - p.start).coerceAtLeast(1L)
             val currentOffset = mediaPlayer?.currentPosition ?: 0L
             val currentProgress =
@@ -5972,7 +5959,6 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
         findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
-        findViewById<View>(R.id.sleepTimerSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
     }
 
