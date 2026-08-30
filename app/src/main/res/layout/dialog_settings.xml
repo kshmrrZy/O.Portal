@@ -85,7 +85,7 @@
         android:orientation="horizontal"
         app:layout_constraintStart_toStartOf="@id/settingsGridGuide1"
         app:layout_constraintEnd_toStartOf="@id/settingsGridGuide2"
-        app:layout_constraintTop_toBottomOf="@id/userProfileHeaderCard">
+        app:layout_constraintTop_toTopOf="parent">
 
         <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Настройки EPG" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="16sp"/>
     </LinearLayout>
@@ -94,7 +94,7 @@
         android:id="@+id/btnSleepTimerSettings" android:focusable="true" android:focusableInTouchMode="false"
         android:layout_width="0dp" android:layout_height="66dp" android:layout_marginTop="12dp"
         android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:orientation="vertical"
-        app:layout_constraintTop_toBottomOf="@id/userProfileHeaderCard" app:layout_constraintStart_toStartOf="@id/settingsGridGuide2" app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintTop_toTopOf="parent" app:layout_constraintStart_toStartOf="@id/settingsGridGuide2" app:layout_constraintEnd_toEndOf="parent">
         <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Настройки таймера" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="16sp"/>
         <TextView
             android:id="@+id/tvSleepTimerValue"

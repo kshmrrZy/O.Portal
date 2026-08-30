@@ -669,7 +669,7 @@ class MainActivity : AppCompatActivity() {
         settingsTitle: String = "Настройки",
         settingsTitle2: String? = null
     ) {
-        tvHomeAppTitle.typeface = golosTypefaceBlack ?: golosTypeface
+        tvHomeAppTitle.typeface = golosTypefaceExtraBold ?: golosTypeface
         tvHomeAppTitle.text = "O.Portal"
         tvHomeSystemTime.typeface = golosTypefaceExtraBold
             ?: Typeface.create(golosTypeface, Typeface.BOLD)
@@ -738,8 +738,7 @@ class MainActivity : AppCompatActivity() {
         // Нижний ряд (свои плейлисты / избранные)
         height(R.id.btnOwnPlaylistsTile, 56f)
         height(R.id.btnFavoritesTile, 56f)
-        textSize(R.id.btnOwnPlaylistsTile, 21f)
-        textSize(R.id.btnFavoritesTile, 21f)
+        setupHomeBottomActionTiles(computeContentDpScale())
 
         // Поля EPG/плейлистов
         listOf(R.id.etEpgUrl1, R.id.etEpgUrl2, R.id.etEpgUrl3, R.id.etPlaylistUrl1, R.id.etPlaylistUrl2, R.id.etPlaylistUrl3)
@@ -781,19 +780,19 @@ class MainActivity : AppCompatActivity() {
 
         fun scaledSp(baseSp: Float): Float = baseSp * scale
 
-        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(42f))
-        tvHomeBreadcrumbArrow.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(24f))
+        tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(30f))
+        tvHomeBreadcrumbArrow.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(20f))
         tvHomeBreadcrumbPill.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(10f))
-        tvHomeBreadcrumbArrow2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(24f))
+        tvHomeBreadcrumbArrow2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(20f))
         tvHomeBreadcrumbPill2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(10f))
-        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(34f))
-        tvHomeWelcome.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(16f))
-        tvPlaylistPageTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(28f))
-        tvPlaylistPageSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(14f))
+        tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(22f))
+        tvHomeWelcome.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(14f))
+        tvPlaylistPageTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(22f))
+        tvPlaylistPageSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(13f))
         tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(52f))
         tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(22f))
 
-        val iconSize = scalePx(40f, scale)
+        val iconSize = scalePx(28f, scale)
         ivHomeSettings.layoutParams = ivHomeSettings.layoutParams.apply {
             width = iconSize
             height = iconSize
@@ -810,7 +809,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupHomeBottomActionTiles(scale: Float = 1f) {
-        val textSizeSp = 21f * scale
+        val textSizeSp = 18f * scale
         bindHomeBottomActionTile(
             findViewById(R.id.btnOwnPlaylistsTile),
             R.drawable.ic_play,
@@ -832,7 +831,7 @@ class MainActivity : AppCompatActivity() {
         labelView?.text = label
         labelView?.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
         golosTypeface?.let { labelView?.typeface = Typeface.create(it, Typeface.NORMAL) }
-        val iconSize = scalePx(22f, textSizeSp / 21f)
+        val iconSize = scalePx(20f, textSizeSp / 18f)
         icon?.layoutParams = icon?.layoutParams?.apply {
             width = iconSize
             height = iconSize
@@ -1473,7 +1472,7 @@ class MainActivity : AppCompatActivity() {
                 setSelectedPlaylistName(p.name)
                 loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
             }
-        }, source = source, titleSizeSp = 21f)
+        }, source = source, titleSizeSp = 18f)
 
         val favoritesProfile = getPlaylistProfiles().firstOrNull { it.name == "Избранные" && it.enabled && it.value.isNotBlank() }
         val bottomRow = findViewById<View>(R.id.homeBottomTilesRow)
@@ -2417,21 +2416,22 @@ class MainActivity : AppCompatActivity() {
             tunePlayerSettingsRows()
         } else {
             (homeSettingsScreen.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
-                lp.topToBottom = R.id.tvHomeAppTitle
-                lp.startToStart = R.id.tvHomeAppTitle
-                lp.endToEnd = R.id.ivHomePower
+                lp.topToTop = ConstraintSet.UNSET
+                lp.topToBottom = R.id.userProfileHeaderCard
+                lp.startToStart = ConstraintSet.PARENT_ID
+                lp.endToEnd = ConstraintSet.PARENT_ID
                 lp.bottomToBottom = ConstraintSet.PARENT_ID
-                lp.topMargin = dpToPx(0)
+                lp.topMargin = 0
                 lp.marginStart = 0
                 lp.marginEnd = 0
-                lp.bottomMargin = dpToPx(20)
+                lp.bottomMargin = 0
                 lp.width = 0
                 lp.height = 0
                 homeSettingsScreen.layoutParams = lp
             }
             homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             homeSettingsScreen.setBackgroundColor(Color.TRANSPARENT)
-            homeSettingsScreen.setPadding(0,0,0,0)
+            homeSettingsScreen.setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(16))
             restoreDefaultSettingsRows()
         }
         homePanel.visibility = View.VISIBLE
