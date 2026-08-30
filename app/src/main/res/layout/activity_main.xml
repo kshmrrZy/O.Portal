@@ -162,11 +162,11 @@
 
         <ImageView
             android:id="@+id/btnBackToMenu"
-            android:layout_width="@dimen/player_top_icon_size"
-            android:layout_height="@dimen/player_top_icon_size"
+            android:layout_width="@dimen/player_control_button_size"
+            android:layout_height="@dimen/player_control_button_size"
             android:layout_gravity="center_vertical"
-            android:background="@drawable/bg_player_top_back_plate"
-            android:padding="@dimen/player_top_back_padding"
+            android:background="@drawable/bg_player_glass_plate"
+            android:padding="@dimen/player_control_icon_padding"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_back_player"
             android:contentDescription="Back to menu" />
@@ -804,11 +804,10 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginTop="0dp"
-            android:minHeight="128dp"
             android:background="@drawable/bg_profile_header_card"
             android:paddingHorizontal="16dp"
-            android:paddingTop="18dp"
-            android:paddingBottom="14dp"
+            android:paddingTop="14dp"
+            android:paddingBottom="12dp"
             android:visibility="gone"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
@@ -820,7 +819,8 @@
                 android:layout_height="@dimen/profile_avatar_size"
                 android:background="@drawable/bg_profile_avatar"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent">
+                app:layout_constraintTop_toTopOf="@id/tvProfileName"
+                app:layout_constraintBottom_toBottomOf="@id/tvProfileTokenValue">
 
                 <ImageView
                     android:id="@+id/ivProfileAvatar"
@@ -896,17 +896,6 @@
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toTopOf="@id/tvProfileTokenValue"
                 app:layout_constraintBottom_toBottomOf="@id/tvProfileTokenValue" />
-
-            <View
-                android:id="@+id/profileHeaderDivider"
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_marginTop="14dp"
-                android:background="#33FFFFFF"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintTop_toBottomOf="@id/tvProfileTokenValue"
-                app:layout_constraintBottom_toBottomOf="parent" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
 
