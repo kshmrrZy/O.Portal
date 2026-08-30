@@ -2,4 +2,6 @@
     <string name="app_name">O.Portal</string>
     <string name="home_settings_button">Открыть настройки</string>
     <string name="home_power_button">Закрыть приложение</string>
+    <string name="home_own_playlists">Свои плейлисты</string>
+    <string name="home_favorites">Избранные каналы</string>
 </resources>
