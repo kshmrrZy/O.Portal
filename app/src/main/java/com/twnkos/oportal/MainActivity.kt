@@ -145,6 +145,11 @@ class MainActivity : AppCompatActivity() {
     private var lastPlaybackPositionMs = -1L
     private var lastProgressWallClockMs = 0L
     private var bufferingSinceMs = 0L
+    private var playbackRecoveryActive = false
+    private var playbackRecoveryStartedAtMs = 0L
+    private var playbackRecoveryAttemptCount = 0
+    private var lastPlaybackStallReason = ""
+    private val playbackRecoveryRetryRunnable = Runnable { attemptPlaybackRecoveryStep() }
     private var playerEventListener: androidx.media3.common.Player.Listener? = null
     private var playerAnalyticsListener: AnalyticsListener? = null
     private var forceFreshPlayerSession = false
@@ -327,11 +332,15 @@ class MainActivity : AppCompatActivity() {
         if (!player.isPlaying) {
             if (player.playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
                 if (bufferingSinceMs == 0L) bufferingSinceMs = now
-                if (now - bufferingSinceMs > 5_000L) {
-                    logDebug("PLAYER_STATE", "watchdog buffering detected; reconnecting")
-                    bufferingSinceMs = now
-                    attemptPlaybackRecovery()
+                if (now - bufferingSinceMs > PLAYBACK_STALL_DETECT_MS) {
+                    logDebug("PLAYER_STATE", "watchdog buffering stall detected")
+                    notifyPlaybackStall("Буферизация потока")
                 }
+            } else if (player.playWhenReady &&
+                (player.playbackState == androidx.media3.common.Player.STATE_IDLE ||
+                    player.playbackState == androidx.media3.common.Player.STATE_ENDED)
+            ) {
+                notifyPlaybackStall("Воспроизведение остановилось")
             } else {
                 bufferingSinceMs = 0L
             }
@@ -339,26 +348,87 @@ class MainActivity : AppCompatActivity() {
             return@Runnable
         }
         bufferingSinceMs = 0L
-        if (tvReloadingStatus.visibility == View.VISIBLE) {
+        if (tvReloadingStatus.visibility == View.VISIBLE && !playbackRecoveryActive) {
             tvReloadingStatus.visibility = View.GONE
         }
         val pos = player.currentPosition
         if (pos > lastPlaybackPositionMs + 250L) {
             lastPlaybackPositionMs = pos
             lastProgressWallClockMs = now
-        } else if (lastProgressWallClockMs > 0L && now - lastProgressWallClockMs > 5_000L) {
-            logDebug("PLAYER_STATE", "watchdog progress stall detected; reconnecting")
+            onPlaybackRecoverySucceeded()
+        } else if (lastProgressWallClockMs > 0L && now - lastProgressWallClockMs > PLAYBACK_STALL_DETECT_MS) {
+            logDebug("PLAYER_STATE", "watchdog progress stall detected")
             lastProgressWallClockMs = now
-            attemptPlaybackRecovery()
+            notifyPlaybackStall("Поток завис (нет прогресса)")
         }
         handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
     }
 
-    private fun attemptPlaybackRecovery() {
+    private fun notifyPlaybackStall(reason: String) {
         if (isSettingsModalVisible || homePanel.visibility == View.VISIBLE) return
-        showReloadingStatus("Трансляция прервана", "Пытаемся переподключиться...")
+        lastPlaybackStallReason = reason
+        if (!playbackRecoveryActive) {
+            playbackRecoveryActive = true
+            playbackRecoveryStartedAtMs = System.currentTimeMillis()
+            playbackRecoveryAttemptCount = 0
+        }
+        schedulePlaybackRecoveryRetry(immediate = playbackRecoveryAttemptCount == 0)
+    }
+
+    private fun schedulePlaybackRecoveryRetry(immediate: Boolean) {
+        handler.removeCallbacks(playbackRecoveryRetryRunnable)
+        val delay = if (immediate) 0L else PLAYBACK_RECOVERY_RETRY_MS
+        handler.postDelayed(playbackRecoveryRetryRunnable, delay)
+    }
+
+    private fun attemptPlaybackRecoveryStep() {
+        if (!playbackRecoveryActive) return
+        if (isSettingsModalVisible || homePanel.visibility == View.VISIBLE) {
+            resetPlaybackRecoveryState()
+            return
+        }
+        val elapsed = System.currentTimeMillis() - playbackRecoveryStartedAtMs
+        if (elapsed >= PLAYBACK_RECOVERY_WINDOW_MS) {
+            val reason = lastPlaybackStallReason.ifBlank { "Поток не отвечает" }
+            resetPlaybackRecoveryState()
+            showPlaybackFreezeFailure(reason)
+            return
+        }
+        playbackRecoveryAttemptCount++
+        val remainingSec = ((PLAYBACK_RECOVERY_WINDOW_MS - elapsed) / 1000L).coerceAtLeast(1L)
+        showReloadingStatus(
+            "Обновление трансляции",
+            "Попытка $playbackRecoveryAttemptCount, осталось ~${remainingSec}с"
+        )
         showUI(preferFocus = btnLiveReload)
-        playChannel(forcePlay = true)
+        playChannel(forcePlay = true, reason = PlayerOpenReason.RECOVERY)
+        schedulePlaybackRecoveryRetry(immediate = false)
+    }
+
+    private fun onPlaybackRecoverySucceeded() {
+        if (!playbackRecoveryActive) return
+        resetPlaybackRecoveryState()
+        if (tvReloadingStatus.visibility == View.VISIBLE) {
+            tvReloadingStatus.visibility = View.GONE
+        }
+    }
+
+    private fun resetPlaybackRecoveryState() {
+        playbackRecoveryActive = false
+        playbackRecoveryStartedAtMs = 0L
+        playbackRecoveryAttemptCount = 0
+        handler.removeCallbacks(playbackRecoveryRetryRunnable)
+    }
+
+    private fun showPlaybackFreezeFailure(reason: String) {
+        showReloadingStatus(
+            title = "Не удалось восстановить трансляцию",
+            subtitle = reason,
+            isError = true
+        )
+        showUI(preferFocus = btnLiveReload)
+        suppressReloadOverlayUntilMs = System.currentTimeMillis() + 12_000L
+        handler.postDelayed({ tvReloadingStatus.visibility = View.GONE }, 12_000L)
     }
 
 
@@ -393,7 +463,9 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_PLAYLISTS = "playlist_profiles"
         private const val PREF_SELECTED_PLAYLIST = "selected_playlist"
         private const val PREF_SELECTED_EPG = "selected_epg"
-        private const val PREF_LAST_CHANNEL = "last_channel"
+        private const val PLAYBACK_RECOVERY_WINDOW_MS = 30_000L
+        private const val PLAYBACK_RECOVERY_RETRY_MS = 5_000L
+        private const val PLAYBACK_STALL_DETECT_MS = 5_000L
         private const val PREF_EPG_CACHE = "epg_cache"
         private const val PREF_EPG_STATUS = "epg_status"
         private const val PREF_EPG_LAST_REFRESH = "epg_last_refresh"
@@ -1887,7 +1959,7 @@ class MainActivity : AppCompatActivity() {
                     inputNumber = ""
                     handler.removeCallbacks(channelSwitchRunnable)
                     seekStatusHoldUntilMs = 0L
-                    updateEpgDisplay()
+                    restoreChannelHeaderAfterNumberInput()
                     return@addCallback
                 }
                 if (controlsPanel.visibility == View.VISIBLE || topInfoPanel.visibility == View.VISIBLE) {
@@ -2094,7 +2166,6 @@ class MainActivity : AppCompatActivity() {
         channelListPanel.visibility = View.GONE
         gvChannelListPanel.adapter = null
         setPlayerOverlayScrimVisible(false)
-        setPlayerVideoVisible(true)
         hideUI()
     }
 
@@ -2175,7 +2246,6 @@ class MainActivity : AppCompatActivity() {
                 logDebug("NAV", "DPAD_OK_onItemClick gvChannelListPanel position=$position")
                 view.performClick()
             }
-        setPlayerVideoVisible(false)
         setPlayerOverlayScrimVisible(true)
         topInfoPanel.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
@@ -4659,6 +4729,7 @@ class MainActivity : AppCompatActivity() {
         else "Для канала отсутствует EPG. Проверьте настройки плейлиста"
 
     private fun updateEpgDisplay() {
+        if (inputNumber.isNotEmpty()) return
         val suppressText = timelineUserSeeking || System.currentTimeMillis() < seekStatusHoldUntilMs
         if (isArchivePlayback) {
             val channel = channels.getOrNull(currentChannelIndex)
@@ -4958,6 +5029,7 @@ class MainActivity : AppCompatActivity() {
                         startupPlaybackUrlLock = null
                         lastPlaybackPositionMs = player.currentPosition
                         lastProgressWallClockMs = System.currentTimeMillis()
+                        onPlaybackRecoverySucceeded()
                         handler.removeCallbacks(startupSlowStreamRunnable)
                         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                         logDebug("PLAYER_STATE", "onRenderedFirstFrame videoOnlyMode=$videoOnlyMinimalMode url=$lastRequestedPlaybackUrl")
@@ -5019,6 +5091,8 @@ class MainActivity : AppCompatActivity() {
                             videoOnlyMinimalMode = false
                             audioTrackForcedDisabled = false
                             enableAudioTrack()
+                            lastPlaybackStallReason =
+                                "${error.errorCodeName}: ${error.message ?: "PlaybackException"}"
                             if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                                 if (behindLiveWindowRecoveryInProgress) {
                                     showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, "ERROR_CODE_BEHIND_LIVE_WINDOW")
@@ -5574,21 +5648,31 @@ class MainActivity : AppCompatActivity() {
         }
         inputNumber = ""
         seekStatusHoldUntilMs = 0L
-        updateEpgDisplay()
+        restoreChannelHeaderAfterNumberInput()
     }
 
     private fun updateChannelNumberInputDisplay() {
         if (inputNumber.isEmpty()) {
-            updateEpgDisplay()
+            restoreChannelHeaderAfterNumberInput()
             return
         }
         val idx = inputNumber.toIntOrNull()?.minus(1) ?: -1
         val channelName = channels.getOrNull(idx)?.name
-        tvEpg.text = if (channelName != null) {
+        tvChannelName.text = if (channelName != null) {
             "Переключаем на канал: $inputNumber ($channelName)"
         } else {
             "Переключаем на канал: $inputNumber"
         }
+        tvEpg.visibility = View.GONE
+    }
+
+    private fun restoreChannelHeaderAfterNumberInput() {
+        tvEpg.visibility = View.VISIBLE
+        val ch = channels.getOrNull(currentChannelIndex)
+        if (ch != null) {
+            tvChannelName.text = "${currentChannelIndex + 1}. ${ch.name}"
+        }
+        updateEpgDisplay()
     }
 
     private fun isWatchingChannel(): Boolean =
@@ -6166,6 +6250,7 @@ class MainActivity : AppCompatActivity() {
         isArchivePlayback = false
         currentArchiveProgram = null
         archiveStreamStartMs = 0L
+        resetPlaybackRecoveryState()
         enableAudioTrack()
         applyUnlimitedVideoConstraints()
     }
