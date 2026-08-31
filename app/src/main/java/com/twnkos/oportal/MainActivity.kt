@@ -210,6 +210,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnBackRight: ImageButton
     private lateinit var btnEpgPlayer: ImageButton
     private lateinit var epgPanel: View
+    private lateinit var epgDismissScrim: View
     private lateinit var epgDateRow: View
     private lateinit var tvEpgEmptyState: TextView
     private lateinit var btnEpgDatePrev: TextView
@@ -441,22 +442,10 @@ class MainActivity : AppCompatActivity() {
     private var pendingSeekDeltaSec: Int = 0
     private var liveTimelineAnchorMs: Long = 0L
     private val applySeekDeltaRunnable = Runnable {
-        val player = mediaPlayer ?: return@Runnable
-        if (pendingSeekDeltaSec != 0) {
-            if (!isArchivePlayback && pendingSeekDeltaSec > 0) {
-                pendingSeekDeltaSec = 0
-                return@Runnable
-            }
-            val target = (player.currentPosition + pendingSeekDeltaSec * 1000L).coerceAtLeast(0L)
-            player.seekTo(target)
-            val deltaMin = kotlin.math.abs(pendingSeekDeltaSec) / 60
-            tvEpg.text = "Перематываем передачу на ${formatMinutesRu(deltaMin)}"
-            seekStatusHoldUntilMs = System.currentTimeMillis() + 2200L
-            handler.removeCallbacks(restoreEpgRunnable)
-            handler.postDelayed(restoreEpgRunnable, 2200L)
-            pendingSeekDeltaSec = 0
-            showUI()
-        }
+        val deltaSec = pendingSeekDeltaSec
+        pendingSeekDeltaSec = 0
+        if (deltaSec == 0) return@Runnable
+        applyRelativeSeekSeconds(deltaSec)
     }
     private val channelSwitchRunnable = Runnable { processChannelNumberInput() }
     private val restoreEpgRunnable = Runnable { updateEpgDisplay() }
@@ -583,6 +572,7 @@ class MainActivity : AppCompatActivity() {
         controlsPanel = findViewById(R.id.controlsPanel)
         topInfoPanel = findViewById(R.id.topInfoPanel)
         epgPanel = findViewById(R.id.epgPanel)
+        epgDismissScrim = findViewById(R.id.epgDismissScrim)
         epgDateRow = findViewById(R.id.epgDateRow)
         tvEpgEmptyState = findViewById(R.id.tvEpgEmptyState)
         btnEpgDatePrev = findViewById(R.id.btnEpgDatePrev)
@@ -590,6 +580,8 @@ class MainActivity : AppCompatActivity() {
         hsvEpgDates = findViewById(R.id.hsvEpgDates)
         epgDateContainer = findViewById(R.id.epgDateContainer)
         lvEpgPrograms = findViewById(R.id.lvEpgPrograms)
+        epgDismissScrim.setOnClickListener { hideEpgPanel() }
+        findViewById<View>(R.id.btnEpgBackToWatch).setOnClickListener { hideEpgPanel() }
         lvEpgPrograms.setOnScrollListener(object : android.widget.AbsListView.OnScrollListener {
             override fun onScrollStateChanged(view: android.widget.AbsListView, scrollState: Int) {
                 if (scrollState == android.widget.AbsListView.OnScrollListener.SCROLL_STATE_IDLE) {
@@ -838,8 +830,8 @@ class MainActivity : AppCompatActivity() {
         tvHomeCategoryBack.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(12f))
         tvPlaylistPageTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(22f))
         tvPlaylistPageSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(13f))
-        tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(36f))
-        tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(16f))
+        tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(26f))
+        tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(15f))
 
         val iconSize = scalePx(18f, scale)
         ivHomeSettings.layoutParams = ivHomeSettings.layoutParams.apply {
@@ -1020,7 +1012,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             updatePlayPauseButton()
-            showUI()
+            showUI(preferFocus = btnPlayPause)
         }
 
         btnBackLeft.setOnClickListener {
@@ -1029,13 +1021,13 @@ class MainActivity : AppCompatActivity() {
                 "Перематываем передачу на ${formatMinutesRu(kotlin.math.abs(pendingSeekDeltaSec) / 60)}"
             seekStatusHoldUntilMs = System.currentTimeMillis() + 2200L
             handler.removeCallbacks(applySeekDeltaRunnable)
-            handler.postDelayed(applySeekDeltaRunnable, 2200L)
-            showUI()
+            handler.postDelayed(applySeekDeltaRunnable, 900L)
+            showUI(preferFocus = btnBackLeft)
         }
         btnBackRight.setOnClickListener {
             if (!isArchivePlayback) {
                 showAppToast("Перемотка вперёд недоступна в прямом эфире")
-                showUI()
+                showUI(preferFocus = btnBackRight)
                 return@setOnClickListener
             }
             pendingSeekDeltaSec += 60
@@ -1043,8 +1035,8 @@ class MainActivity : AppCompatActivity() {
                 "Перематываем передачу на ${formatMinutesRu(kotlin.math.abs(pendingSeekDeltaSec) / 60)}"
             seekStatusHoldUntilMs = System.currentTimeMillis() + 2200L
             handler.removeCallbacks(applySeekDeltaRunnable)
-            handler.postDelayed(applySeekDeltaRunnable, 2200L)
-            showUI()
+            handler.postDelayed(applySeekDeltaRunnable, 900L)
+            showUI(preferFocus = btnBackRight)
         }
         btnEpgPlayer.setOnClickListener {
             toggleEpgPanel()
@@ -2153,10 +2145,15 @@ class MainActivity : AppCompatActivity() {
     private fun hideEpgPanel() {
         logMemoryStats("epg_panel_hide")
         epgPanel.visibility = View.GONE
+        if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.GONE
         lvEpgPrograms.adapter = null
+        showUI()
     }
 
     private fun syncOverlayPanelBounds(panel: View) {
+        // EPG остаётся почти fullscreen с фиксированными отступами из XML —
+        // не сжимаем его между top/controls панелями.
+        if (panel.id == R.id.epgPanel) return
         val lp = panel.layoutParams as? FrameLayout.LayoutParams ?: return
         val gap = (8 * resources.displayMetrics.density).toInt()
         val topMargin = topInfoPanel.bottom + gap
@@ -2185,7 +2182,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun syncEpgPanelBounds() {
         if (!::epgPanel.isInitialized) return
-        syncOverlayPanelBounds(epgPanel)
+        val margin = resources.getDimensionPixelSize(R.dimen.player_epg_panel_margin)
+        val lp = epgPanel.layoutParams as? FrameLayout.LayoutParams ?: return
+        if (lp.topMargin == margin && lp.bottomMargin == margin &&
+            lp.marginStart == margin && lp.marginEnd == margin
+        ) return
+        lp.topMargin = margin
+        lp.bottomMargin = margin
+        lp.marginStart = margin
+        lp.marginEnd = margin
+        epgPanel.layoutParams = lp
     }
 
     private fun showEpgPanel() {
@@ -2205,8 +2211,11 @@ class MainActivity : AppCompatActivity() {
             lvEpgPrograms.adapter = null
             tvEpgEmptyState.text = epgUnavailableMessage()
             tvEpgEmptyState.visibility = View.VISIBLE
+            if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.VISIBLE
             epgPanel.visibility = View.VISIBLE
-            showUI()
+            topInfoPanel.visibility = View.GONE
+            topGradientOverlay.visibility = View.GONE
+            controlsPanel.visibility = View.GONE
             epgPanel.post { syncEpgPanelBounds() }
             return
         }
@@ -2233,8 +2242,12 @@ class MainActivity : AppCompatActivity() {
         renderEpgDateChips()
         renderEpgProgramsForSelectedDate()
 
+        if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.VISIBLE
         epgPanel.visibility = View.VISIBLE
-        showUI()
+        // EPG почти на весь экран — прячем панель управления под ним
+        topInfoPanel.visibility = View.GONE
+        topGradientOverlay.visibility = View.GONE
+        controlsPanel.visibility = View.GONE
         epgPanel.post {
             syncEpgPanelBounds()
             lvEpgPrograms.requestFocus()
@@ -2517,7 +2530,10 @@ class MainActivity : AppCompatActivity() {
             playerSettingsOverlay.visibility = View.GONE
             hideUI()
             timerWarningPanel.visibility = View.GONE
-            prefs.edit().putInt(PREF_SLEEP_TIMER_MINUTES, 0).apply()
+            // Не ставим плеер на паузу и не сбрасываем таймер сна при открытии настроек.
+            if (mediaPlayer != null && !isPlaybackPaused) {
+                mediaPlayer?.playWhenReady = true
+            }
             homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             tvHomeAppTitle.visibility = View.GONE
             tvHomeSystemTime.visibility = View.GONE
@@ -5352,7 +5368,7 @@ class MainActivity : AppCompatActivity() {
         handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
     }
 
-    private fun showUI() {
+    private fun showUI(preferFocus: View? = null) {
         if (isSettingsModalVisible) {
             topInfoPanel.visibility = View.GONE
             topGradientOverlay.visibility = View.GONE
@@ -5373,8 +5389,18 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(hideUiRunnable)
         handler.postDelayed(hideUiRunnable, 5000)
         updatePlayPauseButton()
-        val btnPlayPauseView = findViewById<View>(R.id.btnPlayPause)
-        btnPlayPauseView.post { btnPlayPauseView.requestFocus() }
+        val controlsPanelButtonIds = intArrayOf(
+            R.id.btnPlayPause, R.id.btnLiveReload, R.id.btnBackLeft,
+            R.id.btnBackRight, R.id.btnLock, R.id.btnEpgPlayer, R.id.btnAspectRatio
+        )
+        val current = currentFocus
+        val keepCurrent = current != null && controlsPanelButtonIds.any { findViewById<View>(it) === current }
+        val focusTarget = when {
+            preferFocus != null -> preferFocus
+            keepCurrent -> current
+            else -> findViewById(R.id.btnPlayPause)
+        }
+        focusTarget?.post { focusTarget.requestFocus() }
     }
 
     private fun hideUI() {
@@ -5494,11 +5520,11 @@ class MainActivity : AppCompatActivity() {
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
-                    btnEpgDatePrev.performClick()
+                    shiftEpgDate(-1)
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    btnEpgDateNext.performClick()
+                    shiftEpgDate(1)
                     return true
                 }
             }
@@ -5783,6 +5809,51 @@ class MainActivity : AppCompatActivity() {
         val target = programStart + ((programStop - programStart) * (clamped / 1000f)).toLong()
         val deltaMin = kotlin.math.abs((target - currentAbsoluteMs) / 60_000L).toInt()
         tvEpg.text = "Перематываем передачу на ${formatMinutesRu(deltaMin)}"
+    }
+
+    private fun applyRelativeSeekSeconds(deltaSec: Int) {
+        if (deltaSec == 0) return
+        val deltaMin = kotlin.math.abs(deltaSec) / 60
+        tvEpg.text = "Перематываем передачу на ${formatMinutesRu(deltaMin)}"
+        seekStatusHoldUntilMs = System.currentTimeMillis() + 2200L
+        handler.removeCallbacks(restoreEpgRunnable)
+        handler.postDelayed(restoreEpgRunnable, 2200L)
+
+        if (isArchivePlayback) {
+            val p = currentArchiveProgram ?: return
+            val player = mediaPlayer ?: return
+            val liveOffsetMs = (System.currentTimeMillis() - p.start).coerceAtLeast(0L)
+            val targetOffset = (player.currentPosition + deltaSec * 1000L)
+                .coerceAtLeast(0L)
+                .coerceAtMost((p.stop - p.start).coerceAtLeast(0L))
+            if (targetOffset >= liveOffsetMs - 2_000L) {
+                switchToLivePlayback()
+                return
+            }
+            player.seekTo(targetOffset)
+            updateTimelineUi()
+            showUI(preferFocus = if (deltaSec < 0) btnBackLeft else btnBackRight)
+            return
+        }
+
+        // Live: назад — через архив текущей передачи на точное смещение от "сейчас".
+        if (deltaSec > 0) {
+            showAppToast("Перемотка вперёд недоступна в прямом эфире")
+            return
+        }
+        val ch = channels.getOrNull(currentChannelIndex) ?: return
+        val now = getLiveTimelinePositionMs()
+        val cur = getProgramsForDisplay(ch).find { now in it.start until it.stop } ?: return
+        if (!isArchiveAvailable(ch, cur)) {
+            showAppToast("Архив передачи недоступен для этого канала", 2500L)
+            return
+        }
+        val targetMs = (now + deltaSec * 1000L).coerceIn(cur.start, now)
+        playArchiveProgram(ch, cur)
+        handler.postDelayed({
+            seekArchiveTo(targetMs)
+            showUI(preferFocus = btnBackLeft)
+        }, 450L)
     }
 
     private fun applyTimelineSeekFromProgress(progress: Int) {
