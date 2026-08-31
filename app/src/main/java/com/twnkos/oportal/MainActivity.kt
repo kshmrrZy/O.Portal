@@ -184,6 +184,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var gvHomeChannelList: GridView
     private lateinit var rvHomeTiles: RecyclerView
     private lateinit var tvHomeCategoryBack: TextView
+    private var homeCategoryBackHandler: (() -> Unit)? = null
     private lateinit var liveStatusBadge: View
     private lateinit var tvLiveStatusText: TextView
     private lateinit var liveStatusDot: View
@@ -366,6 +367,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun notifyPlaybackStall(reason: String) {
         if (isSettingsModalVisible || homePanel.visibility == View.VISIBLE) return
+        if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) return
+        if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) return
         lastPlaybackStallReason = reason
         if (!playbackRecoveryActive) {
             playbackRecoveryActive = true
@@ -609,6 +612,12 @@ class MainActivity : AppCompatActivity() {
         val real = getProgramsForChannel(ch)
         if (real.isNotEmpty()) return real
         return buildArchivePlaceholderPrograms(ch)
+    }
+
+    private fun getCurrentProgramTitleForChannelList(ch: Channel): String {
+        val now = System.currentTimeMillis()
+        getProgramsForChannel(ch).find { now in it.start until it.stop }?.title?.let { return it }
+        return epgUnavailableMessage()
     }
 
     private fun getProgramsForDisplay(ch: Channel): List<Program> {
@@ -1949,6 +1958,14 @@ class MainActivity : AppCompatActivity() {
                 return@addCallback
             }
             if (homePanel.visibility == View.VISIBLE) {
+                if (::gvHomeChannelList.isInitialized && gvHomeChannelList.visibility == View.VISIBLE) {
+                    returnToCategoryTilesOnHome()
+                    return@addCallback
+                }
+                if (homePlaylistTilesPanel.visibility == View.VISIBLE && homeCategoryBackHandler != null) {
+                    homeCategoryBackHandler?.invoke()
+                    return@addCallback
+                }
                 if (tvHomeCategoryBack.visibility == View.VISIBLE && tvHomeCategoryBack.isClickable) {
                     tvHomeCategoryBack.performClick()
                     return@addCallback
@@ -2173,80 +2190,9 @@ class MainActivity : AppCompatActivity() {
     private fun showChannelListPanel() {
         if (channels.isEmpty()) return
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
-            hideEpgPanel()
+            hideEpgPanel(restorePlayerUi = false)
         }
         tvChannelListTitle.text = "Список каналов: ${getSelectedPlaylistName()}"
-        gvChannelListPanel.adapter = object : ArrayAdapter<Channel>(this, 0, channels) {
-            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                val holder: ChannelGridItemViewHolder
-                val itemView: View
-                if (convertView == null) {
-                    itemView = layoutInflater.inflate(R.layout.item_channel_grid, parent, false)
-                    holder = ChannelGridItemViewHolder(
-                        tvNumber = itemView.findViewById(R.id.itemNumber),
-                        tvName = itemView.findViewById(R.id.itemName),
-                        tvCurrentProgram = itemView.findViewById(R.id.itemCurrentProgram),
-                        ivLogo = itemView.findViewById(R.id.itemLogo),
-                        archiveBadge = itemView.findViewById(R.id.itemArchiveBadge)
-                    )
-                    itemView.tag = holder
-                } else {
-                    itemView = convertView
-                    holder = convertView.tag as ChannelGridItemViewHolder
-                }
-
-                val channel = channels[position]
-                holder.tvNumber.text = (position + 1).toString()
-                holder.tvName.text = channel.name
-                holder.tvName.isSelected = true
-                golosTypeface?.let { holder.tvName.typeface = Typeface.create(it, 500, false) }
-                loadLogoWithGlide(
-                    channel.logoFromEpg ?: channel.logoFromPlaylist,
-                    holder.ivLogo
-                )
-
-                itemView.setBackgroundResource(
-                    if (position == currentChannelIndex) R.drawable.channel_grid_tile_bg_current
-                    else R.drawable.channel_grid_tile_bg
-                )
-
-                val realPrograms = getProgramsForChannel(channel)
-                val displayPrograms =
-                    realPrograms.ifEmpty { buildArchivePlaceholderPrograms(channel) }
-                val cur = displayPrograms.find {
-                    System.currentTimeMillis() in it.start until it.stop
-                }
-                when {
-                    cur != null -> {
-                        holder.tvCurrentProgram.text = cur.title
-                        holder.tvCurrentProgram.visibility = View.VISIBLE
-                    }
-                    else -> {
-                        holder.tvCurrentProgram.text = epgUnavailableMessage()
-                        holder.tvCurrentProgram.visibility = View.VISIBLE
-                    }
-                }
-                holder.archiveBadge.visibility =
-                    if (channel.catchupDays > 0 && !channel.catchupSource.isNullOrBlank()) {
-                        View.VISIBLE
-                    } else {
-                        View.GONE
-                    }
-
-                itemView.setOnClickListener {
-                    logDebug("NAV", "channel_grid_click name=${channel.name}")
-                    currentChannelIndex = position
-                    playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
-                    hideChannelListPanel()
-                }
-                return itemView
-            }
-        }
-        gvChannelListPanel.onItemClickListener =
-            AdapterView.OnItemClickListener { _, view, position, _ ->
-                logDebug("NAV", "DPAD_OK_onItemClick gvChannelListPanel position=$position")
-                view.performClick()
-            }
         setPlayerOverlayScrimVisible(true)
         topInfoPanel.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
@@ -2254,6 +2200,63 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(hideUiRunnable)
         channelListPanel.visibility = View.VISIBLE
         channelListPanel.post {
+            gvChannelListPanel.adapter = object : ArrayAdapter<Channel>(this@MainActivity, 0, channels) {
+                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                    val holder: ChannelGridItemViewHolder
+                    val itemView: View
+                    if (convertView == null) {
+                        itemView = layoutInflater.inflate(R.layout.item_channel_grid, parent, false)
+                        holder = ChannelGridItemViewHolder(
+                            tvNumber = itemView.findViewById(R.id.itemNumber),
+                            tvName = itemView.findViewById(R.id.itemName),
+                            tvCurrentProgram = itemView.findViewById(R.id.itemCurrentProgram),
+                            ivLogo = itemView.findViewById(R.id.itemLogo),
+                            archiveBadge = itemView.findViewById(R.id.itemArchiveBadge)
+                        )
+                        itemView.tag = holder
+                    } else {
+                        itemView = convertView
+                        holder = convertView.tag as ChannelGridItemViewHolder
+                    }
+
+                    val channel = channels[position]
+                    holder.tvNumber.text = (position + 1).toString()
+                    holder.tvName.text = channel.name
+                    holder.tvName.isSelected = true
+                    golosTypeface?.let { holder.tvName.typeface = Typeface.create(it, 500, false) }
+                    loadLogoWithGlide(
+                        channel.logoFromEpg ?: channel.logoFromPlaylist,
+                        holder.ivLogo
+                    )
+
+                    itemView.setBackgroundResource(
+                        if (position == currentChannelIndex) R.drawable.channel_grid_tile_bg_current
+                        else R.drawable.channel_grid_tile_bg
+                    )
+
+                    holder.tvCurrentProgram.text = getCurrentProgramTitleForChannelList(channel)
+                    holder.tvCurrentProgram.visibility = View.VISIBLE
+                    holder.archiveBadge.visibility =
+                        if (channel.catchupDays > 0 && !channel.catchupSource.isNullOrBlank()) {
+                            View.VISIBLE
+                        } else {
+                            View.GONE
+                        }
+
+                    itemView.setOnClickListener {
+                        logDebug("NAV", "channel_grid_click name=${channel.name}")
+                        currentChannelIndex = position
+                        playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
+                        hideChannelListPanel()
+                    }
+                    return itemView
+                }
+            }
+            gvChannelListPanel.onItemClickListener =
+                AdapterView.OnItemClickListener { _, view, position, _ ->
+                    logDebug("NAV", "DPAD_OK_onItemClick gvChannelListPanel position=$position")
+                    view.performClick()
+                }
             syncChannelListPanelBounds()
             gvChannelListPanel.setSelection(currentChannelIndex)
             gvChannelListPanel.requestFocus()
@@ -2265,13 +2268,13 @@ class MainActivity : AppCompatActivity() {
     private var epgPanelSelectedDate: String = ""
     private var epgPanelProgramsByDate: Map<String, List<Program>> = emptyMap()
 
-    private fun hideEpgPanel() {
+    private fun hideEpgPanel(restorePlayerUi: Boolean = true) {
         logMemoryStats("epg_panel_hide")
         epgPanel.visibility = View.GONE
         epgDatePickedByUser = false
         if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.GONE
         lvEpgPrograms.adapter = null
-        showUI()
+        if (restorePlayerUi) showUI()
     }
 
     private fun toggleEpgPanel() {
@@ -2358,7 +2361,8 @@ class MainActivity : AppCompatActivity() {
     private fun showEpgPanel() {
         logMemoryStats("epg_panel_show_start")
         if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
-            hideChannelListPanel()
+            channelListPanel.visibility = View.GONE
+            gvChannelListPanel.adapter = null
         }
         val ch = channels.getOrNull(currentChannelIndex) ?: return
         epgPanelChannel = ch
@@ -2366,54 +2370,48 @@ class MainActivity : AppCompatActivity() {
             epgPanelSelectedDate = ""
         }
 
-        val realPrograms = getProgramsForChannel(ch)
-        val programsSource =
-            realPrograms.ifEmpty { buildArchivePlaceholderPrograms(ch) }
-        if (programsSource.isEmpty()) {
-            epgDateRow.visibility = View.GONE
-            lvEpgPrograms.visibility = View.GONE
-            lvEpgPrograms.adapter = null
-            tvEpgEmptyState.text = epgUnavailableMessage()
-            tvEpgEmptyState.visibility = View.VISIBLE
-            if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.VISIBLE
-            epgPanel.visibility = View.VISIBLE
-            topInfoPanel.visibility = View.GONE
-            topGradientOverlay.visibility = View.GONE
-            controlsPanel.visibility = View.GONE
-            epgPanel.post { syncEpgPanelBounds() }
-            return
-        }
-        tvEpgEmptyState.visibility = View.GONE
-        epgDateRow.visibility = View.VISIBLE
-        lvEpgPrograms.visibility = View.VISIBLE
-
-        val programs =
-            programsSource.distinctBy { Triple(it.title.trim(), it.start, it.stop) }
-                .sortedBy { it.start }
-
-        epgPanelProgramsByDate = programs.groupBy {
-            SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(it.start))
-        }
-
-        epgPanelDateKeys = epgPanelProgramsByDate.keys.sortedBy { key ->
-            SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).parse(key)?.time ?: 0L
-        }
-
-        if (epgPanelSelectedDate.isEmpty() || !epgPanelDateKeys.contains(epgPanelSelectedDate)) {
-            epgPanelSelectedDate = resolveEpgDefaultDateKey(epgPanelDateKeys)
-        }
-
-        renderEpgDateChips()
-        renderEpgProgramsForSelectedDate()
-
         if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.VISIBLE
         epgPanel.visibility = View.VISIBLE
-        // EPG почти на весь экран — прячем панель управления под ним
         topInfoPanel.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         handler.removeCallbacks(hideUiRunnable)
+
         epgPanel.post {
+            val realPrograms = getProgramsForChannel(ch)
+            val programsSource =
+                realPrograms.ifEmpty { buildArchivePlaceholderPrograms(ch) }
+            if (programsSource.isEmpty()) {
+                epgDateRow.visibility = View.GONE
+                lvEpgPrograms.visibility = View.GONE
+                lvEpgPrograms.adapter = null
+                tvEpgEmptyState.text = epgUnavailableMessage()
+                tvEpgEmptyState.visibility = View.VISIBLE
+                syncEpgPanelBounds()
+                return@post
+            }
+            tvEpgEmptyState.visibility = View.GONE
+            epgDateRow.visibility = View.VISIBLE
+            lvEpgPrograms.visibility = View.VISIBLE
+
+            val programs =
+                programsSource.distinctBy { Triple(it.title.trim(), it.start, it.stop) }
+                    .sortedBy { it.start }
+
+            epgPanelProgramsByDate = programs.groupBy {
+                SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(it.start))
+            }
+
+            epgPanelDateKeys = epgPanelProgramsByDate.keys.sortedBy { key ->
+                SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).parse(key)?.time ?: 0L
+            }
+
+            if (epgPanelSelectedDate.isEmpty() || !epgPanelDateKeys.contains(epgPanelSelectedDate)) {
+                epgPanelSelectedDate = resolveEpgDefaultDateKey(epgPanelDateKeys)
+            }
+
+            renderEpgDateChips()
+            renderEpgProgramsForSelectedDate()
             syncEpgPanelBounds()
             scrollToSelectedEpgDateChip()
             lvEpgPrograms.requestFocus()
@@ -3022,7 +3020,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openEpgSettingsScreen() {
-        findViewById<View>(R.id.userProfileHeaderCard).visibility = View.VISIBLE
+        findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
         val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
         val epgPanel = findViewById<View>(R.id.epgSettingsPanel)
         val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
@@ -3033,6 +3031,8 @@ class MainActivity : AppCompatActivity() {
         userSettingsPanel.visibility = View.GONE
         findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
         epgPanel.visibility = View.VISIBLE
+        epgPanel.isClickable = true
+        epgPanel.isFocusable = true
         tvSettingsBack.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "настройки", settingsTitle2 = "настройки EPG")
 
@@ -3054,7 +3054,13 @@ class MainActivity : AppCompatActivity() {
             et.setText(value)
             states[i] = value.isNotBlank() && (selected.isEmpty() || selected.contains(value))
         }
-        toggles.forEachIndexed { i, v -> v.setOnClickListener { states[i] = !states[i]; v.setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft) } }
+        toggles.forEachIndexed { i, v ->
+            v.setOnClickListener {
+                if (!v.isEnabled) return@setOnClickListener
+                states[i] = !states[i]
+                v.setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft)
+            }
+        }
         urls.forEachIndexed { i, et ->
             et.addTextChangedListener(object : android.text.TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -3074,8 +3080,24 @@ class MainActivity : AppCompatActivity() {
         val hasManualSaved = getCustomEpgSources().isNotEmpty()
 
         fun applyEpgSourceModeLock(manual: Boolean) {
-            urls.forEach { it.isEnabled = manual; it.alpha = if (manual) 1f else 0.5f }
-            toggles.forEach { it.isEnabled = manual; it.alpha = if (manual) 1f else 0.5f }
+            urls.forEach { et ->
+                et.isEnabled = manual
+                et.alpha = if (manual) 1f else 0.5f
+                et.isFocusable = manual
+                et.isFocusableInTouchMode = manual
+                et.isClickable = manual
+                if (manual) {
+                    et.setOnClickListener(null)
+                } else {
+                    et.setOnClickListener { /* consume click on locked field */ }
+                }
+            }
+            toggles.forEach { toggle ->
+                toggle.isEnabled = manual
+                toggle.alpha = if (manual) 1f else 0.5f
+                toggle.isFocusable = manual
+                toggle.isClickable = manual
+            }
             tvSourceHint.text = when {
                 manual -> "Ссылки указаны вручную и не зависят от плейлиста."
                 playlistOwnSources.isNotEmpty() -> "Ссылка берётся из самого плейлиста: ${playlistOwnSources.first()}"
@@ -6485,6 +6507,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun enableHomeCategoryBack(onClick: () -> Unit) {
         // "Назад" больше не показываем нигде — эту функцию теперь выполняет клик по "O.Portal".
+        homeCategoryBackHandler = onClick
         tvHomeCategoryBack.visibility = View.GONE
         tvHomeCategoryBack.isEnabled = false
         tvHomeCategoryBack.isFocusable = false
@@ -6498,6 +6521,7 @@ class MainActivity : AppCompatActivity() {
             "NAV",
             "DISABLE_HOME_CATEGORY_BACK_BEFORE source=$source visibility=${tvHomeCategoryBack.visibility} clickable=${tvHomeCategoryBack.isClickable} enabled=${tvHomeCategoryBack.isEnabled} focusable=${tvHomeCategoryBack.isFocusable} hasOnClickListeners=${tvHomeCategoryBack.hasOnClickListeners()}"
         )
+        homeCategoryBackHandler = null
         tvHomeCategoryBack.setOnClickListener(null)
         tvHomeCategoryBack.setOnLongClickListener(null)
         tvHomeCategoryBack.onFocusChangeListener = null
