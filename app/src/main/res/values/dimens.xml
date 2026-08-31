@@ -33,7 +33,8 @@
 
     <!-- Home screen (base 1280×720 reference) -->
     <dimen name="home_edge_margin">48dp</dimen>
-    <dimen name="home_header_top_margin">12dp</dimen>
+    <dimen name="home_header_top_margin">48dp</dimen>
+    <dimen name="home_bottom_margin">48dp</dimen>
     <dimen name="home_app_title_size">18sp</dimen>
     <dimen name="home_welcome_size">11sp</dimen>
     <dimen name="home_welcome_margin_top">2dp</dimen>
@@ -51,7 +52,7 @@
     <dimen name="settings_profile_to_grid_gap">8dp</dimen>
     <dimen name="home_page_title_size">22sp</dimen>
     <dimen name="home_page_subtitle_size">13sp</dimen>
-    <dimen name="home_page_title_margin_top">36dp</dimen>
+    <dimen name="home_page_title_margin_top">28dp</dimen>
     <dimen name="home_page_subtitle_margin_top">6dp</dimen>
     <dimen name="home_grid_margin_top">20dp</dimen>
     <dimen name="home_tile_text_size">18sp</dimen>
@@ -61,8 +62,9 @@
     <dimen name="home_bottom_action_icon_size">22dp</dimen>
     <dimen name="home_bottom_action_icon_gap">10dp</dimen>
     <dimen name="home_bottom_action_text_size">18sp</dimen>
-    <dimen name="home_start_title_size">36sp</dimen>
-    <dimen name="home_start_subtitle_size">16sp</dimen>
+    <dimen name="home_start_title_size">26sp</dimen>
+    <dimen name="home_start_subtitle_size">15sp</dimen>
+    <dimen name="player_epg_panel_margin">28dp</dimen>
 
     <dimen name="settings_grid_column_gap">8dp</dimen>
     <dimen name="settings_grid_button_height">@dimen/home_tile_min_height</dimen>
