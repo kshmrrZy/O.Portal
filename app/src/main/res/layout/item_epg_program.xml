@@ -25,8 +25,8 @@
             android:paddingVertical="5dp"
             android:fontFamily="@font/golos_text"
             android:textColor="#FFFFFF"
-            android:textSize="13sp"
-            android:textStyle="bold"
+            android:textSize="12sp"
+            android:textFontWeight="500"
             tools:text="20:00" />
 
         <LinearLayout
@@ -48,8 +48,8 @@
                     android:maxWidth="340dp"
                     android:fontFamily="@font/golos_text"
                     android:textColor="#FFFFFF"
-                    android:textSize="14sp"
-                    android:textStyle="bold"
+                    android:textSize="13sp"
+                    android:textFontWeight="500"
                     android:singleLine="true"
                     android:ellipsize="end"
                     tools:text="Название передачи" />
@@ -88,7 +88,8 @@
                 android:layout_marginTop="2dp"
                 android:fontFamily="@font/golos_text"
                 android:textColor="#99FFFFFF"
-                android:textSize="12sp"
+                android:textSize="11sp"
+                android:textFontWeight="400"
                 android:maxLines="2"
                 android:ellipsize="end"
                 android:visibility="gone"

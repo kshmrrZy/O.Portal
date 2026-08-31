@@ -61,8 +61,24 @@
             android:fontFamily="@font/golos_text"
             android:textColor="#99FFFFFF"
             android:textSize="12sp"
+            android:textFontWeight="400"
             android:maxLines="2"
             android:ellipsize="end"
             android:visibility="gone" />
     </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/itemArchiveBadge"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_marginStart="6dp"
+        android:background="@drawable/bg_archive_badge_circle"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="17dp"
+            android:layout_height="17dp"
+            android:layout_gravity="center"
+            android:src="@drawable/ic_clock_backward" />
+    </FrameLayout>
 </LinearLayout>
