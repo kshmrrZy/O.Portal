@@ -5093,6 +5093,10 @@ class MainActivity : AppCompatActivity() {
                             enableAudioTrack()
                             lastPlaybackStallReason =
                                 "${error.errorCodeName}: ${error.message ?: "PlaybackException"}"
+                            if (playbackRecoveryActive) {
+                                handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
+                                return@post
+                            }
                             if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                                 if (behindLiveWindowRecoveryInProgress) {
                                     showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, "ERROR_CODE_BEHIND_LIVE_WINDOW")
