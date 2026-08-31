@@ -788,13 +788,14 @@ class MainActivity : AppCompatActivity() {
             }
         listOf(R.id.ivPlaylistToggle1, R.id.ivPlaylistToggle2, R.id.ivPlaylistToggle3).forEach { height(it, 34f) }
 
-        // Кнопки-действия (Сохранить/Назад/Использовать свои/Сбросить кэш)
+        // Кнопки-действия (Сохранить/Назад/Использовать свои/Сбросить кэш):
+        // выше блок + чуть меньше текст, чтобы подписи не обрезались.
         listOf(
             R.id.btnResetEpgCache, R.id.tbEpgSourceMode, R.id.btnSaveEpgSettings, R.id.btnRefreshEpgSettings,
             R.id.btnSavePlaylistSettings, R.id.btnRefreshPlaylistSettings
         ).forEach { id ->
-            height(id, 66f)
-            textSize(id, 15f)
+            height(id, 60f)
+            textSize(id, 14f)
         }
 
         // Поля авторизации
@@ -2575,7 +2576,7 @@ class MainActivity : AppCompatActivity() {
             }
             homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             homeSettingsScreen.setBackgroundColor(Color.TRANSPARENT)
-            homeSettingsScreen.setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(16))
+            homeSettingsScreen.setPadding(dpToPx(12), dpToPx(4), dpToPx(12), dpToPx(8))
             restoreDefaultSettingsRows()
         }
         homePanel.visibility = View.VISIBLE
@@ -5373,6 +5374,14 @@ class MainActivity : AppCompatActivity() {
             topInfoPanel.visibility = View.GONE
             topGradientOverlay.visibility = View.GONE
             controlsPanel.visibility = View.GONE
+            return
+        }
+        // Пока открыт EPG — панель управления и верхний бар не показываем.
+        if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
+            topInfoPanel.visibility = View.GONE
+            topGradientOverlay.visibility = View.GONE
+            controlsPanel.visibility = View.GONE
+            handler.removeCallbacks(hideUiRunnable)
             return
         }
         topInfoPanel.visibility = View.VISIBLE
