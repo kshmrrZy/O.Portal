@@ -2270,7 +2270,6 @@ class MainActivity : AppCompatActivity() {
         epgDatePickedByUser = false
         if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.GONE
         lvEpgPrograms.adapter = null
-        setPlayerVideoVisible(true)
         showUI()
     }
 
@@ -2376,7 +2375,6 @@ class MainActivity : AppCompatActivity() {
             tvEpgEmptyState.text = epgUnavailableMessage()
             tvEpgEmptyState.visibility = View.VISIBLE
             if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.VISIBLE
-            setPlayerVideoVisible(false)
             epgPanel.visibility = View.VISIBLE
             topInfoPanel.visibility = View.GONE
             topGradientOverlay.visibility = View.GONE
@@ -2408,7 +2406,6 @@ class MainActivity : AppCompatActivity() {
         renderEpgProgramsForSelectedDate()
 
         if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.VISIBLE
-        setPlayerVideoVisible(false)
         epgPanel.visibility = View.VISIBLE
         // EPG почти на весь экран — прячем панель управления под ним
         topInfoPanel.visibility = View.GONE
