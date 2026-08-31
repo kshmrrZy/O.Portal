@@ -472,6 +472,7 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_CUSTOM_EPG_SOURCES = "custom_epg_sources"
         private const val PREF_LOGO_CACHE = "logo_cache"
         private const val PREF_START_LAST_CHANNEL = "pref_start_last_channel"
+        private const val PREF_LAST_CHANNEL = "last_channel"
         private const val PREF_ASPECT_RATIO_MODE = "pref_aspect_ratio_mode"
         private val ASPECT_RATIO_LABEL_BY_KEY = mapOf(
             "auto" to "Автоматически",
