@@ -1139,7 +1139,7 @@
             app:layout_constraintHorizontal_bias="0.5"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintVertical_bias="0.42"
+            app:layout_constraintVertical_bias="0.5"
             app:layout_constraintWidth_percent="0.62">
 
             <TextView
@@ -1162,7 +1162,7 @@
                 android:layout_marginTop="8dp"
                 android:gravity="center"
                 android:includeFontPadding="false"
-                android:text="введите токен или ссылку на плейлист в разделе Настройки"
+                android:text="нажмите на иконку авторизации в правом верхнем углу"
                 android:textColor="#B3FFFFFF"
                 android:textFontWeight="400"
                 android:textSize="@dimen/home_start_subtitle_size" />
