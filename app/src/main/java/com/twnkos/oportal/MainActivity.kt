@@ -1795,8 +1795,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun showHomeChannelList(category: String, channelsForCategory: List<Channel>) {
         showPlaylistPageHeader(showWelcome = true, showTitle = false)
+        val lastGlobalIdx = prefs.getInt(PREF_LAST_CHANNEL, -1)
+        val lastPlayedChannel = channels.getOrNull(lastGlobalIdx)
         channels.clear()
         channels.addAll(channelsForCategory)
+        val highlightIdx = lastPlayedChannel?.let { played ->
+            channelsForCategory.indexOfFirst { it.url == played.url && it.name == played.name }
+        } ?: -1
         selectedCategoryName = category
         lastChannelListCategory = category
         applyHomeAppTitleStyle(
@@ -1843,7 +1848,7 @@ class MainActivity : AppCompatActivity() {
 
                 val lastIdx = prefs.getInt(PREF_LAST_CHANNEL, currentChannelIndex)
                 itemView.setBackgroundResource(
-                    if (position == lastIdx) R.drawable.channel_grid_tile_bg_current
+                    if (highlightIdx >= 0 && position == highlightIdx) R.drawable.channel_grid_tile_bg_current
                     else R.drawable.channel_grid_tile_bg
                 )
 
@@ -1875,13 +1880,12 @@ class MainActivity : AppCompatActivity() {
                 view.performClick()
             }
         gvHomeChannelList.post {
-            val lastIdx = prefs.getInt(PREF_LAST_CHANNEL, currentChannelIndex)
-                .coerceIn(0, (channelsForCategory.size - 1).coerceAtLeast(0))
-            gvHomeChannelList.setSelection(lastIdx)
+            val focusIdx = if (highlightIdx >= 0) highlightIdx else 0
+            gvHomeChannelList.setSelection(focusIdx)
             gvHomeChannelList.requestFocus()
             gvHomeChannelList.post {
                 val child = gvHomeChannelList.getChildAt(
-                    lastIdx - gvHomeChannelList.firstVisiblePosition
+                    focusIdx - gvHomeChannelList.firstVisiblePosition
                 )
                 child?.requestFocus()
             }
@@ -2572,8 +2576,32 @@ class MainActivity : AppCompatActivity() {
             findViewById<View>(R.id.userSettingsPanel).visibility == View.VISIBLE ||
             findViewById<View>(R.id.appInfoPanel).visibility == View.VISIBLE
 
+    private fun applySettingsSubScreenProfileHeader() {
+        val profileCard = findViewById<View>(R.id.userProfileHeaderCard)
+        if (settingsOpenedFromPlayer) {
+            profileCard.visibility = View.GONE
+        } else {
+            profileCard.visibility = View.VISIBLE
+            updateProfileHeaderCard()
+        }
+        findViewById<View>(R.id.btnProfileChangeToken).apply {
+            isClickable = false
+            isFocusable = false
+            isFocusableInTouchMode = false
+        }
+    }
+
+    private fun restoreSettingsProfileHeaderInteractivity() {
+        findViewById<View>(R.id.btnProfileChangeToken).apply {
+            isClickable = true
+            isFocusable = true
+            isFocusableInTouchMode = false
+        }
+    }
+
     private fun returnToSettingsRowList() {
         findViewById<View>(R.id.userProfileHeaderCard).visibility = View.VISIBLE
+        restoreSettingsProfileHeaderInteractivity()
         findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
@@ -2677,6 +2705,7 @@ class MainActivity : AppCompatActivity() {
     private fun showSettingsDialog() {
         findViewById<View>(R.id.userProfileHeaderCard).visibility = View.VISIBLE
         updateProfileHeaderCard()
+        restoreSettingsProfileHeaderInteractivity()
         applySettingsContentScale()
         showPlaylistPageHeader(showWelcome = false, showTitle = false)
         findViewById<View>(R.id.tvSettingsBack).visibility = View.GONE
@@ -2914,7 +2943,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openPlaylistSettingsScreen() {
-        findViewById<View>(R.id.userProfileHeaderCard).visibility = View.VISIBLE
+        applySettingsSubScreenProfileHeader()
         val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
         val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
         val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
@@ -2993,7 +3022,7 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun showAppInfoScreen() {
-        findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
+        applySettingsSubScreenProfileHeader()
         val appInfoPanel = findViewById<View>(R.id.appInfoPanel)
         val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
         val epgPanel = findViewById<View>(R.id.epgSettingsPanel)
@@ -3020,7 +3049,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openEpgSettingsScreen() {
-        findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
+        applySettingsSubScreenProfileHeader()
         val tvSettingsBack = findViewById<TextView>(R.id.tvSettingsBack)
         val epgPanel = findViewById<View>(R.id.epgSettingsPanel)
         val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
