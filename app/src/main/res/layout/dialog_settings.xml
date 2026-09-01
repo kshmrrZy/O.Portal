@@ -135,25 +135,13 @@
     </LinearLayout>
 
     <LinearLayout
-        android:id="@+id/btnUserSettings" android:focusable="true" android:focusableInTouchMode="false"
+        android:id="@+id/btnAdvancedSettings" android:focusable="true" android:focusableInTouchMode="false"
         android:layout_width="0dp" android:layout_height="@dimen/settings_grid_button_height" android:layout_marginTop="@dimen/home_tile_spacing"
         android:layout_marginEnd="@dimen/settings_grid_column_gap"
         android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
         android:paddingVertical="@dimen/settings_grid_button_padding_v"
         android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:orientation="horizontal"
         app:layout_constraintTop_toBottomOf="@id/btnPlaylistSettings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toStartOf="@id/settingsGridGuide1">
-        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Настройки профиля" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="15sp" android:maxLines="2" android:ellipsize="none"/>
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/btnAdvancedSettings" android:focusable="true" android:focusableInTouchMode="false"
-        android:layout_width="0dp" android:layout_height="@dimen/settings_grid_button_height" android:layout_marginTop="@dimen/home_tile_spacing"
-        android:layout_marginStart="@dimen/settings_grid_column_gap"
-        android:layout_marginEnd="@dimen/settings_grid_column_gap"
-        android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
-        android:paddingVertical="@dimen/settings_grid_button_padding_v"
-        android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:orientation="horizontal"
-        app:layout_constraintTop_toBottomOf="@id/btnEpgSelect" app:layout_constraintStart_toStartOf="@id/settingsGridGuide1" app:layout_constraintEnd_toStartOf="@id/settingsGridGuide2">
         <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Экспорт лога" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="15sp" android:maxLines="2" android:ellipsize="none"/>
     </LinearLayout>
 
@@ -161,12 +149,53 @@
         android:id="@+id/btnAppInfo" android:focusable="true" android:focusableInTouchMode="false"
         android:layout_width="0dp" android:layout_height="@dimen/settings_grid_button_height" android:layout_marginTop="@dimen/home_tile_spacing"
         android:layout_marginStart="@dimen/settings_grid_column_gap"
+        android:layout_marginEnd="@dimen/settings_grid_column_gap"
         android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
         android:paddingVertical="@dimen/settings_grid_button_padding_v"
         android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:orientation="horizontal"
-        app:layout_constraintTop_toBottomOf="@id/btnSleepTimerSettings" app:layout_constraintStart_toStartOf="@id/settingsGridGuide2" app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintTop_toBottomOf="@id/btnEpgSelect" app:layout_constraintStart_toStartOf="@id/settingsGridGuide1" app:layout_constraintEnd_toStartOf="@id/settingsGridGuide2">
         <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="О приложении" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="15sp" android:maxLines="2" android:ellipsize="none"/>
     </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/btnUserSettings"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <LinearLayout
+        android:id="@+id/itemStartMode" android:focusable="true" android:focusableInTouchMode="false"
+        android:layout_width="0dp" android:layout_height="46dp"
+        android:layout_marginTop="@dimen/home_tile_spacing"
+        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp"
+        app:layout_constraintTop_toBottomOf="@id/btnAdvancedSettings"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+        <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/folder" android:tint="#FFFFFF"/>
+        <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Выбор страницы при открытии приложения" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
+        <ToggleButton
+            android:id="@+id/tbStartMode"
+            android:layout_width="wrap_content"
+            android:layout_height="30dp"
+            android:minWidth="190dp"
+            android:background="@drawable/bg_settings_row"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:textOff="Стартовая страница"
+            android:textOn="Последний канал"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <View
+        android:id="@+id/settingsMainSpacer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toBottomOf="@id/itemStartMode"
+        app:layout_constraintBottom_toTopOf="@id/btnResetSettings"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
     <androidx.constraintlayout.widget.Guideline
         android:id="@+id/settingsGridGuideHalf"
@@ -177,21 +206,25 @@
 
     <LinearLayout
         android:id="@+id/btnResetSettings" android:focusable="true" android:focusableInTouchMode="false"
-        android:layout_width="0dp" android:layout_height="@dimen/home_tile_min_height" android:layout_marginTop="14dp"
+        android:layout_width="0dp" android:layout_height="@dimen/home_tile_min_height"
         android:layout_marginEnd="@dimen/settings_grid_column_gap"
+        android:layout_marginBottom="@dimen/settings_sub_panel_padding_vertical"
         android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
         android:background="@drawable/bg_settings_danger_card" android:gravity="center" android:orientation="horizontal"
-        app:layout_constraintTop_toBottomOf="@id/btnUserSettings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toStartOf="@id/settingsGridGuideHalf">
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toStartOf="@id/settingsGridGuideHalf">
         <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text="Сбросить настройки" android:textColor="#EF4444" android:textFontWeight="500" android:textSize="16sp"/>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/btnLogoutProfile" android:focusable="true" android:focusableInTouchMode="false"
-        android:layout_width="0dp" android:layout_height="@dimen/home_tile_min_height" android:layout_marginTop="14dp"
+        android:layout_width="0dp" android:layout_height="@dimen/home_tile_min_height"
         android:layout_marginStart="@dimen/settings_grid_column_gap"
+        android:layout_marginBottom="@dimen/settings_sub_panel_padding_vertical"
         android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
         android:background="@drawable/bg_settings_danger_card" android:gravity="center" android:orientation="horizontal"
-        app:layout_constraintTop_toBottomOf="@id/btnUserSettings" app:layout_constraintStart_toStartOf="@id/settingsGridGuideHalf" app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="@id/settingsGridGuideHalf" app:layout_constraintEnd_toEndOf="parent">
         <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text="Выйти из профиля" android:textColor="#EF4444" android:textFontWeight="500" android:textSize="16sp"/>
     </LinearLayout>
 
@@ -200,7 +233,7 @@
         android:layout_width="0dp" android:layout_height="0dp"
         android:background="@drawable/bg_settings_grid_card" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp"
         android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/btnUserSettings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintTop_toBottomOf="@id/btnAdvancedSettings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
         <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/folder" android:tint="#FFFFFF"/>
         <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Экспорт debug лога" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
     </LinearLayout>
@@ -250,8 +283,8 @@
         <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:minHeight="8dp" android:orientation="vertical"/>
 
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/settings_sub_action_button_gap" android:orientation="horizontal">
-            <TextView android:id="@+id/btnSavePlaylistSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="@dimen/settings_sub_action_button_height" android:layout_weight="1" android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:includeFontPadding="false" android:paddingHorizontal="6dp" android:maxLines="2" android:ellipsize="none" android:text="Сохранить настройки" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="15sp"/>
-            <TextView android:id="@+id/btnRefreshPlaylistSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="@dimen/settings_sub_action_button_height" android:layout_weight="1" android:layout_marginStart="@dimen/settings_sub_action_button_gap" android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:includeFontPadding="false" android:paddingHorizontal="6dp" android:maxLines="1" android:ellipsize="none" android:text="Назад" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="15sp"/>
+            <TextView android:id="@+id/btnSavePlaylistSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="@dimen/settings_sub_action_button_height" android:layout_weight="1" android:background="@drawable/bg_settings_action_green_matte" android:gravity="center" android:includeFontPadding="false" android:paddingHorizontal="6dp" android:maxLines="2" android:ellipsize="none" android:text="Сохранить настройки" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="15sp"/>
+            <TextView android:id="@+id/btnRefreshPlaylistSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="@dimen/settings_sub_action_button_height" android:layout_weight="1" android:layout_marginStart="@dimen/settings_sub_action_button_gap" android:background="@drawable/bg_settings_action_red_matte" android:gravity="center" android:includeFontPadding="false" android:paddingHorizontal="6dp" android:maxLines="1" android:ellipsize="none" android:text="Назад" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="15sp"/>
         </LinearLayout>
     </LinearLayout>
 
@@ -279,12 +312,6 @@
         <EditText android:id="@+id/etEpgUrl2" android:layout_width="match_parent" android:layout_height="34dp" android:layout_marginTop="8dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="12sp"/>
         <EditText android:id="@+id/etEpgUrl3" android:layout_width="match_parent" android:layout_height="34dp" android:layout_marginTop="8dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="12sp"/>
 
-        <TextView
-            android:id="@+id/btnResetEpgCache" android:focusable="true" android:focusableInTouchMode="false"
-            style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="48dp"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:includeFontPadding="false" android:text="Сбросить кэш EPG" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
-
         <ImageView android:id="@+id/ivEpgToggle1" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:src="@drawable/toggleright"/>
         <ImageView android:id="@+id/ivEpgToggle2" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:src="@drawable/toggleright"/>
         <ImageView android:id="@+id/ivEpgToggle3" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:src="@drawable/toggleright"/>
@@ -292,10 +319,33 @@
 
         <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:minHeight="8dp" android:orientation="vertical"/>
 
+        <TextView
+            android:id="@+id/btnResetEpgCache" android:focusable="true" android:focusableInTouchMode="false"
+            style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="@dimen/settings_sub_action_button_height"
+            android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:includeFontPadding="false" android:paddingHorizontal="8dp" android:maxLines="2" android:ellipsize="end" android:text="Сбросить кэш EPG" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
+
+        <ToggleButton
+            android:id="@+id/tbEpgSourceMode"
+            android:focusable="true"
+            android:focusableInTouchMode="false"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/settings_sub_action_button_height"
+            android:layout_marginTop="@dimen/settings_sub_action_button_gap"
+            android:background="@drawable/bg_settings_grid_card"
+            android:gravity="center"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="4dp"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:textOff="Использовать свои источники"
+            android:textOn="Использовать встроенные источники"
+            android:textSize="13sp"/>
+
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/settings_sub_action_button_gap" android:orientation="horizontal">
-            <ToggleButton android:id="@+id/tbEpgSourceMode" android:focusable="true" android:focusableInTouchMode="false" android:layout_width="0dp" android:layout_height="@dimen/settings_sub_action_button_height" android:layout_weight="1" android:background="@drawable/bg_settings_grid_card" android:paddingHorizontal="4dp" android:paddingVertical="4dp" android:gravity="center" android:maxLines="2" android:ellipsize="none" android:textAllCaps="false" android:textColor="#FFFFFF" android:textOff="Использовать свои источники" android:textOn="Использовать встроенные источники" android:textSize="12sp"/>
-            <TextView android:id="@+id/btnSaveEpgSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="@dimen/settings_sub_action_button_height" android:layout_weight="1" android:layout_marginStart="@dimen/settings_sub_action_button_gap" android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:includeFontPadding="false" android:paddingHorizontal="4dp" android:maxLines="2" android:ellipsize="none" android:text="Сохранить настройки" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
-            <TextView android:id="@+id/btnRefreshEpgSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="@dimen/settings_sub_action_button_height" android:layout_weight="1" android:layout_marginStart="@dimen/settings_sub_action_button_gap" android:background="@drawable/bg_settings_grid_card" android:gravity="center" android:includeFontPadding="false" android:paddingHorizontal="4dp" android:maxLines="1" android:ellipsize="none" android:text="Назад" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
+            <TextView android:id="@+id/btnSaveEpgSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="@dimen/settings_sub_action_button_height" android:layout_weight="1" android:background="@drawable/bg_settings_action_green_matte" android:gravity="center" android:includeFontPadding="false" android:paddingHorizontal="8dp" android:maxLines="2" android:ellipsize="end" android:text="Сохранить настройки" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
+            <TextView android:id="@+id/btnRefreshEpgSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="@dimen/settings_sub_action_button_height" android:layout_weight="1" android:layout_marginStart="@dimen/settings_sub_action_button_gap" android:background="@drawable/bg_settings_action_red_matte" android:gravity="center" android:includeFontPadding="false" android:paddingHorizontal="8dp" android:maxLines="1" android:ellipsize="end" android:text="Назад" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
         </LinearLayout>
     </LinearLayout>
 <ScrollView
@@ -418,25 +468,6 @@
         </LinearLayout>
 
         <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="20dp" android:background="#33FFFFFF"/>
-
-        <LinearLayout
-            android:id="@+id/itemStartMode" android:focusable="true" android:focusableInTouchMode="false"
-            android:layout_width="match_parent" android:layout_height="46dp" android:layout_marginTop="16dp"
-            android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp">
-            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/folder" android:tint="#FFFFFF"/>
-            <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Выбор страницы при открытии приложения" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
-            <ToggleButton
-                android:id="@+id/tbStartMode"
-                android:layout_width="wrap_content"
-                android:layout_height="30dp"
-                android:minWidth="190dp"
-                android:background="@drawable/bg_settings_row"
-                android:textAllCaps="false"
-                android:textColor="#FFFFFF"
-                android:textOff="Стартовая страница"
-                android:textOn="Последний канал"
-                android:textSize="12sp" />
-        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/itemAspectRatio" android:focusable="true" android:focusableInTouchMode="false"

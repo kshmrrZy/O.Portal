@@ -854,11 +854,12 @@ class MainActivity : AppCompatActivity() {
         height(R.id.tvProfileTokenValue, 32f)
         textSize(R.id.tvProfileTokenValue, 12f)
 
-        // Сетка настроек (6 карточек)
+        // Сетка настроек
         listOf(
             R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings,
-            R.id.btnUserSettings, R.id.btnAdvancedSettings, R.id.btnAppInfo
+            R.id.btnAdvancedSettings, R.id.btnAppInfo
         ).forEach { height(it, 66f) }
+        height(R.id.itemStartMode, 46f)
 
         // Красные кнопки
         height(R.id.btnResetSettings, 66f)
@@ -2608,8 +2609,8 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
         val settingsRowIds = intArrayOf(
             R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings,
-            R.id.btnAdvancedSettings, R.id.btnUserSettings,
-            R.id.btnAppInfo, R.id.btnResetSettings, R.id.btnLogoutProfile
+            R.id.btnAdvancedSettings, R.id.btnAppInfo, R.id.itemStartMode,
+            R.id.btnResetSettings, R.id.btnLogoutProfile
         )
         settingsRowIds.forEach { findViewById<View>(it).visibility = View.VISIBLE }
         findViewById<View>(R.id.tvSettingsBack).visibility = View.GONE
@@ -2698,8 +2699,37 @@ class MainActivity : AppCompatActivity() {
             tokenRowViews.forEach { it.visibility = View.GONE }
         }
         findViewById<View>(R.id.btnProfileChangeToken).setOnClickListener {
-            findViewById<View>(R.id.btnUserSettings).performClick()
+            openProfileAuthScreen()
         }
+    }
+
+    private fun openProfileAuthScreen() {
+        if (settingsOpenedFromPlayer) return
+        val settingsRows = listOf(
+            findViewById<View>(R.id.btnPlaylistSettings),
+            findViewById<View>(R.id.btnEpgSelect),
+            findViewById<View>(R.id.btnSleepTimerSettings),
+            findViewById<View>(R.id.btnAdvancedSettings),
+            findViewById<View>(R.id.btnAppInfo),
+            findViewById<View>(R.id.itemStartMode),
+            findViewById<View>(R.id.btnResetSettings),
+            findViewById<View>(R.id.btnLogoutProfile)
+        )
+        settingsRows.forEach { it.visibility = View.GONE }
+        findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
+        findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.userSettingsPanel).visibility = View.VISIBLE
+        findViewById<View>(R.id.btnProfileChangeToken).apply {
+            isClickable = false
+            isFocusable = false
+        }
+        val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
+        applyHomeAppTitleStyle(
+            settingsMode = true,
+            settingsTitle = if (isAuthorizedUser) "профиль" else "авторизация"
+        )
+        bindInlineUserSettings(findViewById(R.id.userSettingsPanel))
     }
 
     private fun showSettingsDialog() {
@@ -2794,10 +2824,10 @@ class MainActivity : AppCompatActivity() {
         val tbStartMode = findViewById<ToggleButton>(R.id.tbStartMode)
         val sleepRow = findViewById<View>(R.id.btnSleepTimerSettings)
         val btnAdvancedSettings = findViewById<View>(R.id.btnAdvancedSettings)
-        val btnUserSettings = findViewById<View>(R.id.btnUserSettings)
         val btnExportDebugLog = findViewById<View>(R.id.btnExportDebugLog)
         val btnAppInfo = findViewById<View>(R.id.btnAppInfo)
-        val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, btnAdvancedSettings, btnUserSettings, btnAppInfo, findViewById<View>(R.id.btnResetSettings), findViewById<View>(R.id.btnLogoutProfile))
+        val itemStartModeRow = findViewById<View>(R.id.itemStartMode)
+        val settingsRows = listOf(btnPlaylistSettings, btnEpgSelect, sleepRow, btnAdvancedSettings, btnAppInfo, itemStartModeRow, findViewById<View>(R.id.btnResetSettings), findViewById<View>(R.id.btnLogoutProfile))
 
         configureBackButtonsForSettings("showSettingsDialog_after_back_config")
         userSettingsPanel.visibility = View.GONE
@@ -2908,20 +2938,6 @@ class MainActivity : AppCompatActivity() {
                 .setNegativeButton("Отмена", null)
                 .show()
         }
-        fun openUserSettingsScreen() {
-            settingsRows.forEach { it.visibility = View.GONE }
-            findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
-            userSettingsPanel.visibility = View.VISIBLE
-            tvSettingsBack.visibility = View.GONE
-            tvSettingsBack.setOnClickListener { hideSettingsScreen() }
-            val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
-            applyHomeAppTitleStyle(
-                settingsMode = true,
-                settingsTitle = if (isAuthorizedUser) "профиль" else "авторизация"
-            )
-            bindInlineUserSettings(userSettingsPanel)
-        }
-        btnUserSettings.setOnClickListener { openUserSettingsScreen() }
         configureBackButtonsForSettings("showSettingsDialog_final")
     }
 
@@ -2950,8 +2966,8 @@ class MainActivity : AppCompatActivity() {
         val settingsRows = listOf(
             findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect),
             findViewById<View>(R.id.btnSleepTimerSettings),
-            findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings),
-            findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo),
+            findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnAppInfo),
+            findViewById<View>(R.id.itemStartMode),
             findViewById<View>(R.id.btnResetSettings), findViewById<View>(R.id.btnLogoutProfile)
         )
         settingsRows.forEach { it.visibility = View.GONE }
@@ -3030,8 +3046,8 @@ class MainActivity : AppCompatActivity() {
         val settingsRows = listOf(
             findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect),
             findViewById<View>(R.id.btnSleepTimerSettings),
-            findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings),
-            findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo),
+            findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnAppInfo),
+            findViewById<View>(R.id.itemStartMode),
             findViewById<View>(R.id.btnResetSettings), findViewById<View>(R.id.btnLogoutProfile)
         )
         settingsRows.forEach { it.visibility = View.GONE }
@@ -3054,7 +3070,12 @@ class MainActivity : AppCompatActivity() {
         val epgPanel = findViewById<View>(R.id.epgSettingsPanel)
         val playlistPanel = findViewById<View>(R.id.playlistSettingsPanel)
         val userSettingsPanel = findViewById<View>(R.id.userSettingsPanel)
-        val settingsRows = listOf(findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect), findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.btnAdvancedSettings), findViewById<View>(R.id.btnUserSettings), findViewById<View>(R.id.btnExportDebugLog), findViewById<View>(R.id.btnAppInfo), findViewById<View>(R.id.btnResetSettings), findViewById<View>(R.id.btnLogoutProfile))
+        val settingsRows = listOf(
+            findViewById<View>(R.id.btnPlaylistSettings), findViewById<View>(R.id.btnEpgSelect),
+            findViewById<View>(R.id.btnSleepTimerSettings), findViewById<View>(R.id.btnAdvancedSettings),
+            findViewById<View>(R.id.btnAppInfo), findViewById<View>(R.id.itemStartMode),
+            findViewById<View>(R.id.btnResetSettings), findViewById<View>(R.id.btnLogoutProfile)
+        )
         settingsRows.forEach { it.visibility = View.GONE }
         playlistPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
@@ -3205,6 +3226,7 @@ class MainActivity : AppCompatActivity() {
             showAppToast("Кэш EPG очищен")
         }
 
+        tbSourceMode.post { tbSourceMode.requestFocus() }
         configureBackButtonsForSettings("openEpgSettingsScreen")
     }
 
@@ -3367,7 +3389,6 @@ class MainActivity : AppCompatActivity() {
             R.id.btnEpgSelect,
             R.id.btnSleepTimerSettings,
             R.id.btnAdvancedSettings,
-            R.id.btnUserSettings,
             R.id.btnAppInfo,
         )
         val containerHeight = (homeSettingsScreen.layoutParams?.height ?: 0).takeIf { it > 0 }
