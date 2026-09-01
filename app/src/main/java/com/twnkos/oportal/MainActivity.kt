@@ -859,16 +859,28 @@ class MainActivity : AppCompatActivity() {
         height(R.id.tvProfileTokenValue, 32f)
         textSize(R.id.tvProfileTokenValue, 12f)
 
-        // Сетка настроек
+        // Сетка настроек — высота как у плиток сервисов/категорий (без уменьшения scale)
+        val tileHeight = resources.getDimensionPixelSize(R.dimen.home_tile_min_height)
+        val startModeHeight = resources.getDimensionPixelSize(R.dimen.settings_start_mode_row_height)
         listOf(
             R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings,
-            R.id.btnAdvancedSettings, R.id.btnAppInfo
-        ).forEach { height(it, 66f) }
-        height(R.id.itemStartMode, 46f)
+            R.id.btnAdvancedSettings, R.id.btnAppInfo, R.id.btnResetSettings, R.id.btnLogoutProfile
+        ).forEach { id ->
+            findViewById<View>(id).layoutParams?.let { lp ->
+                lp.height = tileHeight
+                findViewById<View>(id).layoutParams = lp
+            }
+        }
+        findViewById<View>(R.id.itemStartMode).layoutParams?.let { lp ->
+            lp.height = startModeHeight
+            findViewById<View>(R.id.itemStartMode).layoutParams = lp
+        }
+        findViewById<ToggleButton>(R.id.tbStartMode).layoutParams?.let { lp ->
+            lp.height = scalePx(36f, scale)
+            findViewById<ToggleButton>(R.id.tbStartMode).layoutParams = lp
+        }
 
-        // Красные кнопки
-        height(R.id.btnResetSettings, 66f)
-        height(R.id.btnLogoutProfile, 66f)
+        // Красные кнопки — уже заданы выше
 
         // Нижний ряд (свои плейлисты / избранные) — только геометрия, текст как у плиток сервисов
         height(R.id.btnOwnPlaylistsTile, 66f)
@@ -899,6 +911,30 @@ class MainActivity : AppCompatActivity() {
         }
         height(R.id.btnUserAuthInline, 43f)
         textSize(R.id.btnUserAuthInline, 20f)
+
+        applySettingsViewportLayout()
+    }
+
+    private fun applySettingsViewportLayout() {
+        homeSettingsScreen.post {
+            val viewportHeight = homeSettingsScreen.height
+            if (viewportHeight <= 0) return@post
+
+            val settingsRoot = findViewById<View>(R.id.settingsRootLayout) ?: return@post
+            settingsRoot.minimumHeight = viewportHeight
+
+            listOf(R.id.playlistSettingsPanel, R.id.epgSettingsPanel).forEach { panelId ->
+                val panel = findViewById<View>(panelId)
+                (panel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+                    lp.height = 0
+                    lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID
+                    lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+                    panel.layoutParams = lp
+                }
+            }
+
+            settingsRoot.requestLayout()
+        }
     }
 
     private fun applyHomeScreenScale(force: Boolean = false) {
@@ -2816,6 +2852,7 @@ class MainActivity : AppCompatActivity() {
         }
         homePanel.visibility = View.VISIBLE
         homePanel.post { applyHomeScreenScale(force = true) }
+        homeSettingsScreen.post { applySettingsViewportLayout() }
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = true)
@@ -3040,6 +3077,7 @@ class MainActivity : AppCompatActivity() {
 
         configureBackButtonsForSettings("openPlaylistSettingsScreen")
         bindData()
+        applySettingsViewportLayout()
     }
 
 
@@ -3234,6 +3272,7 @@ class MainActivity : AppCompatActivity() {
 
         tbSourceMode.post { tbSourceMode.requestFocus() }
         configureBackButtonsForSettings("openEpgSettingsScreen")
+        applySettingsViewportLayout()
     }
 
     private fun getKnownServiceNames(): Set<String> =

@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/settingsRootLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/transparent"
     android:paddingHorizontal="16dp"
     android:paddingTop="0dp"
-    android:paddingBottom="16dp">
+    android:paddingBottom="0dp">
 
     <TextView
         android:id="@+id/tvSettingsTitle"
@@ -167,9 +168,9 @@
 
     <LinearLayout
         android:id="@+id/itemStartMode" android:focusable="true" android:focusableInTouchMode="false"
-        android:layout_width="0dp" android:layout_height="46dp"
-        android:layout_marginTop="@dimen/home_tile_spacing"
-        android:background="@drawable/bg_settings_row" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp"
+        android:layout_width="0dp" android:layout_height="@dimen/settings_start_mode_row_height"
+        android:layout_marginTop="@dimen/settings_start_mode_margin_top"
+        android:background="@drawable/bg_playlist_tile" android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="14dp" android:paddingVertical="8dp"
         app:layout_constraintTop_toBottomOf="@id/btnAdvancedSettings"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
@@ -178,9 +179,9 @@
         <ToggleButton
             android:id="@+id/tbStartMode"
             android:layout_width="wrap_content"
-            android:layout_height="30dp"
+            android:layout_height="36dp"
             android:minWidth="190dp"
-            android:background="@drawable/bg_settings_row"
+            android:background="@drawable/bg_settings_grid_card"
             android:textAllCaps="false"
             android:textColor="#FFFFFF"
             android:textOff="Стартовая страница"
@@ -210,7 +211,8 @@
         android:layout_marginEnd="@dimen/settings_grid_column_gap"
         android:layout_marginBottom="@dimen/settings_sub_panel_padding_vertical"
         android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
-        android:background="@drawable/bg_settings_danger_card" android:gravity="center" android:orientation="horizontal"
+        android:paddingVertical="@dimen/settings_grid_button_padding_v"
+        android:background="@drawable/bg_playlist_tile" android:gravity="center" android:orientation="horizontal"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toStartOf="@id/settingsGridGuideHalf">
         <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text="Сбросить настройки" android:textColor="#EF4444" android:textFontWeight="500" android:textSize="16sp"/>
@@ -222,7 +224,8 @@
         android:layout_marginStart="@dimen/settings_grid_column_gap"
         android:layout_marginBottom="@dimen/settings_sub_panel_padding_vertical"
         android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
-        android:background="@drawable/bg_settings_danger_card" android:gravity="center" android:orientation="horizontal"
+        android:paddingVertical="@dimen/settings_grid_button_padding_v"
+        android:background="@drawable/bg_playlist_tile" android:gravity="center" android:orientation="horizontal"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="@id/settingsGridGuideHalf" app:layout_constraintEnd_toEndOf="parent">
         <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text="Выйти из профиля" android:textColor="#EF4444" android:textFontWeight="500" android:textSize="16sp"/>
@@ -291,6 +294,15 @@
 
         </LinearLayout>
 
+        <View
+            android:id="@+id/playlistSettingsSpacer"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:layout_constraintBottom_toTopOf="@id/playlistSettingsActions"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/playlistSettingsForm" />
+
         <LinearLayout
             android:id="@+id/playlistSettingsActions"
             android:layout_width="0dp"
@@ -345,6 +357,15 @@
         <ToggleButton android:id="@+id/tbEpgRefreshInterval" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:textOff="1 день" android:textOn="1 день"/>
 
         </LinearLayout>
+
+        <View
+            android:id="@+id/epgSettingsSpacer"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:layout_constraintBottom_toTopOf="@id/epgSettingsActions"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/epgSettingsForm" />
 
         <LinearLayout
             android:id="@+id/epgSettingsActions"
