@@ -1,6 +1,7 @@
 package com.twnkos.oportal
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.Typeface
@@ -176,10 +177,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvHomeBreadcrumbArrow2: TextView
     private lateinit var tvHomeBreadcrumbPill2: TextView
     private lateinit var tvHomeStartTitle: TextView
+    private lateinit var tvHomeStartSubtitle: TextView
+    private lateinit var homeStartCenterBlock: View
     private lateinit var tvHomeWelcome: TextView
     private lateinit var tvPlaylistPageTitle: TextView
     private lateinit var tvPlaylistPageSubtitle: TextView
-    private lateinit var tvHomeStartSubtitle: TextView
     private lateinit var homePlaylistTilesPanel: View
     private lateinit var gvHomeChannelList: GridView
     private lateinit var rvHomeTiles: RecyclerView
@@ -243,6 +245,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homeSettingsScreen: View
     private lateinit var playerSettingsOverlay: View
     private var settingsOpenedFromPlayer = false
+    private var settingsOpenedAsAuthOnly = false
     private var homeActionIndex = 0
     private var isSettingsModalVisible = false
 
@@ -725,10 +728,11 @@ class MainActivity : AppCompatActivity() {
             tvHomeAppTitle.typeface = Typeface.create(tvHomeAppTitle.typeface, 800, false)
         }
         tvHomeStartTitle = findViewById(R.id.tvHomeStartTitle)
+        tvHomeStartSubtitle = findViewById(R.id.tvHomeStartSubtitle)
+        homeStartCenterBlock = findViewById(R.id.homeStartCenterBlock)
         tvHomeWelcome = findViewById(R.id.tvHomeWelcome)
         tvPlaylistPageTitle = findViewById(R.id.tvPlaylistPageTitle)
         tvPlaylistPageSubtitle = findViewById(R.id.tvPlaylistPageSubtitle)
-        tvHomeStartSubtitle = findViewById(R.id.tvHomeStartSubtitle)
         homePlaylistTilesPanel = findViewById(R.id.homePlaylistTilesPanel)
         gvHomeChannelList = findViewById(R.id.gvHomeChannelList)
         rvHomeTiles = findViewById(R.id.rvHomeTiles)
@@ -853,11 +857,11 @@ class MainActivity : AppCompatActivity() {
             lp.width = scalePx(32f, scale)
             lp.height = scalePx(32f, scale)
         }
-        textSize(R.id.tvProfileName, 22f)
-        textSize(R.id.tvProfileNickname, 14f)
-        textSize(R.id.tvProfileTokenLabel, 14f)
-        height(R.id.tvProfileTokenValue, 32f)
-        textSize(R.id.tvProfileTokenValue, 12f)
+        textSize(R.id.tvProfileName, 24f)
+        textSize(R.id.tvProfileNickname, 16f)
+        textSize(R.id.tvProfileTokenLabel, 16f)
+        height(R.id.tvProfileTokenValue, 36f)
+        textSize(R.id.tvProfileTokenValue, 14f)
 
         // Сетка настроек — высота как у плиток сервисов/категорий (без уменьшения scale)
         val tileHeight = resources.getDimensionPixelSize(R.dimen.home_tile_min_height)
@@ -1036,7 +1040,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupInteractions() {
-        ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
+        updateHomeHeaderActions()
         ivHomePower.setOnClickListener { closeAppCompletely() }
 
         btnLiveReload.setOnClickListener {
@@ -1254,11 +1258,70 @@ class MainActivity : AppCompatActivity() {
     private fun showStartPage() {
         homePanel.visibility = View.VISIBLE
         homePlaylistTilesPanel.visibility = View.GONE
+        homeStartCenterBlock.visibility = View.VISIBLE
+        tvHomeStartTitle.visibility = View.VISIBLE
+        tvHomeStartSubtitle.visibility = View.VISIBLE
+        tvHomeAppTitle.visibility = View.VISIBLE
+        tvHomeSystemTime.visibility = View.VISIBLE
+        ivHomePower.visibility = View.VISIBLE
         disableHomeCategoryBack("showStartPage")
         homePanel.post { applyHomeScreenScale(force = true) }
         topInfoPanel.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
+        updateHomeHeaderActions()
+    }
+
+    private fun isOnUnauthorizedStartPage(): Boolean {
+        val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
+        val hasThirdParty = getThirdPartyPlaylistProfiles().isNotEmpty()
+        return tvHomeStartTitle.visibility == View.VISIBLE && !isAuthorizedUser && !hasThirdParty
+    }
+
+    private fun updateHomeHeaderActions() {
+        val authMode = isOnUnauthorizedStartPage()
+        ivHomeSettings.visibility = View.VISIBLE
+        if (authMode) {
+            ivHomeSettings.setImageResource(R.drawable.profile)
+            ivHomeSettings.imageTintList = ColorStateList.valueOf(Color.WHITE)
+            ivHomeSettings.contentDescription = "Авторизация"
+            ivHomeSettings.setOnClickListener { openHomeAuthScreen() }
+        } else {
+            ivHomeSettings.setImageResource(R.drawable.fibssettings)
+            ivHomeSettings.imageTintList = null
+            ivHomeSettings.contentDescription = getString(R.string.home_settings_button)
+            ivHomeSettings.setOnClickListener {
+                if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog()
+            }
+        }
+    }
+
+    private fun openHomeAuthScreen() {
+        if (!isOnUnauthorizedStartPage()) return
+        settingsOpenedAsAuthOnly = true
+        settingsOpenedFromPlayer = false
+        isSettingsModalVisible = true
+        homePanel.visibility = View.VISIBLE
+        homePlaylistTilesPanel.visibility = View.GONE
+        homeStartCenterBlock.visibility = View.GONE
+        tvHomeStartTitle.visibility = View.GONE
+        tvHomeStartSubtitle.visibility = View.GONE
+        findViewById<View>(R.id.settingsMainPanel).visibility = View.VISIBLE
+        findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
+        homeSettingsScreen.visibility = View.VISIBLE
+        listOf(
+            R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings,
+            R.id.btnAdvancedSettings, R.id.btnAppInfo, R.id.itemStartMode,
+            R.id.btnResetSettings, R.id.btnLogoutProfile
+        ).forEach { findViewById<View>(it).visibility = View.GONE }
+        findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
+        findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
+        findViewById<View>(R.id.userSettingsPanel).visibility = View.VISIBLE
+        applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "авторизация")
+        bindInlineUserSettings(findViewById(R.id.userSettingsPanel))
+        configureBackButtonsForSettings("openHomeAuthScreen")
+        updateHomeHeaderActions()
     }
 
 
@@ -1628,7 +1691,7 @@ class MainActivity : AppCompatActivity() {
         disableHomeCategoryBack("showThirdPartyTilesOnHome_before_show")
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "категории", settingsTitle2 = "Свои плейлисты")
         enableHomeCategoryBack { showPlaylistPageOnHome() }
-        ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
+        updateHomeHeaderActions()
         val list = thirdParty.filter { it.enabled && it.value.isNotBlank() }
         bindHomeTiles(list.map { p -> HomeTileItem(p.name) {
             logDebug("NAV", "playlist_click name=${p.name}")
@@ -1680,10 +1743,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showPlaylistPageOnHome(source: String = "playlist_page") {
-        showStartPage()
+        homePanel.visibility = View.VISIBLE
+        homeStartCenterBlock.visibility = View.GONE
+        topInfoPanel.visibility = View.GONE
+        topGradientOverlay.visibility = View.GONE
+        controlsPanel.visibility = View.GONE
         showPlaylistPageHeader(true)
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
+        tvHomeAppTitle.visibility = View.VISIBLE
+        tvHomeSystemTime.visibility = View.VISIBLE
+        ivHomePower.visibility = View.VISIBLE
         ivHomeSettings.alpha = 1f
         ivHomeSettings.scaleX = 1f
         ivHomeSettings.scaleY = 1f
@@ -1697,7 +1767,7 @@ class MainActivity : AppCompatActivity() {
         gvHomeChannelList.adapter = null
         applyHomeAppTitleStyle(settingsMode = false)
         disableHomeCategoryBack("showPlaylistPageOnHome_end")
-        ivHomeSettings.setOnClickListener { if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog() }
+        updateHomeHeaderActions()
         val token = (prefs.getString(PREF_USER_TOKEN, "") ?: "").trim()
         val thirdParty = getThirdPartyPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
         val known = getKnownServiceNames() + "Избранные"
@@ -2667,6 +2737,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleSettingsBackPress() {
+        if (settingsOpenedAsAuthOnly) {
+            settingsOpenedAsAuthOnly = false
+            hideSettingsScreen()
+            return
+        }
         if (isSettingsSubPanelOpen()) {
             returnToSettingsRowList()
         } else {
@@ -2698,7 +2773,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun performLogout() {
-        prefs.edit().remove(PREF_USER_NAME).remove(PREF_USER_TOKEN).remove(PREF_USER_LOGIN).remove(PREF_USER_PLAYLIST).apply()
+        prefs.edit()
+            .remove(PREF_USER_NAME)
+            .remove(PREF_USER_TOKEN)
+            .remove(PREF_USER_LOGIN)
+            .remove(PREF_USER_PLAYLIST)
+            .putBoolean(PREF_START_LAST_CHANNEL, false)
+            .apply()
+        shouldOpenLastChannelOnStart = false
+        findViewById<ToggleButton>(R.id.tbStartMode)?.isChecked = false
         val known = getKnownServiceNames() + "Избранные"
         val profiles = getPlaylistProfiles().filterNot { it.name in known }
         savePlaylistProfiles(profiles)
@@ -2714,6 +2797,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun performFullReset() {
         prefs.edit().clear().apply()
+        shouldOpenLastChannelOnStart = false
         currentPlaylistText = ""
         channels.clear()
         selectedEpgSources.clear()
@@ -3360,6 +3444,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun hideSettingsScreen() {
         isSettingsModalVisible = false
+        settingsOpenedAsAuthOnly = false
         homeSettingsScreen.visibility = View.GONE
         findViewById<View>(R.id.settingsMainPanel).visibility = View.GONE
         findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
@@ -3402,13 +3487,14 @@ class MainActivity : AppCompatActivity() {
             settingsOpenedFromHomeChannelList = false
             homePanel.post { applyHomeScreenScale(force = true) }
         } else {
+            homeStartCenterBlock.visibility = View.VISIBLE
             tvHomeStartTitle.visibility = View.VISIBLE
             tvHomeStartSubtitle.visibility = View.VISIBLE
             homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             tvHomeAppTitle.visibility = View.VISIBLE
             tvHomeSystemTime.visibility = View.VISIBLE
-            ivHomeSettings.visibility = View.VISIBLE
             ivHomePower.visibility = View.VISIBLE
+            updateHomeHeaderActions()
         }
     }
 

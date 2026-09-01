@@ -44,11 +44,11 @@
     <dimen name="home_header_clock_gap">10dp</dimen>
     <dimen name="profile_avatar_size">72dp</dimen>
     <dimen name="profile_avatar_icon_size">32dp</dimen>
-    <dimen name="profile_name_size">22sp</dimen>
-    <dimen name="profile_nickname_size">14sp</dimen>
-    <dimen name="profile_token_label_size">14sp</dimen>
-    <dimen name="profile_token_value_height">32dp</dimen>
-    <dimen name="profile_token_value_size">12sp</dimen>
+    <dimen name="profile_name_size">24sp</dimen>
+    <dimen name="profile_nickname_size">16sp</dimen>
+    <dimen name="profile_token_label_size">16sp</dimen>
+    <dimen name="profile_token_value_height">36dp</dimen>
+    <dimen name="profile_token_value_size">14sp</dimen>
     <dimen name="settings_profile_to_grid_gap">8dp</dimen>
     <dimen name="home_page_title_size">22sp</dimen>
     <dimen name="home_page_subtitle_size">13sp</dimen>
@@ -77,4 +77,5 @@
     <dimen name="settings_form_padding_horizontal">8dp</dimen>
     <dimen name="settings_start_mode_row_height">56dp</dimen>
     <dimen name="settings_start_mode_margin_top">16dp</dimen>
+    <dimen name="settings_start_mode_margin_bottom">14dp</dimen>
 </resources>
