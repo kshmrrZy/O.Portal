@@ -74,4 +74,5 @@
     <dimen name="settings_sub_action_button_height">60dp</dimen>
     <dimen name="settings_sub_action_button_gap">8dp</dimen>
     <dimen name="settings_sub_panel_padding_vertical">12dp</dimen>
+    <dimen name="settings_form_padding_horizontal">4dp</dimen>
 </resources>
