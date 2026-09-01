@@ -857,11 +857,11 @@ class MainActivity : AppCompatActivity() {
             lp.width = scalePx(32f, scale)
             lp.height = scalePx(32f, scale)
         }
-        textSize(R.id.tvProfileName, 24f)
-        textSize(R.id.tvProfileNickname, 16f)
-        textSize(R.id.tvProfileTokenLabel, 16f)
-        height(R.id.tvProfileTokenValue, 36f)
-        textSize(R.id.tvProfileTokenValue, 14f)
+        textSize(R.id.tvProfileName, 26f)
+        textSize(R.id.tvProfileNickname, 17f)
+        textSize(R.id.tvProfileTokenLabel, 17f)
+        height(R.id.tvProfileTokenValue, 38f)
+        textSize(R.id.tvProfileTokenValue, 15f)
 
         // Сетка настроек — высота как у плиток сервисов/категорий (без уменьшения scale)
         val tileHeight = resources.getDimensionPixelSize(R.dimen.home_tile_min_height)
@@ -894,27 +894,31 @@ class MainActivity : AppCompatActivity() {
         // Поля EPG/плейлистов
         listOf(R.id.etEpgUrl1, R.id.etEpgUrl2, R.id.etEpgUrl3, R.id.etPlaylistUrl1, R.id.etPlaylistUrl2, R.id.etPlaylistUrl3)
             .forEach { id ->
-                height(id, 34f)
-                textSize(id, 12f)
+                height(id, 36f)
+                textSize(id, 13f)
             }
-        listOf(R.id.ivPlaylistToggle1, R.id.ivPlaylistToggle2, R.id.ivPlaylistToggle3).forEach { height(it, 34f) }
+        listOf(R.id.ivPlaylistToggle1, R.id.ivPlaylistToggle2, R.id.ivPlaylistToggle3).forEach { height(it, 36f) }
 
         // Кнопки-действия подпанелей (EPG: 4 в ряд, плейлист: 2 в ряд)
-        listOf(
-            R.id.btnResetEpgCache, R.id.tbEpgSourceMode, R.id.btnSaveEpgSettings, R.id.btnRefreshEpgSettings,
-            R.id.btnSavePlaylistSettings, R.id.btnRefreshPlaylistSettings
-        ).forEach { id ->
+        listOf(R.id.btnSavePlaylistSettings, R.id.btnRefreshPlaylistSettings).forEach { id ->
             height(id, 60f)
-            textSize(id, if (id == R.id.tbEpgSourceMode) 11f else 14f)
+            textSize(id, 16f)
+        }
+        listOf(R.id.btnResetEpgCache, R.id.tbEpgSourceMode, R.id.btnSaveEpgSettings, R.id.btnRefreshEpgSettings).forEach { id ->
+            height(id, 60f)
+            textSize(id, 12f)
         }
 
         // Поля авторизации
         listOf(R.id.etUserLoginInline, R.id.etUserTokenInline).forEach { id ->
             height(id, 52f)
-            textSize(id, 16f)
+            textSize(id, 17f)
+        }
+        listOf(R.id.tvUserSectionState, R.id.tvUserTokenLabel).forEach { id ->
+            textSize(id, 17f)
         }
         height(R.id.btnUserAuthInline, 43f)
-        textSize(R.id.btnUserAuthInline, 20f)
+        textSize(R.id.btnUserAuthInline, 21f)
 
         applySettingsViewportLayout()
     }
@@ -1682,7 +1686,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showThirdPartyTilesOnHome(thirdParty: List<PlaylistProfile>) {
-        showStartPage()
+        homePanel.visibility = View.VISIBLE
+        homeStartCenterBlock.visibility = View.GONE
         showPlaylistPageHeader(false)
         findViewById<View>(R.id.homeBottomTilesRow).visibility = View.GONE
         tvHomeStartTitle.visibility = View.GONE
@@ -3718,6 +3723,11 @@ class MainActivity : AppCompatActivity() {
         authorizedView.visibility = if (isAuthorized) View.VISIBLE else View.GONE
         panel.findViewById<View>(R.id.tvUserFooterHint).visibility =
             if (isAuthorized) View.GONE else View.VISIBLE
+        val showAspectSettings = isAuthorized && !settingsOpenedAsAuthOnly
+        panel.findViewById<View>(R.id.userSettingsAspectDivider).visibility =
+            if (showAspectSettings) View.VISIBLE else View.GONE
+        panel.findViewById<View>(R.id.itemAspectRatio).visibility =
+            if (showAspectSettings) View.VISIBLE else View.GONE
         tvState.text = "Имя пользователя"
         tvAuthorizedName.text = cachedName
         tvAuthorizedTokenValue.text = prefs.getString(PREF_USER_TOKEN, "") ?: ""
