@@ -476,6 +476,8 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_LOGO_CACHE = "logo_cache"
         private const val PREF_START_LAST_CHANNEL = "pref_start_last_channel"
         private const val PREF_LAST_CHANNEL = "last_channel"
+        private const val PREF_LAST_CHANNEL_URL = "last_channel_url"
+        private const val PREF_LAST_CHANNEL_NAME = "last_channel_name"
         private const val PREF_ASPECT_RATIO_MODE = "pref_aspect_ratio_mode"
         private val ASPECT_RATIO_LABEL_BY_KEY = mapOf(
             "auto" to "Автоматически",
@@ -643,16 +645,19 @@ class MainActivity : AppCompatActivity() {
         setupBackHandling()
         loadEpgCache()
         shouldOpenLastChannelOnStart = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
-        if (shouldOpenLastChannelOnStart) restoreLastChannel()
         startClockUpdater()
         startEpgTicker()
         applyLockButtonVisibility()
-        val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
         loadPlaylist(showErrors = true, autoPlay = true)
         if (!shouldOpenLastChannelOnStart) {
-            val hasThirdParty = getThirdPartyPlaylistProfiles().isNotEmpty()
-            if (isAuthorizedUser || hasThirdParty) showPlaylistPageOnHome(source = "cold_start") else showStartPage()
+            showDefaultStartupScreen()
         }
+    }
+
+    private fun showDefaultStartupScreen() {
+        val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
+        val hasThirdParty = getThirdPartyPlaylistProfiles().isNotEmpty()
+        if (isAuthorizedUser || hasThirdParty) showPlaylistPageOnHome(source = "cold_start") else showStartPage()
     }
 
     private fun initViews() {
@@ -878,14 +883,13 @@ class MainActivity : AppCompatActivity() {
             }
         listOf(R.id.ivPlaylistToggle1, R.id.ivPlaylistToggle2, R.id.ivPlaylistToggle3).forEach { height(it, 34f) }
 
-        // Кнопки-действия (Сохранить/Назад/Использовать свои/Сбросить кэш):
-        // выше блок + чуть меньше текст, чтобы подписи не обрезались.
+        // Кнопки-действия подпанелей (EPG: 4 в ряд, плейлист: 2 в ряд)
         listOf(
             R.id.btnResetEpgCache, R.id.tbEpgSourceMode, R.id.btnSaveEpgSettings, R.id.btnRefreshEpgSettings,
             R.id.btnSavePlaylistSettings, R.id.btnRefreshPlaylistSettings
         ).forEach { id ->
             height(id, 60f)
-            textSize(id, 14f)
+            textSize(id, if (id == R.id.tbEpgSourceMode) 11f else 14f)
         }
 
         // Поля авторизации
@@ -1796,13 +1800,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun showHomeChannelList(category: String, channelsForCategory: List<Channel>) {
         showPlaylistPageHeader(showWelcome = true, showTitle = false)
-        val lastGlobalIdx = prefs.getInt(PREF_LAST_CHANNEL, -1)
-        val lastPlayedChannel = channels.getOrNull(lastGlobalIdx)
+        val lastUrl = prefs.getString(PREF_LAST_CHANNEL_URL, null)
+        val lastName = prefs.getString(PREF_LAST_CHANNEL_NAME, null)
         channels.clear()
         channels.addAll(channelsForCategory)
-        val highlightIdx = lastPlayedChannel?.let { played ->
-            channelsForCategory.indexOfFirst { it.url == played.url && it.name == played.name }
-        } ?: -1
+        val highlightIdx = when {
+            !lastUrl.isNullOrBlank() -> channelsForCategory.indexOfFirst {
+                it.url == lastUrl && (lastName.isNullOrBlank() || it.name == lastName)
+            }
+            else -> -1
+        }
         selectedCategoryName = category
         lastChannelListCategory = category
         applyHomeAppTitleStyle(
@@ -1847,7 +1854,6 @@ class MainActivity : AppCompatActivity() {
                 archiveBadge.visibility =
                     if (channel.catchupDays > 0 && !channel.catchupSource.isNullOrBlank()) View.VISIBLE else View.GONE
 
-                val lastIdx = prefs.getInt(PREF_LAST_CHANNEL, currentChannelIndex)
                 itemView.setBackgroundResource(
                     if (highlightIdx >= 0 && position == highlightIdx) R.drawable.channel_grid_tile_bg_current
                     else R.drawable.channel_grid_tile_bg
@@ -4040,6 +4046,11 @@ class MainActivity : AppCompatActivity() {
 
                     if (channels.isEmpty()) {
                         tvEpg.text = "Каналы не найдены в плейлисте"
+                    } else if (shouldOpenLastChannelOnStart && autoPlay) {
+                        if (!restoreLastChannelAndPlay()) {
+                            logDebug("NAV", "startup_last_channel_not_found")
+                            showDefaultStartupScreen()
+                        }
                     } else if (!autoPlay) {
                         selectedPlaylistDisplayName = getSelectedPlaylistName()
                         if (!isSettingsModalVisible) {
@@ -4678,7 +4689,7 @@ class MainActivity : AppCompatActivity() {
 
             tvChannelName.text = "${currentChannelIndex + 1}. ${ch.name}"
             hasStartedPlaybackFromChannelClick = true
-            prefs.edit().putInt(PREF_LAST_CHANNEL, currentChannelIndex).apply()
+            saveLastChannelPrefs(ch)
             ensureEpgLoadedLazy()
             refreshLogo()
             updateEpgDisplay()
@@ -6694,8 +6705,34 @@ class MainActivity : AppCompatActivity() {
         return cal.timeInMillis
     }
 
-    private fun restoreLastChannel() {
-        currentChannelIndex = prefs.getInt(PREF_LAST_CHANNEL, 0)
+    private fun saveLastChannelPrefs(channel: Channel) {
+        prefs.edit()
+            .putInt(PREF_LAST_CHANNEL, currentChannelIndex)
+            .putString(PREF_LAST_CHANNEL_URL, channel.url)
+            .putString(PREF_LAST_CHANNEL_NAME, channel.name)
+            .apply()
+    }
+
+    private fun resolveLastChannelIndex(): Int {
+        val savedUrl = prefs.getString(PREF_LAST_CHANNEL_URL, null)
+        val savedName = prefs.getString(PREF_LAST_CHANNEL_NAME, null)
+        if (!savedUrl.isNullOrBlank()) {
+            val byIdentity = channels.indexOfFirst {
+                it.url == savedUrl && (savedName.isNullOrBlank() || it.name == savedName)
+            }
+            if (byIdentity >= 0) return byIdentity
+        }
+        val savedIndex = prefs.getInt(PREF_LAST_CHANNEL, -1)
+        return if (savedIndex in channels.indices) savedIndex else -1
+    }
+
+    private fun restoreLastChannelAndPlay(): Boolean {
+        val index = resolveLastChannelIndex()
+        if (index < 0) return false
+        currentChannelIndex = index
+        logDebug("NAV", "startup_restore_last_channel index=$index name=${channels[index].name}")
+        playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
+        return true
     }
 
     private fun ensureDefaultPlaylistProfile() {
