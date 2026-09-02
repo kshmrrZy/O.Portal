@@ -64,7 +64,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Tracks
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.UdpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -77,6 +80,9 @@ import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.DecoderCounters
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
@@ -246,6 +252,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playerSettingsOverlay: View
     private var settingsOpenedFromPlayer = false
     private var settingsOpenedAsAuthOnly = false
+    private var channelListProgramTitles: Map<Int, String> = emptyMap()
     private var homeActionIndex = 0
     private var isSettingsModalVisible = false
 
@@ -389,7 +396,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun attemptPlaybackRecoveryStep() {
         if (!playbackRecoveryActive) return
-        if (isSettingsModalVisible || homePanel.visibility == View.VISIBLE) {
+        if (isSettingsModalVisible || homePanel.visibility == View.VISIBLE || isPlayerOverlayOpen()) {
             resetPlaybackRecoveryState()
             return
         }
@@ -894,19 +901,19 @@ class MainActivity : AppCompatActivity() {
         // Поля EPG/плейлистов
         listOf(R.id.etEpgUrl1, R.id.etEpgUrl2, R.id.etEpgUrl3, R.id.etPlaylistUrl1, R.id.etPlaylistUrl2, R.id.etPlaylistUrl3)
             .forEach { id ->
-                height(id, 36f)
-                textSize(id, 13f)
+                height(id, 52f)
+                textSize(id, 17f)
             }
-        listOf(R.id.ivPlaylistToggle1, R.id.ivPlaylistToggle2, R.id.ivPlaylistToggle3).forEach { height(it, 36f) }
+        listOf(R.id.ivPlaylistToggle1, R.id.ivPlaylistToggle2, R.id.ivPlaylistToggle3).forEach { height(it, 52f) }
 
         // Кнопки-действия подпанелей (EPG: 4 в ряд, плейлист: 2 в ряд)
         listOf(R.id.btnSavePlaylistSettings, R.id.btnRefreshPlaylistSettings).forEach { id ->
             height(id, 60f)
-            textSize(id, 16f)
+            textSize(id, 21f)
         }
         listOf(R.id.btnResetEpgCache, R.id.tbEpgSourceMode, R.id.btnSaveEpgSettings, R.id.btnRefreshEpgSettings).forEach { id ->
             height(id, 60f)
-            textSize(id, 12f)
+            textSize(id, 21f)
         }
 
         // Поля авторизации
@@ -1326,6 +1333,7 @@ class MainActivity : AppCompatActivity() {
         bindInlineUserSettings(findViewById(R.id.userSettingsPanel))
         configureBackButtonsForSettings("openHomeAuthScreen")
         updateHomeHeaderActions()
+        homeSettingsScreen.post { applySettingsContentScale() }
     }
 
 
@@ -2302,11 +2310,123 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun isPlayerOverlayOpen(): Boolean {
+        return (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) ||
+            (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE)
+    }
+
+    private fun pausePlaybackStallWatchdogForOverlay() {
+        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+    }
+
+    private fun resumePlaybackStallWatchdogIfNeeded() {
+        if (mediaPlayer != null && homePanel.visibility != View.VISIBLE && !isPlayerOverlayOpen()) {
+            handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
+        }
+    }
+
+    private fun setupStartModeRemoteToggle(tbStartMode: ToggleButton, itemStartModeRow: View) {
+        tbStartMode.isFocusable = true
+        tbStartMode.isFocusableInTouchMode = false
+        fun toggleStartMode() {
+            tbStartMode.isChecked = !tbStartMode.isChecked
+        }
+        itemStartModeRow.setOnKeyListener { _, keyCode, event ->
+            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_CENTER,
+                KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    toggleStartMode()
+                    true
+                }
+                else -> false
+            }
+        }
+        tbStartMode.setOnKeyListener { _, keyCode, event ->
+            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_CENTER,
+                KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    toggleStartMode()
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
     private fun hideChannelListPanel() {
         channelListPanel.visibility = View.GONE
         gvChannelListPanel.adapter = null
+        channelListProgramTitles = emptyMap()
         setPlayerOverlayScrimVisible(false)
         hideUI()
+        resumePlaybackStallWatchdogIfNeeded()
+    }
+
+    private fun bindChannelListPanelAdapter() {
+        gvChannelListPanel.adapter = object : ArrayAdapter<Channel>(this@MainActivity, 0, channels) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val holder: ChannelGridItemViewHolder
+                val itemView: View
+                if (convertView == null) {
+                    itemView = layoutInflater.inflate(R.layout.item_channel_grid, parent, false)
+                    holder = ChannelGridItemViewHolder(
+                        tvNumber = itemView.findViewById(R.id.itemNumber),
+                        tvName = itemView.findViewById(R.id.itemName),
+                        tvCurrentProgram = itemView.findViewById(R.id.itemCurrentProgram),
+                        ivLogo = itemView.findViewById(R.id.itemLogo),
+                        archiveBadge = itemView.findViewById(R.id.itemArchiveBadge)
+                    )
+                    itemView.tag = holder
+                } else {
+                    itemView = convertView
+                    holder = convertView.tag as ChannelGridItemViewHolder
+                }
+
+                val channel = channels[position]
+                holder.tvNumber.text = (position + 1).toString()
+                holder.tvName.text = channel.name
+                holder.tvName.isSelected = true
+                golosTypeface?.let { holder.tvName.typeface = Typeface.create(it, 500, false) }
+                loadLogoWithGlide(
+                    channel.logoFromEpg ?: channel.logoFromPlaylist,
+                    holder.ivLogo
+                )
+
+                itemView.setBackgroundResource(
+                    if (position == currentChannelIndex) R.drawable.channel_grid_tile_bg_current
+                    else R.drawable.channel_grid_tile_bg
+                )
+
+                holder.tvCurrentProgram.text = channelListProgramTitles[position].orEmpty()
+                holder.tvCurrentProgram.visibility = View.VISIBLE
+                holder.archiveBadge.visibility =
+                    if (channel.catchupDays > 0 && !channel.catchupSource.isNullOrBlank()) {
+                        View.VISIBLE
+                    } else {
+                        View.GONE
+                    }
+
+                itemView.setOnClickListener {
+                    logDebug("NAV", "channel_grid_click name=${channel.name}")
+                    currentChannelIndex = position
+                    playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
+                    hideChannelListPanel()
+                }
+                return itemView
+            }
+        }
+        gvChannelListPanel.onItemClickListener =
+            AdapterView.OnItemClickListener { _, view, position, _ ->
+                logDebug("NAV", "DPAD_OK_onItemClick gvChannelListPanel position=$position")
+                view.performClick()
+            }
+        syncChannelListPanelBounds()
+        gvChannelListPanel.setSelection(currentChannelIndex)
+        gvChannelListPanel.requestFocus()
     }
 
     private fun showChannelListPanel() {
@@ -2320,68 +2440,19 @@ class MainActivity : AppCompatActivity() {
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         handler.removeCallbacks(hideUiRunnable)
+        pausePlaybackStallWatchdogForOverlay()
         channelListPanel.visibility = View.VISIBLE
         channelListPanel.post {
-            gvChannelListPanel.adapter = object : ArrayAdapter<Channel>(this@MainActivity, 0, channels) {
-                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                    val holder: ChannelGridItemViewHolder
-                    val itemView: View
-                    if (convertView == null) {
-                        itemView = layoutInflater.inflate(R.layout.item_channel_grid, parent, false)
-                        holder = ChannelGridItemViewHolder(
-                            tvNumber = itemView.findViewById(R.id.itemNumber),
-                            tvName = itemView.findViewById(R.id.itemName),
-                            tvCurrentProgram = itemView.findViewById(R.id.itemCurrentProgram),
-                            ivLogo = itemView.findViewById(R.id.itemLogo),
-                            archiveBadge = itemView.findViewById(R.id.itemArchiveBadge)
-                        )
-                        itemView.tag = holder
-                    } else {
-                        itemView = convertView
-                        holder = convertView.tag as ChannelGridItemViewHolder
-                    }
-
-                    val channel = channels[position]
-                    holder.tvNumber.text = (position + 1).toString()
-                    holder.tvName.text = channel.name
-                    holder.tvName.isSelected = true
-                    golosTypeface?.let { holder.tvName.typeface = Typeface.create(it, 500, false) }
-                    loadLogoWithGlide(
-                        channel.logoFromEpg ?: channel.logoFromPlaylist,
-                        holder.ivLogo
-                    )
-
-                    itemView.setBackgroundResource(
-                        if (position == currentChannelIndex) R.drawable.channel_grid_tile_bg_current
-                        else R.drawable.channel_grid_tile_bg
-                    )
-
-                    holder.tvCurrentProgram.text = getCurrentProgramTitleForChannelList(channel)
-                    holder.tvCurrentProgram.visibility = View.VISIBLE
-                    holder.archiveBadge.visibility =
-                        if (channel.catchupDays > 0 && !channel.catchupSource.isNullOrBlank()) {
-                            View.VISIBLE
-                        } else {
-                            View.GONE
-                        }
-
-                    itemView.setOnClickListener {
-                        logDebug("NAV", "channel_grid_click name=${channel.name}")
-                        currentChannelIndex = position
-                        playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
-                        hideChannelListPanel()
-                    }
-                    return itemView
+            thread(name = "channel-list-prep") {
+                val titles = channels.mapIndexed { index, ch ->
+                    index to getCurrentProgramTitleForChannelList(ch)
+                }.toMap()
+                handler.post {
+                    if (channelListPanel.visibility != View.VISIBLE) return@post
+                    channelListProgramTitles = titles
+                    bindChannelListPanelAdapter()
                 }
             }
-            gvChannelListPanel.onItemClickListener =
-                AdapterView.OnItemClickListener { _, view, position, _ ->
-                    logDebug("NAV", "DPAD_OK_onItemClick gvChannelListPanel position=$position")
-                    view.performClick()
-                }
-            syncChannelListPanelBounds()
-            gvChannelListPanel.setSelection(currentChannelIndex)
-            gvChannelListPanel.requestFocus()
         }
     }
 
@@ -2397,6 +2468,7 @@ class MainActivity : AppCompatActivity() {
         if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.GONE
         lvEpgPrograms.adapter = null
         if (restorePlayerUi) showUI()
+        resumePlaybackStallWatchdogIfNeeded()
     }
 
     private fun toggleEpgPanel() {
@@ -2498,45 +2570,54 @@ class MainActivity : AppCompatActivity() {
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         handler.removeCallbacks(hideUiRunnable)
+        pausePlaybackStallWatchdogForOverlay()
 
         epgPanel.post {
-            val realPrograms = getProgramsForChannel(ch)
-            val programsSource =
-                realPrograms.ifEmpty { buildArchivePlaceholderPrograms(ch) }
-            if (programsSource.isEmpty()) {
-                epgDateRow.visibility = View.GONE
-                lvEpgPrograms.visibility = View.GONE
-                lvEpgPrograms.adapter = null
-                tvEpgEmptyState.text = epgUnavailableMessage()
-                tvEpgEmptyState.visibility = View.VISIBLE
-                syncEpgPanelBounds()
-                return@post
-            }
-            tvEpgEmptyState.visibility = View.GONE
-            epgDateRow.visibility = View.VISIBLE
-            lvEpgPrograms.visibility = View.VISIBLE
+            thread(name = "epg-panel-prep") {
+                val realPrograms = getProgramsForChannel(ch)
+                val programsSource = realPrograms.ifEmpty { buildArchivePlaceholderPrograms(ch) }
+                if (programsSource.isEmpty()) {
+                    handler.post {
+                        if (epgPanel.visibility != View.VISIBLE) return@post
+                        epgDateRow.visibility = View.GONE
+                        lvEpgPrograms.visibility = View.GONE
+                        lvEpgPrograms.adapter = null
+                        tvEpgEmptyState.text = epgUnavailableMessage()
+                        tvEpgEmptyState.visibility = View.VISIBLE
+                        syncEpgPanelBounds()
+                    }
+                    return@thread
+                }
 
-            val programs =
-                programsSource.distinctBy { Triple(it.title.trim(), it.start, it.stop) }
+                val programs = programsSource
+                    .distinctBy { Triple(it.title.trim(), it.start, it.stop) }
                     .sortedBy { it.start }
+                val dateFmt = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+                val programsByDate = programs.groupBy { dateFmt.format(Date(it.start)) }
+                val dateKeys = programsByDate.keys.sortedBy { key ->
+                    dateFmt.parse(key)?.time ?: 0L
+                }
+                val selectedDate = if (epgPanelSelectedDate.isEmpty() || !dateKeys.contains(epgPanelSelectedDate)) {
+                    resolveEpgDefaultDateKey(dateKeys)
+                } else {
+                    epgPanelSelectedDate
+                }
 
-            epgPanelProgramsByDate = programs.groupBy {
-                SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(it.start))
+                handler.post {
+                    if (epgPanel.visibility != View.VISIBLE) return@post
+                    tvEpgEmptyState.visibility = View.GONE
+                    epgDateRow.visibility = View.VISIBLE
+                    lvEpgPrograms.visibility = View.VISIBLE
+                    epgPanelProgramsByDate = programsByDate
+                    epgPanelDateKeys = dateKeys
+                    epgPanelSelectedDate = selectedDate
+                    renderEpgDateChips()
+                    renderEpgProgramsForSelectedDate()
+                    syncEpgPanelBounds()
+                    scrollToSelectedEpgDateChip()
+                    lvEpgPrograms.requestFocus()
+                }
             }
-
-            epgPanelDateKeys = epgPanelProgramsByDate.keys.sortedBy { key ->
-                SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).parse(key)?.time ?: 0L
-            }
-
-            if (epgPanelSelectedDate.isEmpty() || !epgPanelDateKeys.contains(epgPanelSelectedDate)) {
-                epgPanelSelectedDate = resolveEpgDefaultDateKey(epgPanelDateKeys)
-            }
-
-            renderEpgDateChips()
-            renderEpgProgramsForSelectedDate()
-            syncEpgPanelBounds()
-            scrollToSelectedEpgDateChip()
-            lvEpgPrograms.requestFocus()
         }
     }
 
@@ -2969,6 +3050,7 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putBoolean(PREF_START_LAST_CHANNEL, isChecked).apply()
             shouldOpenLastChannelOnStart = isChecked
         }
+        setupStartModeRemoteToggle(tbStartMode, itemStartModeRow)
 
         val tbAspectRatio = findViewById<ToggleButton>(R.id.tbAspectRatio)
         val aspectRatioLabels = listOf("Автоматически", "Вписать в экран", "16:9", "Растянуть", "Обрезать")
@@ -4801,7 +4883,7 @@ class MainActivity : AppCompatActivity() {
 
             val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
             logPathState("STARTUP_PATH before_set_source allowNonIdr=${allowNonIdr || shouldAllowNonIdrForStream(lastRequestedPlaybackUrl)} forcePlay=$forcePlay")
-            player.setMediaSource(buildHlsMediaSource(lastRequestedPlaybackUrl, allowNonIdr))
+            player.setMediaSource(buildPlaybackMediaSource(lastRequestedPlaybackUrl, allowNonIdr))
             player.seekToDefaultPosition()
             logPathState("STARTUP_PATH after_seek_default")
             player.prepare()
@@ -4842,9 +4924,11 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun buildMediaItem(url: String): MediaItem {
-        val uri = Uri.parse(url)
-        val lowerUrl = url.lowercase(Locale.ROOT)
+        val normalizedUrl = normalizePlaybackUrl(url)
+        val uri = Uri.parse(normalizedUrl)
+        val lowerUrl = normalizedUrl.lowercase(Locale.ROOT)
         val mime = when {
+            lowerUrl.startsWith("udp://") -> MimeTypes.VIDEO_MP2T
             lowerUrl.contains(".m3u8") -> MimeTypes.APPLICATION_M3U8
             lowerUrl.contains(".ts") || lowerUrl.contains("mpegts") -> MimeTypes.VIDEO_MP2T
             else -> null
@@ -5328,7 +5412,7 @@ class MainActivity : AppCompatActivity() {
                                 playerRef.stop()
                                 playerRef.clearMediaItems()
                                 logPathState("BEHIND_LIVE_WINDOW after_clear")
-                                playerRef.setMediaSource(buildHlsMediaSource(lastRequestedPlaybackUrl, allowNonIdr))
+                                playerRef.setMediaSource(buildPlaybackMediaSource(lastRequestedPlaybackUrl, allowNonIdr))
                                 playerRef.seekToDefaultPosition()
                                 logPathState("BEHIND_LIVE_WINDOW after_seek_default")
                                 playerRef.prepare()
@@ -5436,6 +5520,56 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
+    private fun normalizePlaybackUrl(url: String): String {
+        val trimmed = url.trim()
+        if (trimmed.startsWith("/")) return "file://$trimmed"
+        return trimmed
+    }
+
+    private fun tsPayloadReaderFlags(allowNonIdr: Boolean, url: String): Int {
+        val effectiveAllowNonIdr = allowNonIdr || shouldAllowNonIdrForStream(url)
+        return if (effectiveAllowNonIdr) DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES else 0
+    }
+
+    private fun buildPlaybackMediaSource(url: String, allowNonIdr: Boolean): MediaSource {
+        val normalizedUrl = normalizePlaybackUrl(url)
+        val lower = normalizedUrl.lowercase(Locale.ROOT)
+        return when {
+            lower.startsWith("udp://") -> buildUdpMediaSource(normalizedUrl, allowNonIdr)
+            lower.startsWith("file://") -> buildProgressiveMediaSource(normalizedUrl, allowNonIdr)
+            lower.contains(".m3u8") -> buildHlsMediaSource(normalizedUrl, allowNonIdr)
+            lower.contains(".ts") || lower.contains("mpegts") -> buildProgressiveMediaSource(normalizedUrl, allowNonIdr)
+            else -> buildHlsMediaSource(normalizedUrl, allowNonIdr)
+        }
+    }
+
+    private fun buildUdpMediaSource(url: String, allowNonIdr: Boolean): ProgressiveMediaSource {
+        val dataSourceFactory = DataSource.Factory {
+            UdpDataSource(UdpDataSource.DEFAULT_MAX_PACKET_SIZE, 8_000)
+        }
+        val extractorsFactory = DefaultExtractorsFactory()
+            .setTsExtractorFlags(tsPayloadReaderFlags(allowNonIdr, url))
+        return ProgressiveMediaSource.Factory(dataSourceFactory, extractorsFactory)
+            .createMediaSource(buildMediaItem(url))
+    }
+
+    private fun buildProgressiveMediaSource(url: String, allowNonIdr: Boolean): ProgressiveMediaSource {
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(userAgent)
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(12_000)
+            .setReadTimeoutMs(25_000)
+        val dataSourceFactory = if (url.lowercase(Locale.ROOT).startsWith("file://")) {
+            DefaultDataSource.Factory(this)
+        } else {
+            DefaultDataSource.Factory(this, httpFactory)
+        }
+        val extractorsFactory = DefaultExtractorsFactory()
+            .setTsExtractorFlags(tsPayloadReaderFlags(allowNonIdr, url))
+        return ProgressiveMediaSource.Factory(dataSourceFactory, extractorsFactory)
+            .createMediaSource(buildMediaItem(url))
+    }
+
     private fun buildHlsMediaSource(url: String, allowNonIdr: Boolean): HlsMediaSource {
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(userAgent)
@@ -5453,8 +5587,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun shouldAllowNonIdrForStream(url: String): Boolean {
-        if (!url.contains(".m3u8", ignoreCase = true)) return false
-        return true
+        val lower = url.lowercase(Locale.ROOT)
+        if (lower.contains(".m3u8")) return true
+        if (lower.startsWith("udp://") || lower.contains(".ts") || lower.contains("mpegts")) return true
+        return false
     }
 
     private fun dumpDebugTsSegments(playlistUrl: String, label: String) {
@@ -5726,7 +5862,7 @@ class MainActivity : AppCompatActivity() {
         logDebug("VIDEO_ONLY_MINIMAL", "startup preferSoftwareDecoder=$preferSoftwareDecoder")
         player.playWhenReady = true
         val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
-        player.setMediaSource(buildHlsMediaSource(url, allowNonIdr))
+        player.setMediaSource(buildPlaybackMediaSource(url, allowNonIdr))
         player.seekToDefaultPosition()
         player.prepare()
         player.seekToDefaultPosition()
@@ -5779,7 +5915,7 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.stop()
         }
         val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
-        mediaPlayer?.setMediaSource(buildHlsMediaSource(url, allowNonIdr))
+        mediaPlayer?.setMediaSource(buildPlaybackMediaSource(url, allowNonIdr))
         mediaPlayer?.prepare()
         mediaPlayer?.playWhenReady = true
         logMemoryStats("restart_stream_start")
