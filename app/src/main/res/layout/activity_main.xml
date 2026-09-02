@@ -15,6 +15,31 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- CSS-like subtitle overlay: left/right 8%, bottom 12%, max-height 28% -->
+    <FrameLayout
+        android:id="@+id/playerSubtitlesOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="false"
+        android:focusable="false"
+        android:importantForAccessibility="noHideDescendants">
+
+        <TextView
+            android:id="@+id/tvPlayerSubtitles"
+            style="@style/AppGolosText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:background="@drawable/bg_player_subtitle_plate"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:maxLines="4"
+            android:textColor="#FFFFFF"
+            android:textSize="@dimen/player_subtitle_text_size"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </FrameLayout>
+
     <LinearLayout
         android:id="@+id/tvReloadingStatus"
         android:layout_width="wrap_content"
@@ -461,9 +486,11 @@
                 android:id="@+id/btnCcSubtitles"
                 android:focusable="true"
                 android:focusableInTouchMode="false"
-                android:layout_width="48dp"
-                android:layout_height="30dp"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/player_cc_hd_button_height"
+                android:minWidth="@dimen/player_cc_hd_button_min_width"
                 android:layout_marginEnd="8dp"
+                android:paddingHorizontal="10dp"
                 android:background="@drawable/bg_player_quality_badge"
                 android:defaultFocusHighlightEnabled="false"
                 android:fontFamily="@font/golos_text"
@@ -480,9 +507,11 @@
                 android:id="@+id/btnHdQuality"
                 android:focusable="true"
                 android:focusableInTouchMode="false"
-                android:layout_width="48dp"
-                android:layout_height="30dp"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/player_cc_hd_button_height"
+                android:minWidth="@dimen/player_cc_hd_button_min_width"
                 android:layout_marginEnd="8dp"
+                android:paddingHorizontal="10dp"
                 android:background="@drawable/bg_player_quality_badge"
                 android:defaultFocusHighlightEnabled="false"
                 android:fontFamily="@font/golos_text"
