@@ -21,8 +21,9 @@ import android.text.style.TypefaceSpan
 import android.util.Log
 import android.util.TypedValue
 import android.util.Xml
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.view.animation.LinearInterpolator
-import android.view.animation.RotateAnimation
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.KeyEvent
@@ -248,6 +249,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var timerWarningPanel: View
     private lateinit var btnStopTimer: TextView
     private lateinit var homePanel: View
+    private lateinit var ivHomeProfile: ImageView
     private lateinit var ivHomeSettings: ImageView
     private lateinit var ivHomePower: ImageView
     private lateinit var homeSettingsScreen: View
@@ -784,6 +786,7 @@ class MainActivity : AppCompatActivity() {
         timerWarningPanel = findViewById(R.id.timerWarningPanel)
         btnStopTimer = findViewById(R.id.btnStopTimer)
         homePanel = findViewById(R.id.homePanel)
+        ivHomeProfile = findViewById(R.id.ivHomeProfile)
         ivHomeSettings = findViewById(R.id.ivHomeSettings)
         ivHomePower = findViewById(R.id.ivHomePower)
         homeSettingsScreen = findViewById(R.id.homeSettingsScreen)
@@ -990,13 +993,11 @@ class MainActivity : AppCompatActivity() {
         tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(15f))
 
         val iconSize = scalePx(18f, scale)
-        ivHomeSettings.layoutParams = ivHomeSettings.layoutParams.apply {
-            width = iconSize
-            height = iconSize
-        }
-        ivHomePower.layoutParams = ivHomePower.layoutParams.apply {
-            width = iconSize
-            height = iconSize
+        listOf(ivHomeProfile, ivHomeSettings, ivHomePower).forEach { icon ->
+            icon.layoutParams = icon.layoutParams.apply {
+                width = iconSize
+                height = iconSize
+            }
         }
 
         val bottomTileHeight = scalePx(66f, scale)
@@ -1300,21 +1301,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateHomeHeaderActions() {
+        ivHomeProfile.visibility = View.VISIBLE
         ivHomeSettings.visibility = View.VISIBLE
-        if (!isAuthorizedUser()) {
-            // Неавторизованным всегда показываем иконку авторизации; она открывает настройки.
-            ivHomeSettings.setImageResource(R.drawable.profile)
-            ivHomeSettings.imageTintList = ColorStateList.valueOf(Color.WHITE)
-            ivHomeSettings.contentDescription = "Авторизация"
-            ivHomeSettings.setOnClickListener {
-                if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog()
+        ivHomeProfile.setImageResource(R.drawable.profile)
+        ivHomeProfile.imageTintList = ColorStateList.valueOf(Color.WHITE)
+        ivHomeProfile.contentDescription = "Авторизация"
+        ivHomeProfile.setOnClickListener {
+            if (isSettingsModalVisible && findViewById<View>(R.id.userSettingsPanel).visibility == View.VISIBLE) {
+                hideSettingsScreen()
+            } else {
+                openHomeAuthScreen()
             }
-        } else {
-            ivHomeSettings.setImageResource(R.drawable.fibssettings)
-            ivHomeSettings.imageTintList = null
-            ivHomeSettings.contentDescription = getString(R.string.home_settings_button)
-            ivHomeSettings.setOnClickListener {
-                if (homeSettingsScreen.visibility == View.VISIBLE) hideSettingsScreen() else showSettingsDialog()
+        }
+        ivHomeSettings.setImageResource(R.drawable.fibssettings)
+        ivHomeSettings.imageTintList = null
+        ivHomeSettings.contentDescription = getString(R.string.home_settings_button)
+        ivHomeSettings.setOnClickListener {
+            if (homeSettingsScreen.visibility == View.VISIBLE &&
+                findViewById<View>(R.id.userSettingsPanel).visibility != View.VISIBLE
+            ) {
+                hideSettingsScreen()
+            } else {
+                showSettingsDialog()
             }
         }
     }
@@ -1755,14 +1763,12 @@ class MainActivity : AppCompatActivity() {
         tvHomeAppTitle.visibility = View.VISIBLE
         tvHomeSystemTime.visibility = View.VISIBLE
         ivHomePower.visibility = View.VISIBLE
-        ivHomeSettings.alpha = 1f
-        ivHomeSettings.scaleX = 1f
-        ivHomeSettings.scaleY = 1f
-        ivHomeSettings.isFocusable = false
-        ivHomePower.alpha = 1f
-        ivHomePower.scaleX = 1f
-        ivHomePower.scaleY = 1f
-        ivHomePower.isFocusable = false
+        listOf(ivHomeProfile, ivHomeSettings, ivHomePower).forEach { icon ->
+            icon.alpha = 1f
+            icon.scaleX = 1f
+            icon.scaleY = 1f
+            icon.isFocusable = false
+        }
         homePlaylistTilesPanel.visibility = View.VISIBLE
         gvHomeChannelList.visibility = View.GONE
         gvHomeChannelList.adapter = null
@@ -2810,6 +2816,7 @@ class MainActivity : AppCompatActivity() {
         val authorized = isAuthorizedUser()
         findViewById<View>(R.id.btnRefreshServices).visibility = if (authorized) View.VISIBLE else View.GONE
         findViewById<View>(R.id.btnLogoutProfile).visibility = if (authorized) View.VISIBLE else View.GONE
+        applyResetLogoutBottomLayout(authorized)
         findViewById<View>(R.id.tvSettingsBack).visibility = View.GONE
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "Настройки")
         if (settingsOpenedFromPlayer) {
@@ -2922,8 +2929,18 @@ class MainActivity : AppCompatActivity() {
         if (token.isNotBlank()) {
             tokenRowViews.forEach { it.visibility = View.VISIBLE }
             findViewById<TextView>(R.id.tvProfileTokenValue).text = token
+            (tvNickname.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+                lp.bottomToTop = R.id.tvProfileTokenLabel
+                lp.bottomToBottom = ConstraintLayout.LayoutParams.UNSET
+                tvNickname.layoutParams = lp
+            }
         } else {
             tokenRowViews.forEach { it.visibility = View.GONE }
+            (tvNickname.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+                lp.bottomToTop = ConstraintLayout.LayoutParams.UNSET
+                lp.bottomToBottom = R.id.profileAvatarFrame
+                tvNickname.layoutParams = lp
+            }
         }
         findViewById<View>(R.id.btnProfileChangeToken).setOnClickListener {
             openProfileAuthScreen()
@@ -2995,6 +3012,7 @@ class MainActivity : AppCompatActivity() {
             homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             tvHomeAppTitle.visibility = View.GONE
             tvHomeSystemTime.visibility = View.GONE
+            ivHomeProfile.visibility = View.GONE
             ivHomeSettings.visibility = View.GONE
             ivHomePower.visibility = View.GONE
             (homeSettingsScreen.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
@@ -3102,6 +3120,7 @@ class MainActivity : AppCompatActivity() {
         val authorized = isAuthorizedUser()
         btnRefreshServices.visibility = if (authorized) View.VISIBLE else View.GONE
         btnLogoutProfile.visibility = if (authorized) View.VISIBLE else View.GONE
+        applyResetLogoutBottomLayout(authorized)
         btnExportDebugLog.visibility = View.GONE
         btnExportDebugLog.isEnabled = false
         btnExportDebugLog.isClickable = false
@@ -3186,6 +3205,25 @@ class MainActivity : AppCompatActivity() {
             findViewById<View>(R.id.userProfileHeaderCard).setOnClickListener(null)
         }
         configureBackButtonsForSettings("showSettingsDialog_final")
+    }
+
+    private fun applyResetLogoutBottomLayout(authorized: Boolean) {
+        val reset = findViewById<View>(R.id.btnResetSettings) ?: return
+        val logout = findViewById<View>(R.id.btnLogoutProfile) ?: return
+        val halfGuide = R.id.settingsGridGuideHalf
+        (reset.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            if (authorized) {
+                lp.endToStart = halfGuide
+                lp.endToEnd = ConstraintLayout.LayoutParams.UNSET
+                lp.marginEnd = resources.getDimensionPixelSize(R.dimen.settings_grid_column_gap)
+            } else {
+                lp.endToStart = ConstraintLayout.LayoutParams.UNSET
+                lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
+                lp.marginEnd = 0
+            }
+            reset.layoutParams = lp
+        }
+        logout.visibility = if (authorized) View.VISIBLE else View.GONE
     }
 
     private fun confirmRefreshServices() {
@@ -5084,16 +5122,18 @@ class MainActivity : AppCompatActivity() {
         handler.postDelayed(hideAppToastRunnable, durationMs)
     }
 
+    private val spinnerAnimators = mutableMapOf<Int, ObjectAnimator>()
+
     private fun showReloadingStatus(title: String, subtitle: String, isError: Boolean = false) {
         val ring = findViewById<ImageView>(R.id.ivReloadingRing)
         if (isError) {
             ring?.visibility = View.GONE
+            stopSpinnerOnImageView(ivReloadingIcon)
             ivReloadingIcon.setImageResource(R.drawable.alert)
-            ivReloadingIcon.clearAnimation()
         } else {
             ring?.visibility = View.VISIBLE
-            ring?.setImageResource(R.drawable.load1)
-            ivReloadingIcon.setImageResource(R.drawable.load2)
+            ring?.setImageResource(R.drawable.load2)
+            ivReloadingIcon.setImageResource(R.drawable.load1)
             startSpinnerOnImageView(ivReloadingIcon)
         }
         tvReloadingTitle.text = title
@@ -5105,38 +5145,43 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startSpinnerOnImageView(imageView: ImageView) {
-        imageView.setImageResource(R.drawable.load2)
-        imageView.clearAnimation()
-        val rotate = RotateAnimation(
-            0f, 360f,
-            RotateAnimation.RELATIVE_TO_SELF, 0.5f,
-            RotateAnimation.RELATIVE_TO_SELF, 0.5f
-        ).apply {
-            duration = 900L
-            repeatCount = RotateAnimation.INFINITE
-            interpolator = LinearInterpolator()
+        stopSpinnerOnImageView(imageView)
+        imageView.post {
+            val w = imageView.width.takeIf { it > 0 } ?: imageView.measuredWidth
+            val h = imageView.height.takeIf { it > 0 } ?: imageView.measuredHeight
+            if (w > 0 && h > 0) {
+                imageView.pivotX = w / 2f
+                imageView.pivotY = h / 2f
+            }
+            val animator = ObjectAnimator.ofFloat(imageView, View.ROTATION, 0f, 360f).apply {
+                duration = 900L
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                start()
+            }
+            spinnerAnimators[imageView.id] = animator
         }
-        imageView.startAnimation(rotate)
+    }
+
+    private fun stopSpinnerOnImageView(imageView: ImageView) {
+        spinnerAnimators.remove(imageView.id)?.cancel()
+        imageView.animate().cancel()
+        imageView.clearAnimation()
+        imageView.rotation = 0f
     }
 
     private fun startCompositeSpinner(root: View?) {
         if (root == null) return
         val arc = root.findViewById<ImageView>(R.id.ivLoadArc) ?: return
-        arc.clearAnimation()
-        val rotate = RotateAnimation(
-            0f, 360f,
-            RotateAnimation.RELATIVE_TO_SELF, 0.5f,
-            RotateAnimation.RELATIVE_TO_SELF, 0.5f
-        ).apply {
-            duration = 900L
-            repeatCount = RotateAnimation.INFINITE
-            interpolator = LinearInterpolator()
-        }
-        arc.startAnimation(rotate)
+        val ring = root.findViewById<ImageView>(R.id.ivLoadRing)
+        ring?.setImageResource(R.drawable.load2)
+        arc.setImageResource(R.drawable.load1)
+        startSpinnerOnImageView(arc)
     }
 
     private fun stopCompositeSpinner(root: View?) {
-        root?.findViewById<ImageView>(R.id.ivLoadArc)?.clearAnimation()
+        val arc = root?.findViewById<ImageView>(R.id.ivLoadArc) ?: return
+        stopSpinnerOnImageView(arc)
     }
 
     private fun showAppLoadingSpinner() {
@@ -5154,11 +5199,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPlayerLoadingUi() {
         // Только назад + время, без остальных элементов плеера.
+        // INVISIBLE (не GONE) для среднего блока — плашка времени остаётся справа.
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         topInfoPanel.visibility = View.VISIBLE
-        findViewById<View>(R.id.liveStatusBadge)?.visibility = View.GONE
-        findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.GONE
+        findViewById<View>(R.id.liveStatusBadge)?.visibility = View.INVISIBLE
+        findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.INVISIBLE
         findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
         findViewById<View>(R.id.btnBackToMenu)?.apply {
             visibility = View.VISIBLE
@@ -6295,18 +6341,23 @@ class MainActivity : AppCompatActivity() {
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> return true
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    homeActionIndex = 1 - homeActionIndex
-                    val settingsSelected = homeActionIndex == 0
-                    ivHomeSettings.alpha = if (settingsSelected) 1f else 0.5f
-                    ivHomeSettings.scaleX = if (settingsSelected) 1.25f else 1f
-                    ivHomeSettings.scaleY = if (settingsSelected) 1.25f else 1f
-                    ivHomePower.alpha = if (!settingsSelected) 1f else 0.5f
-                    ivHomePower.scaleX = if (!settingsSelected) 1.25f else 1f
-                    ivHomePower.scaleY = if (!settingsSelected) 1.25f else 1f
+                    val delta = if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) 1 else -1
+                    homeActionIndex = (homeActionIndex + delta + 3) % 3
+                    val icons = listOf(ivHomeProfile, ivHomeSettings, ivHomePower)
+                    icons.forEachIndexed { index, icon ->
+                        val selected = index == homeActionIndex
+                        icon.alpha = if (selected) 1f else 0.5f
+                        icon.scaleX = if (selected) 1.25f else 1f
+                        icon.scaleY = if (selected) 1.25f else 1f
+                    }
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                    if (homeActionIndex == 0) ivHomeSettings.performClick() else ivHomePower.performClick()
+                    when (homeActionIndex) {
+                        0 -> ivHomeProfile.performClick()
+                        1 -> ivHomeSettings.performClick()
+                        else -> ivHomePower.performClick()
+                    }
                     return true
                 }
             }
@@ -6317,16 +6368,22 @@ class MainActivity : AppCompatActivity() {
         // влево-вправо переключает между ними, вниз возвращает обратно в сетку.
         if (homePanel.visibility == View.VISIBLE && tvHomeStartTitle.visibility != View.VISIBLE) {
             val focused = currentFocus
-            val iconsHaveFocus = focused === ivHomeSettings || focused === ivHomePower
+            val headerIcons = listOf(ivHomeProfile, ivHomeSettings, ivHomePower)
+            val iconsHaveFocus = focused != null && focused in headerIcons
             if (iconsHaveFocus) {
                 when (keyCode) {
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                        if (focused === ivHomeSettings) ivHomePower.requestFocus() else ivHomeSettings.requestFocus()
+                        val idx = headerIcons.indexOf(focused)
+                        val next = if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                            headerIcons[(idx + 1) % headerIcons.size]
+                        } else {
+                            headerIcons[(idx - 1 + headerIcons.size) % headerIcons.size]
+                        }
+                        next.requestFocus()
                         return true
                     }
                     KeyEvent.KEYCODE_DPAD_DOWN -> {
-                        ivHomeSettings.isFocusable = false
-                        ivHomePower.isFocusable = false
+                        headerIcons.forEach { it.isFocusable = false }
                         if (homePlaylistTilesPanel.visibility == View.VISIBLE) rvHomeTiles.requestFocus()
                         else if (gvHomeChannelList.visibility == View.VISIBLE) gvHomeChannelList.requestFocus()
                         return true
@@ -6347,8 +6404,7 @@ class MainActivity : AppCompatActivity() {
                 grid.getLocationOnScreen(gridLoc)
                 val isTopRow = focused == null || focusedLoc[1] <= gridLoc[1] + dpToPx(8)
                 if (isTopRow) {
-                    ivHomeSettings.isFocusable = true
-                    ivHomePower.isFocusable = true
+                    headerIcons.forEach { it.isFocusable = true }
                     ivHomeSettings.requestFocus()
                     return true
                 }
@@ -6903,6 +6959,7 @@ class MainActivity : AppCompatActivity() {
         setPlayerVideoVisible(false)
         tvHomeAppTitle.visibility = View.VISIBLE
         tvHomeSystemTime.visibility = View.VISIBLE
+        ivHomeProfile.visibility = View.VISIBLE
         ivHomeSettings.visibility = View.VISIBLE
         ivHomePower.visibility = View.VISIBLE
         showPlaylistPageOnHome(source = "exit_player")

@@ -9,7 +9,7 @@
         android:layout_height="match_parent"
         android:contentDescription="@null"
         android:scaleType="fitCenter"
-        android:src="@drawable/load1" />
+        android:src="@drawable/load2" />
 
     <ImageView
         android:id="@+id/ivLoadArc"
@@ -17,5 +17,5 @@
         android:layout_height="match_parent"
         android:contentDescription="@null"
         android:scaleType="fitCenter"
-        android:src="@drawable/load2" />
+        android:src="@drawable/load1" />
 </FrameLayout>
