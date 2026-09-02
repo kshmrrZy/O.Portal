@@ -1390,14 +1390,7 @@ class MainActivity : AppCompatActivity() {
             val spanSize = lookup?.getSpanSize(position) ?: 1
             outRect.left = 0
             outRect.right = if (spanIndex + spanSize >= spanCount) 0 else spacingPx
-            val itemCount = parent.adapter?.itemCount ?: 0
-            val lastRowStart = when {
-                itemCount <= 0 || columns <= 0 -> 0
-                itemCount % columns == 0 -> itemCount - columns
-                else -> itemCount - (itemCount % columns)
-            }
-            // No bottom gap on the last row — otherwise a fitting grid still scrolls a few dp.
-            outRect.bottom = if (position >= lastRowStart) 0 else spacingPx
+            outRect.bottom = spacingPx
         }
     }
 
@@ -1642,9 +1635,6 @@ class MainActivity : AppCompatActivity() {
         }
         val contentScale = computeContentDpScale()
         setupHomeBottomActionTiles(contentScale, HOME_BOTTOM_TILE_TEXT_SP)
-        (homePlaylistTilesPanel as? ContentAwareScrollView)?.post {
-            (homePlaylistTilesPanel as? ContentAwareScrollView)?.updateScrollEnabled()
-        }
     }
 
     private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic", titleSizeSp: Float = 18f) {
@@ -1706,7 +1696,6 @@ class MainActivity : AppCompatActivity() {
             )
             logHomeGridRealCoords(source, tileWidth, columns)
             applyHomeBottomTilesGeometry()
-            (homePlaylistTilesPanel as? ContentAwareScrollView)?.updateScrollEnabled()
             if (!rvHomeTiles.hasFocus()) {
                 first?.requestFocus()
             }
@@ -5231,6 +5220,8 @@ class MainActivity : AppCompatActivity() {
         } else {
             ring?.visibility = View.VISIBLE
             ring?.setImageResource(R.drawable.load2)
+            ring?.rotation = 0f
+            ring?.let { stopSpinnerOnImageView(it) }
             ivReloadingIcon.setImageResource(R.drawable.load1)
             startSpinnerOnImageView(ivReloadingIcon)
         }
@@ -5243,7 +5234,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startSpinnerOnImageView(imageView: ImageView) {
-        val existing = spinnerAnimators[imageView.id]
+        val key = System.identityHashCode(imageView)
+        val existing = spinnerAnimators[key]
         if (existing?.isRunning == true) return
         stopSpinnerOnImageView(imageView)
         fun startNow() {
@@ -5253,7 +5245,6 @@ class MainActivity : AppCompatActivity() {
                 imageView.post { startNow() }
                 return
             }
-            // Pivot by exact geometric center — avoids up/down jump of the white arc.
             imageView.pivotX = w * 0.5f
             imageView.pivotY = h * 0.5f
             imageView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
@@ -5265,38 +5256,44 @@ class MainActivity : AppCompatActivity() {
                 interpolator = LinearInterpolator()
                 start()
             }
-            spinnerAnimators[imageView.id] = animator
+            spinnerAnimators[key] = animator
         }
         imageView.post { startNow() }
     }
 
     private fun stopSpinnerOnImageView(imageView: ImageView) {
-        spinnerAnimators.remove(imageView.id)?.let {
+        spinnerAnimators.remove(System.identityHashCode(imageView))?.let {
             it.removeAllListeners()
             it.cancel()
         }
         imageView.animate().cancel()
         imageView.clearAnimation()
         imageView.setLayerType(View.LAYER_TYPE_NONE, null)
-        // Keep current angle to avoid a visible jump if restarted immediately.
     }
 
     private fun startCompositeSpinner(root: View?) {
         if (root == null) return
         val arc = root.findViewById<ImageView>(R.id.ivLoadArc) ?: return
         val ring = root.findViewById<ImageView>(R.id.ivLoadRing)
+        // load2 (ring) stays still; only load1 (white arc) rotates.
         ring?.setImageResource(R.drawable.load2)
-        ring?.rotation = 0f
         ring?.scaleType = ImageView.ScaleType.CENTER
+        ring?.let { stopSpinnerOnImageView(it) }
+        ring?.rotation = 0f
+        ring?.animate()?.cancel()
+        ring?.clearAnimation()
         arc.setImageResource(R.drawable.load1)
-        // CENTER keeps the 56×56 asset pixel-aligned in the 56dp box (no FIT rescale jitter).
         arc.scaleType = ImageView.ScaleType.CENTER
         startSpinnerOnImageView(arc)
     }
 
     private fun stopCompositeSpinner(root: View?) {
-        val arc = root?.findViewById<ImageView>(R.id.ivLoadArc) ?: return
-        stopSpinnerOnImageView(arc)
+        if (root == null) return
+        val arc = root.findViewById<ImageView>(R.id.ivLoadArc)
+        val ring = root.findViewById<ImageView>(R.id.ivLoadRing)
+        arc?.let { stopSpinnerOnImageView(it) }
+        ring?.let { stopSpinnerOnImageView(it) }
+        ring?.rotation = 0f
     }
 
     private fun showAppLoadingSpinner() {

@@ -76,7 +76,6 @@
     <dimen name="settings_sub_actions_top_gap">16dp</dimen>
     <dimen name="settings_sub_panel_padding_vertical">12dp</dimen>
     <dimen name="profile_card_padding_v">16dp</dimen>
-    <dimen name="settings_main_panel_padding_v">12dp</dimen>
     <dimen name="settings_form_padding_horizontal">8dp</dimen>
     <dimen name="settings_start_mode_row_height">56dp</dimen>
     <dimen name="settings_start_mode_margin_top">16dp</dimen>
