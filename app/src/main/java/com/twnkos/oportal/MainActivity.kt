@@ -1,7 +1,10 @@
 package com.twnkos.oportal
 
 import android.content.Context
+import android.content.res.Configuration
 import android.content.res.ColorStateList
+import android.widget.PopupWindow
+import androidx.media3.common.CueGroup
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.Typeface
@@ -204,14 +207,21 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnCcSubtitles: TextView
     private lateinit var btnHdQuality: TextView
     private var availableQualities: List<QualityOption> = emptyList()
-    private var currentQualityIndex: Int = -1
+    private var currentQualityIndex: Int = -1 // -1 = Авто (master URL)
+    private var availableSubtitleTracks: List<SubtitleOption> = emptyList()
+    private var selectedSubtitleIndex: Int = -1 // -1 = Выкл
     private var availableSubtitleUrl: String? = null
     private var subtitlesEnabled: Boolean = false
     private var qualityFetchToken: Int = 0
     private var manualQualityOverrideUrl: String? = null
     private var manualQualityOverrideChannelIndex: Int = -1
+    private var masterStreamUrl: String? = null
+    private var playerTrackMenu: PopupWindow? = null
+    private lateinit var playerSubtitlesOverlay: FrameLayout
+    private lateinit var tvPlayerSubtitles: TextView
 
     data class QualityOption(val label: String, val height: Int, val url: String)
+    data class SubtitleOption(val label: String, val language: String?, val url: String)
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnSleepTimer: ImageButton
     private lateinit var btnLiveReload: TextView
@@ -644,6 +654,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun isEpgDataEmpty(): Boolean = synchronized(epgDataLock) { epgData.isEmpty() }
 
+    override fun attachBaseContext(newBase: Context) {
+        // Keep app typography stable regardless of system font size.
+        val config = Configuration(newBase.resources.configuration)
+        if (abs(config.fontScale - 1f) > 0.001f) {
+            config.fontScale = 1f
+            super.attachBaseContext(newBase.createConfigurationContext(config))
+        } else {
+            super.attachBaseContext(newBase)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         try {
@@ -723,6 +744,17 @@ class MainActivity : AppCompatActivity() {
         btnChannelListBackToWatch = findViewById(R.id.btnChannelListBackToWatch)
         btnChannelListBackToWatch.setOnClickListener { hideChannelListPanel() }
         videoLayout = findViewById(R.id.videoLayout)
+        playerSubtitlesOverlay = findViewById(R.id.playerSubtitlesOverlay)
+        tvPlayerSubtitles = findViewById(R.id.tvPlayerSubtitles)
+        playerSubtitlesOverlay.isClickable = false
+        playerSubtitlesOverlay.isFocusable = false
+        tvPlayerSubtitles.isClickable = false
+        tvPlayerSubtitles.isFocusable = false
+        videoLayout.subtitleView?.visibility = View.GONE
+        layoutPlayerSubtitlesOverlay()
+        playerSubtitlesOverlay.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            layoutPlayerSubtitlesOverlay()
+        }
         tvEpg = findViewById(R.id.tvEpgInfo)
         tvChannelName = findViewById(R.id.tvChannelNameInfo)
         tvSystemTime = findViewById(R.id.tvSystemTime)
@@ -1214,8 +1246,8 @@ class MainActivity : AppCompatActivity() {
             showUI()
         }
 
-        btnCcSubtitles.setOnClickListener { toggleSubtitles() }
-        btnHdQuality.setOnClickListener { cycleQuality() }
+        btnCcSubtitles.setOnClickListener { showSubtitleTrackMenu() }
+        btnHdQuality.setOnClickListener { showQualityTrackMenu() }
 
         updatePlayerControlFocusChain()
 
@@ -1925,6 +1957,8 @@ class MainActivity : AppCompatActivity() {
         gvHomeChannelList.visibility = View.GONE
         gvHomeChannelList.adapter = null
         homePlaylistTilesPanel.visibility = View.VISIBLE
+        // Favorites / own-playlists row belongs only on the main playlist home.
+        findViewById<View>(R.id.homeBottomTilesRow).visibility = View.GONE
         val playlistName = getSelectedPlaylistName()
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "категории", settingsTitle2 = playlistName)
         enableHomeCategoryBack { showPlaylistPageOnHome() }
@@ -1956,6 +1990,7 @@ class MainActivity : AppCompatActivity() {
         )
         enableHomeCategoryBack { returnToCategoryTilesOnHome() }
         homePlaylistTilesPanel.visibility = View.GONE
+        findViewById<View>(R.id.homeBottomTilesRow).visibility = View.GONE
         gvHomeChannelList.visibility = View.VISIBLE
 
         if (selectedEpgSources.isNotEmpty() && !epgFetchInProgress) {
@@ -5115,7 +5150,17 @@ class MainActivity : AppCompatActivity() {
                 ch.url
             }
             if (!isQualityOverrideForThisChannel) {
-                fetchStreamQualityInfo(ch.url)
+                val channelBase = ch.url.substringBefore('?')
+                val masterBase = masterStreamUrl?.substringBefore('?')
+                val needFetch =
+                    (availableQualities.isEmpty() && availableSubtitleTracks.isEmpty()) ||
+                        masterBase == null ||
+                        masterBase != channelBase
+                if (needFetch) {
+                    fetchStreamQualityInfo(ch.url)
+                } else {
+                    updateCcHdButtons()
+                }
             }
             startupPlaybackUrlLock = lastRequestedPlaybackUrl
             videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
@@ -5145,6 +5190,11 @@ class MainActivity : AppCompatActivity() {
             player.prepare()
             player.seekToDefaultPosition()
             logPathState("STARTUP_PATH after_prepare_seek_default")
+            applySubtitleTrackSelection(
+                enabled = subtitlesEnabled,
+                language = availableSubtitleTracks.getOrNull(selectedSubtitleIndex)?.language
+            )
+            videoLayout.subtitleView?.visibility = View.GONE
             player.playWhenReady = true
             player.play()
             logPathState("STARTUP_PATH after_play")
@@ -5193,6 +5243,20 @@ class MainActivity : AppCompatActivity() {
         val builder = MediaItem.Builder()
             .setUri(uri)
             .setMimeType(mime)
+
+        val subtitleConfigs = availableSubtitleTracks
+            .filter { it.url.startsWith("http://") || it.url.startsWith("https://") }
+            .map { track ->
+                MediaItem.SubtitleConfiguration.Builder(Uri.parse(track.url))
+                    .setMimeType(MimeTypes.APPLICATION_M3U8)
+                    .setLanguage(track.language)
+                    .setLabel(track.label)
+                    .setSelectionFlags(if (subtitlesEnabled) C.SELECTION_FLAG_DEFAULT else 0)
+                    .build()
+            }
+        if (subtitleConfigs.isNotEmpty()) {
+            builder.setSubtitleConfigurations(subtitleConfigs)
+        }
 
         if (url.contains("/only4/", ignoreCase = true)) {
             builder.setLiveConfiguration(
@@ -5533,10 +5597,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun qualityLabelForHeight(height: Int): String = when {
-        height <= 576 -> "SD"
-        height <= 720 -> "HD"
-        height <= 1080 -> "FHD"
-        else -> "4K"
+        height >= 2160 -> "2160p"
+        height >= 1440 -> "1440p"
+        height >= 1080 -> "1080p"
+        height >= 720 -> "720p"
+        height >= 480 -> "480p"
+        height >= 360 -> "360p"
+        else -> "${height}p"
     }
 
     private fun resolvePlaylistUrl(baseUrl: String, line: String): String {
@@ -5549,23 +5616,36 @@ class MainActivity : AppCompatActivity() {
         val myToken = ++qualityFetchToken
         availableQualities = emptyList()
         currentQualityIndex = -1
+        availableSubtitleTracks = emptyList()
+        selectedSubtitleIndex = -1
         availableSubtitleUrl = null
         subtitlesEnabled = false
+        masterStreamUrl = baseUrl
         btnCcSubtitles.visibility = View.GONE
         btnHdQuality.visibility = View.GONE
+        clearPlayerSubtitles()
         thread {
             runCatching {
                 val separator = if (baseUrl.contains("?")) "&" else "?"
                 val masterUrl = "$baseUrl${separator}v=3"
-                val text = URL(masterUrl).readText()
-                val lines = text.lines()
-                var subtitleUrl: String? = null
+                val textBody = URL(masterUrl).readText()
+                val lines = textBody.lines()
+                val subtitles = mutableListOf<SubtitleOption>()
                 val qualities = mutableListOf<QualityOption>()
                 for (i in lines.indices) {
                     val line = lines[i].trim()
                     if (line.startsWith("#EXT-X-MEDIA:") && line.contains("TYPE=SUBTITLES")) {
-                        subtitleUrl = Regex("URI=\"([^\"]+)\"").find(line)?.groupValues?.get(1)
+                        val uri = Regex("URI=\"([^\"]+)\"").find(line)?.groupValues?.get(1)
                             ?.let { resolvePlaylistUrl(masterUrl, it) }
+                            ?: continue
+                        val name = Regex("NAME=\"([^\"]+)\"").find(line)?.groupValues?.get(1)
+                        val language = Regex("LANGUAGE=\"([^\"]+)\"").find(line)?.groupValues?.get(1)
+                        val label = when {
+                            !name.isNullOrBlank() -> name
+                            !language.isNullOrBlank() -> languageLabel(language)
+                            else -> "Субтитры"
+                        }
+                        subtitles.add(SubtitleOption(label = label, language = language, url = uri))
                     } else if (line.startsWith("#EXT-X-STREAM-INF:")) {
                         val height = Regex("RESOLUTION=\\d+x(\\d+)").find(line)?.groupValues?.get(1)?.toIntOrNull()
                             ?: continue
@@ -5580,13 +5660,22 @@ class MainActivity : AppCompatActivity() {
                         )
                     }
                 }
-                Pair(subtitleUrl, qualities.distinctBy { it.height }.sortedByDescending { it.height })
-            }.onSuccess { (subUrl, qualities) ->
+                Triple(
+                    masterUrl,
+                    subtitles.distinctBy { it.url },
+                    qualities.distinctBy { it.height }.sortedByDescending { it.height }
+                )
+            }.onSuccess { (masterUrl, subtitles, qualities) ->
                 handler.post {
                     if (myToken != qualityFetchToken) return@post
-                    availableSubtitleUrl = subUrl
+                    masterStreamUrl = masterUrl
+                    availableSubtitleTracks = subtitles
+                    availableSubtitleUrl = subtitles.firstOrNull()?.url
                     availableQualities = qualities
-                    currentQualityIndex = if (qualities.isNotEmpty()) 0 else -1
+                    currentQualityIndex = -1
+                    selectedSubtitleIndex = -1
+                    subtitlesEnabled = false
+                    applySubtitleTrackSelection(enabled = false, language = null)
                     updateCcHdButtons()
                 }
             }.onFailure {
@@ -5598,15 +5687,37 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun languageLabel(code: String): String = when (code.lowercase(Locale.ROOT)) {
+        "ru", "rus" -> "Русский"
+        "en", "eng" -> "English"
+        "uk", "ukr" -> "Українська"
+        "de", "deu", "ger" -> "Deutsch"
+        "fr", "fra", "fre" -> "Français"
+        "es", "spa" -> "Español"
+        else -> code.uppercase(Locale.ROOT)
+    }
+
     private fun updateCcHdButtons() {
-        btnCcSubtitles.visibility = if (availableSubtitleUrl != null) View.VISIBLE else View.GONE
-        btnCcSubtitles.alpha = if (subtitlesEnabled) 1f else 0.5f
+        val hasSubtitles = availableSubtitleTracks.isNotEmpty() || availableSubtitleUrl != null
+        btnCcSubtitles.visibility = if (hasSubtitles) View.VISIBLE else View.GONE
+        val subtitleLabel = if (subtitlesEnabled && selectedSubtitleIndex >= 0) {
+            availableSubtitleTracks.getOrNull(selectedSubtitleIndex)?.label ?: "ON"
+        } else {
+            "Выкл"
+        }
+        btnCcSubtitles.text = "CC  $subtitleLabel"
+        btnCcSubtitles.alpha = if (subtitlesEnabled) 1f else 0.55f
+
         if (availableQualities.isEmpty()) {
             btnHdQuality.visibility = View.GONE
         } else {
             btnHdQuality.visibility = View.VISIBLE
-            val current = availableQualities.getOrNull(currentQualityIndex)
-            btnHdQuality.text = current?.label ?: "HD"
+            val qualityLabel = if (currentQualityIndex < 0) {
+                "Авто"
+            } else {
+                availableQualities.getOrNull(currentQualityIndex)?.label ?: "HD"
+            }
+            btnHdQuality.text = "HD  $qualityLabel"
             btnHdQuality.alpha = if (availableQualities.size > 1) 1f else 0.6f
         }
         updatePlayerControlFocusChain()
@@ -5636,28 +5747,228 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showSubtitleTrackMenu() {
+        if (availableSubtitleTracks.isEmpty() && availableSubtitleUrl == null) return
+        val tracks = availableSubtitleTracks.ifEmpty {
+            listOf(SubtitleOption("Субтитры", null, availableSubtitleUrl.orEmpty()))
+        }
+        val items = mutableListOf(Triple("Выкл", selectedSubtitleIndex < 0, -1))
+        tracks.forEachIndexed { index, track ->
+            items.add(Triple(track.label, selectedSubtitleIndex == index, index))
+        }
+        showPlayerTrackMenu(btnCcSubtitles, items) { index ->
+            selectedSubtitleIndex = index
+            subtitlesEnabled = index >= 0
+            val language = tracks.getOrNull(index)?.language
+            applySubtitleTrackSelection(enabled = subtitlesEnabled, language = language)
+            if (!subtitlesEnabled) clearPlayerSubtitles()
+            updateCcHdButtons()
+        }
+    }
+
+    private fun showQualityTrackMenu() {
+        if (availableQualities.isEmpty()) return
+        val items = mutableListOf(Triple("Авто", currentQualityIndex < 0, -1))
+        availableQualities.forEachIndexed { index, option ->
+            items.add(Triple(option.label, currentQualityIndex == index, index))
+        }
+        showPlayerTrackMenu(btnHdQuality, items) { index ->
+            currentQualityIndex = index
+            updateCcHdButtons()
+            if (index < 0) {
+                manualQualityOverrideUrl = null
+                manualQualityOverrideChannelIndex = -1
+                val master = masterStreamUrl ?: channels.getOrNull(currentChannelIndex)?.url
+                if (!master.isNullOrBlank()) {
+                    playChannel(forcePlay = true)
+                }
+            } else {
+                val target = availableQualities[index]
+                manualQualityOverrideUrl = target.url
+                manualQualityOverrideChannelIndex = currentChannelIndex
+                playChannel(forcePlay = true)
+            }
+        }
+    }
+
+    private fun showPlayerTrackMenu(
+        anchor: View,
+        items: List<Triple<String, Boolean, Int>>,
+        onSelect: (Int) -> Unit
+    ) {
+        dismissPlayerTrackMenu()
+        val content = layoutInflater.inflate(R.layout.player_track_menu, null) as LinearLayout
+        val itemHeight = resources.getDimensionPixelSize(R.dimen.player_track_menu_item_height)
+        val itemGap = resources.getDimensionPixelSize(R.dimen.player_track_menu_item_gap)
+        val textSizePx = resources.getDimension(R.dimen.player_track_menu_item_text_size)
+        items.forEachIndexed { i, (label, selected, value) ->
+            val itemView = TextView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    itemHeight
+                ).also { lp ->
+                    if (i > 0) lp.topMargin = itemGap
+                }
+                background = getDrawable(R.drawable.bg_player_track_menu_item)
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                isFocusable = true
+                isClickable = true
+                isSelected = selected
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
+                typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+                text = label
+                minWidth = dpToPx(112)
+                setPadding(dpToPx(14), 0, dpToPx(14), 0)
+                setOnClickListener {
+                    dismissPlayerTrackMenu()
+                    onSelect(value)
+                }
+            }
+            content.addView(itemView)
+        }
+        content.measure(
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        val popup = PopupWindow(
+            content,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            true
+        ).apply {
+            isOutsideTouchable = true
+            elevation = dpToPx(8).toFloat()
+            setBackgroundDrawable(null)
+            setOnDismissListener { playerTrackMenu = null }
+        }
+        playerTrackMenu = popup
+        val yOff = -(content.measuredHeight + dpToPx(10) + anchor.height)
+        popup.showAsDropDown(anchor, 0, yOff)
+        content.post {
+            content.getChildAt(items.indexOfFirst { it.second }.coerceAtLeast(0))?.requestFocus()
+        }
+    }
+
+    private fun dismissPlayerTrackMenu() {
+        playerTrackMenu?.dismiss()
+        playerTrackMenu = null
+    }
+
+    private fun applySubtitleTrackSelection(enabled: Boolean, language: String?) {
+        val player = mediaPlayer ?: return
+        val builder = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled)
+        if (enabled && !language.isNullOrBlank()) {
+            builder.setPreferredTextLanguage(language)
+        }
+        player.trackSelectionParameters = builder.build()
+        videoLayout.subtitleView?.visibility = View.GONE
+    }
+
+    private fun layoutPlayerSubtitlesOverlay() {
+        if (!::playerSubtitlesOverlay.isInitialized || !::tvPlayerSubtitles.isInitialized) return
+        val w = playerSubtitlesOverlay.width.takeIf { it > 0 } ?: return
+        val h = playerSubtitlesOverlay.height.takeIf { it > 0 } ?: return
+        val side = (w * 0.08f).toInt()
+        val bottom = (h * 0.12f).toInt()
+        val maxH = (h * 0.28f).toInt()
+        playerSubtitlesOverlay.setPadding(side, 0, side, bottom)
+        tvPlayerSubtitles.maxHeight = maxH.coerceAtLeast(dpToPx(40))
+        val lp = tvPlayerSubtitles.layoutParams as FrameLayout.LayoutParams
+        lp.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        lp.width = ViewGroup.LayoutParams.WRAP_CONTENT
+        lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
+        tvPlayerSubtitles.layoutParams = lp
+    }
+
+    private fun updatePlayerSubtitlesFromCues(cueGroup: CueGroup) {
+        if (!subtitlesEnabled) {
+            clearPlayerSubtitles()
+            return
+        }
+        val text = cueGroup.cues.mapNotNull { cue ->
+            cue.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+        }.joinToString("\n")
+        if (text.isBlank()) {
+            clearPlayerSubtitles()
+            return
+        }
+        layoutPlayerSubtitlesOverlay()
+        tvPlayerSubtitles.text = text
+        tvPlayerSubtitles.visibility = View.VISIBLE
+        playerSubtitlesOverlay.bringToFront()
+    }
+
+    private fun clearPlayerSubtitles() {
+        if (::tvPlayerSubtitles.isInitialized) {
+            tvPlayerSubtitles.text = ""
+            tvPlayerSubtitles.visibility = View.GONE
+        }
+    }
+
+
+    private fun discoverSubtitleTracksFromPlayer(tracks: Tracks) {
+        if (availableSubtitleTracks.isNotEmpty()) return
+        val discovered = mutableListOf<SubtitleOption>()
+        for (group in tracks.groups) {
+            if (group.type != C.TRACK_TYPE_TEXT) continue
+            for (i in 0 until group.length) {
+                val format = group.getTrackFormat(i)
+                val language = format.language
+                val label = format.label?.takeIf { it.isNotBlank() }
+                    ?: language?.let { languageLabel(it) }
+                    ?: "Субтитры"
+                discovered.add(
+                    SubtitleOption(
+                        label = label,
+                        language = language,
+                        url = ""
+                    )
+                )
+            }
+        }
+        if (discovered.isEmpty()) return
+        availableSubtitleTracks = discovered.distinctBy { "${it.language}|${it.label}" }
+        availableSubtitleUrl = availableSubtitleTracks.firstOrNull()?.url
+        updateCcHdButtons()
+    }
+
     private fun toggleSubtitles() {
-        if (availableSubtitleUrl == null) return
-        subtitlesEnabled = !subtitlesEnabled
-        val player = mediaPlayer
-        if (player != null) {
-            player.trackSelectionParameters = player.trackSelectionParameters
-                .buildUpon()
-                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, !subtitlesEnabled)
-                .build()
+        // Kept for compatibility; UI uses the track menu.
+        if (availableSubtitleTracks.isEmpty() && availableSubtitleUrl == null) return
+        if (subtitlesEnabled) {
+            selectedSubtitleIndex = -1
+            subtitlesEnabled = false
+            applySubtitleTrackSelection(enabled = false, language = null)
+            clearPlayerSubtitles()
+        } else {
+            selectedSubtitleIndex = 0
+            subtitlesEnabled = true
+            applySubtitleTrackSelection(
+                enabled = true,
+                language = availableSubtitleTracks.firstOrNull()?.language
+            )
         }
         updateCcHdButtons()
-        showAppToast(if (subtitlesEnabled) "Субтитры включены" else "Субтитры выключены")
     }
 
     private fun cycleQuality() {
-        if (availableQualities.size <= 1) return
-        currentQualityIndex = (currentQualityIndex + 1) % availableQualities.size
-        val target = availableQualities[currentQualityIndex]
+        // Kept for compatibility; UI uses the track menu.
+        if (availableQualities.isEmpty()) return
+        currentQualityIndex = if (currentQualityIndex < 0) 0 else {
+            if (currentQualityIndex >= availableQualities.lastIndex) -1 else currentQualityIndex + 1
+        }
         updateCcHdButtons()
-        showAppToast("Качество: ${target.label}")
-        manualQualityOverrideUrl = target.url
-        manualQualityOverrideChannelIndex = currentChannelIndex
+        if (currentQualityIndex < 0) {
+            manualQualityOverrideUrl = null
+            manualQualityOverrideChannelIndex = -1
+        } else {
+            val target = availableQualities[currentQualityIndex]
+            manualQualityOverrideUrl = target.url
+            manualQualityOverrideChannelIndex = currentChannelIndex
+        }
         playChannel(forcePlay = true)
     }
 
@@ -5814,6 +6125,12 @@ class MainActivity : AppCompatActivity() {
                         if (!firstFrameRendered && !retriedWithoutAudio && hasSelectedMpegL2Audio(tracks) && !shouldAllowNonIdrForStream(lastRequestedPlaybackUrl)) {
                             logDebug("PLAYER_STATE", "mpeg-l2 detected, but auto video-only fallback disabled in production path")
                         }
+                        // Discover in-manifest text tracks even if HLS parse missed them.
+                        discoverSubtitleTracksFromPlayer(tracks)
+                    }
+
+                    override fun onCues(cueGroup: CueGroup) {
+                        updatePlayerSubtitlesFromCues(cueGroup)
                     }
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
@@ -6462,6 +6779,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hideUI() {
+        dismissPlayerTrackMenu()
         if (isHomeOrSettingsForeground()) {
             hidePlayerChromeFully()
             sbTimeline.isEnabled = false
@@ -7127,6 +7445,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun exitPlayerToPlaylist() {
+        dismissPlayerTrackMenu()
+        clearPlayerSubtitles()
         logDebug("NAV", "EXIT_PLAYER_TO_PLAYLIST_ENTERED")
         if (::epgPanel.isInitialized) {
             epgPanel.visibility = View.GONE
