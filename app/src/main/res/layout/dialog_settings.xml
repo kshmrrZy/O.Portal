@@ -159,6 +159,17 @@
     </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/btnRefreshServices" android:focusable="true" android:focusableInTouchMode="false"
+        android:layout_width="0dp" android:layout_height="@dimen/settings_grid_button_height" android:layout_marginTop="@dimen/home_tile_spacing"
+        android:layout_marginStart="@dimen/settings_grid_column_gap"
+        android:paddingHorizontal="@dimen/settings_grid_button_padding_h"
+        android:paddingVertical="@dimen/settings_grid_button_padding_v"
+        android:background="@drawable/bg_playlist_tile" android:gravity="center" android:orientation="horizontal"
+        app:layout_constraintTop_toBottomOf="@id/btnSleepTimerSettings" app:layout_constraintStart_toStartOf="@id/settingsGridGuide2" app:layout_constraintEnd_toEndOf="parent">
+        <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:text="Обновить сервисы" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="15sp" android:maxLines="2" android:ellipsize="none"/>
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/btnUserSettings"
         android:layout_width="0dp"
         android:layout_height="0dp"
@@ -377,6 +388,8 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:paddingHorizontal="@dimen/settings_form_padding_horizontal"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent">
@@ -388,6 +401,7 @@
 
             <ToggleButton
                 android:id="@+id/tbEpgSourceMode"
+                style="@style/Widget.AppCompat.Button.Borderless"
                 android:focusable="true"
                 android:focusableInTouchMode="false"
                 android:layout_width="0dp"
@@ -396,14 +410,19 @@
                 android:layout_marginStart="@dimen/settings_sub_action_button_gap"
                 android:background="@drawable/bg_settings_grid_card"
                 android:gravity="center"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"
+                android:minHeight="@dimen/settings_sub_action_button_height"
                 android:paddingHorizontal="4dp"
-                android:paddingVertical="4dp"
+                android:paddingVertical="0dp"
                 android:maxLines="2"
                 android:ellipsize="end"
                 android:textAllCaps="false"
                 android:textColor="#FFFFFF"
-                android:textOff="Свои источники"
-                android:textOn="Встроенные"
+                android:textOff="Встроенные"
+                android:textOn="Свои источники"
                 android:textSize="@dimen/settings_sub_panel_epg_action_text_size"/>
 
             <TextView android:id="@+id/btnSaveEpgSettings" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="@dimen/settings_sub_action_button_height" android:layout_weight="1" android:layout_marginStart="@dimen/settings_sub_action_button_gap" android:background="@drawable/bg_settings_action_green_matte" android:gravity="center" android:includeFontPadding="false" android:paddingHorizontal="4dp" android:maxLines="2" android:ellipsize="end" android:text="Сохранить" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="@dimen/settings_sub_panel_epg_action_text_size"/>
@@ -468,7 +487,7 @@
             <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="6. Обращения правообладателей" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
             <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Если вы являетесь правообладателем и полагаете, что функционирование приложения каким-либо образом затрагивает ваши права, вы можете связаться с разработчиками приложения через Telegram: t.me/oportal_bot. Разработчик готов оперативно рассматривать поступившие обращения и, при наличии технической возможности, предпринимать разумные меры реагирования, несмотря на то что сам разработчик не размещает и не контролирует контент, доступный по ссылкам, добавленным пользователями." android:textColor="#CCFFFFFF" android:textSize="16sp"/>
 
-            <TextView android:id="@+id/tvAppInfoDevelopers" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="Developments: TwojNochnojKoshmar, avtnmis" android:textColor="#FFFFFF" android:textSize="16sp"/>
+            <TextView android:id="@+id/tvAppInfoDevelopers" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="Developments: TwojNochnojKoshmar, avtnmvis" android:textColor="#FFFFFF" android:textSize="16sp"/>
             <TextView android:id="@+id/tvAppInfoFeedback" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="Feedback: t.me/@oportal_bot" android:textColor="#FFFFFF" android:textSize="16sp"/>
 
             <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="16dp" android:background="#33FFFFFF"/>
@@ -500,10 +519,10 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
         <TextView android:id="@+id/tvUserSectionState" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Имя пользователя" android:textColor="#FFFFFF" android:textSize="@dimen/settings_auth_label_text_size"/>
-            <EditText android:id="@+id/etUserLoginInline" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="6dp" android:background="@drawable/bg_login_field" android:hint="введите логин" android:paddingHorizontal="16dp" android:textColor="#FFFFFF" android:textColorHint="#666666" android:textSize="@dimen/settings_auth_field_text_size"/>
+            <EditText android:id="@+id/etUserLoginInline" android:layout_width="match_parent" android:layout_height="@dimen/settings_auth_field_height" android:layout_marginTop="6dp" android:background="@drawable/bg_login_field" android:hint="введите логин" android:paddingHorizontal="16dp" android:textColor="#FFFFFF" android:textColorHint="#666666" android:textSize="@dimen/settings_auth_field_text_size"/>
             <TextView android:id="@+id/tvUserTokenLabel" style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:text="Токен" android:textColor="#FFFFFF" android:textSize="@dimen/settings_auth_label_text_size"/>
-            <EditText android:id="@+id/etUserTokenInline" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="6dp" android:background="@drawable/bg_login_field" android:hint="введите токен с сайта o.avff.pw" android:paddingHorizontal="16dp" android:textColor="#FFFFFF" android:textColorHint="#666666" android:textSize="@dimen/settings_auth_field_text_size"/>
-            <TextView android:id="@+id/btnUserAuthInline" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="140dp" android:layout_height="43dp" android:layout_gravity="end" android:layout_marginTop="20dp" android:background="@drawable/bg_login_field" android:gravity="center" android:text="Войти" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="@dimen/settings_auth_button_text_size"/>
+            <EditText android:id="@+id/etUserTokenInline" android:layout_width="match_parent" android:layout_height="@dimen/settings_auth_field_height" android:layout_marginTop="6dp" android:background="@drawable/bg_login_field" android:hint="введите токен с сайта o.avff.pw" android:paddingHorizontal="16dp" android:textColor="#FFFFFF" android:textColorHint="#666666" android:textSize="@dimen/settings_auth_field_text_size"/>
+            <TextView android:id="@+id/btnUserAuthInline" android:focusable="true" android:focusableInTouchMode="false" style="@style/AppGolosText" android:layout_width="140dp" android:layout_height="@dimen/settings_auth_button_height" android:layout_gravity="end" android:layout_marginTop="20dp" android:background="@drawable/bg_login_field" android:gravity="center" android:text="Войти" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="@dimen/settings_auth_button_text_size"/>
         </LinearLayout>
         <LinearLayout
             android:id="@+id/userAuthorizedView"

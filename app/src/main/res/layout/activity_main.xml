@@ -26,11 +26,22 @@
         android:paddingVertical="12dp"
         android:visibility="gone">
 
-        <ImageView
-            android:id="@+id/ivReloadingIcon"
+        <FrameLayout
             android:layout_width="46dp"
-            android:layout_height="46dp"
-            android:src="@drawable/loader" />
+            android:layout_height="46dp">
+            <ImageView
+                android:id="@+id/ivReloadingRing"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="fitCenter"
+                android:src="@drawable/load1" />
+            <ImageView
+                android:id="@+id/ivReloadingIcon"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="fitCenter"
+                android:src="@drawable/load2" />
+        </FrameLayout>
 
         <LinearLayout
             android:layout_width="wrap_content"
@@ -205,6 +216,7 @@
 
 
         <LinearLayout
+            android:id="@+id/playerTopChannelInfo"
             android:layout_width="0dp"
             android:layout_weight="1"
             android:layout_height="wrap_content"
@@ -251,6 +263,7 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/playerTopTimePlate"
             android:layout_width="@dimen/player_time_width"
             android:layout_height="@dimen/player_time_height"
             android:layout_marginStart="@dimen/player_time_margin_start"
@@ -1162,7 +1175,7 @@
                 android:layout_marginTop="8dp"
                 android:gravity="center"
                 android:includeFontPadding="false"
-                android:text="нажмите на иконку авторизации в правом верхнем углу"
+                android:text="авторизуйтесь или добавьте свои плейлисты в настройках"
                 android:textColor="#B3FFFFFF"
                 android:textFontWeight="400"
                 android:textSize="@dimen/home_start_subtitle_size" />
@@ -1170,24 +1183,39 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <LinearLayout
+    <FrameLayout
         android:id="@+id/loadingPanel"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#CC000000"
-        android:gravity="center"
-        android:orientation="vertical"
+        android:background="#99000000"
+        android:clickable="true"
+        android:focusable="true"
         android:visibility="gone">
-        <ProgressBar android:layout_width="50dp" android:layout_height="50dp" android:indeterminateTint="#FFFFFF" />
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:layout_marginStart="0dp"
-            android:text="Выполняем обновление, сейчас всё будет!"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp" />
-    </LinearLayout>
+
+        <include
+            android:id="@+id/loadingSpinner"
+            layout="@layout/view_loading_spinner"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="center" />
+    </FrameLayout>
+
+    <FrameLayout
+        android:id="@+id/playerLoadingSpinner"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/transparent"
+        android:clickable="false"
+        android:focusable="false"
+        android:visibility="gone">
+
+        <include
+            android:id="@+id/playerLoadingSpinnerInner"
+            layout="@layout/view_loading_spinner"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="center" />
+    </FrameLayout>
 
     <View
         android:id="@+id/listBackgroundOverlay"
