@@ -1,21 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="56dp"
-    android:layout_height="56dp">
+    android:layout_height="56dp"
+    android:clipChildren="false"
+    android:clipToPadding="false">
 
     <ImageView
         android:id="@+id/ivLoadRing"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_gravity="center"
         android:contentDescription="@null"
-        android:scaleType="fitCenter"
-        android:src="@drawable/load2" />
+        android:scaleType="center"
+        android:src="@drawable/load2"
+        android:transformPivotX="28dp"
+        android:transformPivotY="28dp" />
 
     <ImageView
         android:id="@+id/ivLoadArc"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_gravity="center"
         android:contentDescription="@null"
-        android:scaleType="fitCenter"
-        android:src="@drawable/load1" />
+        android:scaleType="center"
+        android:src="@drawable/load1"
+        android:transformPivotX="28dp"
+        android:transformPivotY="28dp" />
 </FrameLayout>
