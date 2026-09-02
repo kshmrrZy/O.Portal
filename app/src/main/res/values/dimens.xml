@@ -76,6 +76,8 @@
     <dimen name="settings_sub_action_button_gap">8dp</dimen>
     <dimen name="settings_sub_actions_top_gap">16dp</dimen>
     <dimen name="settings_sub_panel_padding_vertical">12dp</dimen>
+    <!-- Small gap between profile card and playlist/EPG/About content -->
+    <dimen name="settings_sub_under_profile_gap">4dp</dimen>
     <dimen name="profile_card_padding_v">16dp</dimen>
     <dimen name="portal_spinner_size">40dp</dimen>
     <dimen name="settings_form_padding_horizontal">8dp</dimen>

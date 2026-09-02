@@ -264,7 +264,7 @@
         android:layout_height="0dp"
         android:layout_marginTop="0dp"
         android:orientation="vertical"
-        android:paddingTop="@dimen/settings_sub_panel_padding_vertical"
+        android:paddingTop="@dimen/settings_sub_under_profile_gap"
         android:paddingBottom="@dimen/settings_sub_panel_padding_vertical"
         android:clipChildren="false"
         android:clipToPadding="false"
@@ -342,7 +342,7 @@
         android:layout_height="0dp"
         android:layout_marginTop="0dp"
         android:orientation="vertical"
-        android:paddingTop="@dimen/settings_sub_panel_padding_vertical"
+        android:paddingTop="@dimen/settings_sub_under_profile_gap"
         android:paddingBottom="@dimen/settings_sub_panel_padding_vertical"
         android:clipChildren="false"
         android:clipToPadding="false"
@@ -448,7 +448,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingTop="@dimen/settings_sub_panel_padding_vertical"
+            android:paddingTop="@dimen/settings_sub_under_profile_gap"
             android:paddingBottom="@dimen/settings_sub_panel_padding_vertical">
 
             <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Описание" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
