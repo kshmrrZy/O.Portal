@@ -1836,7 +1836,7 @@ class MainActivity : AppCompatActivity() {
         logDebug("PLAYLIST_FLOW", "OPEN_CATEGORY_SCREEN playlist=$playlistName")
         homePanel.visibility = View.VISIBLE
         homeStartCenterBlock.visibility = View.GONE
-        topInfoBar.visibility = View.GONE
+        topInfoBag.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         showPlaylistPageHeader(showWelcome = true, showTitle = false)
@@ -3182,6 +3182,8 @@ class MainActivity : AppCompatActivity() {
             findViewById<View>(R.id.userProfileHeaderCard).setOnClickListener {
                 openProfileAuthScreen()
             }
+        } else {
+            findViewById<View>(R.id.userProfileHeaderCard).setOnClickListener(null)
         }
         configureBackButtonsForSettings("showSettingsDialog_final")
     }
@@ -5154,7 +5156,7 @@ class MainActivity : AppCompatActivity() {
         // Только назад + время, без остальных элементов плеера.
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
-        topInfoBar.visibility = View.VISIBLE
+        topInfoBag.visibility = View.VISIBLE
         findViewById<View>(R.id.liveStatusBadge)?.visibility = View.GONE
         findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.GONE
         findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
@@ -5167,7 +5169,7 @@ class MainActivity : AppCompatActivity() {
         val spinner = findViewById<View>(R.id.playerLoadingSpinner) ?: return
         spinner.visibility = View.VISIBLE
         spinner.bringToFront()
-        topInfoBar.bringToFront()
+        topInfoBag.bringToFront()
         startCompositeSpinner(findViewById(R.id.playerLoadingSpinnerInner))
     }
 
@@ -6117,14 +6119,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun showUI(preferFocus: View? = null) {
         if (isSettingsModalVisible) {
-            topInfoBar.visibility = View.GONE
+            topInfoBag.visibility = View.GONE
             topGradientOverlay.visibility = View.GONE
             controlsPanel.visibility = View.GONE
             return
         }
         // Пока открыт EPG — панель управления и верхний бар не показываем.
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
-            topInfoBar.visibility = View.GONE
+            topInfoBag.visibility = View.GONE
             topGradientOverlay.visibility = View.GONE
             controlsPanel.visibility = View.GONE
             handler.removeCallbacks(hideUiRunnable)
@@ -6136,7 +6138,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         hidePlayerLoadingUi()
-        topInfoBar.visibility = View.VISIBLE
+        topInfoBag.visibility = View.VISIBLE
         topGradientOverlay.visibility = View.VISIBLE
         controlsPanel.visibility = View.VISIBLE
         findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
@@ -6181,7 +6183,7 @@ class MainActivity : AppCompatActivity() {
             showPlayerLoadingUi()
             return
         }
-        topInfoBar.visibility = View.GONE
+        topInfoBag.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         sbTimeline.isEnabled = false
