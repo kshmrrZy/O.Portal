@@ -884,8 +884,7 @@
             android:visibility="gone"
             android:background="@drawable/bg_settings_unified_panel"
             android:clipToOutline="true"
-            android:paddingTop="@dimen/settings_main_panel_padding_v"
-            android:paddingBottom="@dimen/settings_main_panel_padding_v"
+            android:paddingBottom="12dp"
             app:layout_constraintTop_toBottomOf="@id/tvHomeWelcome"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
             app:layout_constraintEnd_toEndOf="@id/ivHomePower"
@@ -1076,14 +1075,13 @@
             android:layout_marginStart="@dimen/home_edge_margin"
             android:layout_marginEnd="@dimen/home_edge_margin" />
 
-        <com.twnkos.oportal.ContentAwareScrollView
+        <ScrollView
             android:id="@+id/homePlaylistTilesPanel"
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:visibility="gone"
             android:scrollbars="none"
-            android:fillViewport="true"
-            android:overScrollMode="never"
+            android:overScrollMode="ifContentScrolls"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             android:layout_marginStart="@dimen/home_edge_margin"
@@ -1091,7 +1089,8 @@
             app:layout_constraintTop_toBottomOf="@id/tvPlaylistPageSubtitle"
             app:layout_constraintBottom_toBottomOf="parent"
             android:layout_marginTop="@dimen/home_grid_margin_top"
-            android:layout_marginBottom="@dimen/home_bottom_margin">
+            android:layout_marginBottom="@dimen/home_bottom_margin"
+            android:paddingBottom="4dp">
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -1102,7 +1101,6 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:clipToPadding="false"
-                    android:nestedScrollingEnabled="false"
                     android:overScrollMode="never"
                     android:scrollbars="none" />
 
@@ -1140,7 +1138,7 @@
                     </FrameLayout>
                 </LinearLayout>
             </LinearLayout>
-        </com.twnkos.oportal.ContentAwareScrollView>
+        </ScrollView>
 
         <GridView
             android:id="@+id/gvHomeChannelList"
@@ -1157,9 +1155,9 @@
             android:clipToPadding="false"
             android:paddingStart="0dp"
             android:paddingEnd="0dp"
-            android:paddingTop="0dp"
-            android:paddingBottom="0dp"
-            android:overScrollMode="never"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:overScrollMode="ifContentScrolls"
             android:scrollbars="none"
             android:listSelector="@drawable/grid_item_selector"
             android:drawSelectorOnTop="true"
