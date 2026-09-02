@@ -4,7 +4,8 @@ import android.content.Context
 import android.content.res.Configuration
 import android.content.res.ColorStateList
 import android.widget.PopupWindow
-import androidx.media3.common.CueGroup
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.Typeface
@@ -5888,7 +5889,7 @@ class MainActivity : AppCompatActivity() {
             clearPlayerSubtitles()
             return
         }
-        val text = cueGroup.cues.mapNotNull { cue ->
+        val text = cueGroup.cues.mapNotNull { cue: Cue ->
             cue.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
         }.joinToString("\n")
         if (text.isBlank()) {
