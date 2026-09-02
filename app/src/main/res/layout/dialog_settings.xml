@@ -179,6 +179,8 @@
         <TextView style="@style/AppGolosText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:text="Выбор страницы при открытии приложения" android:textColor="#FFFFFF" android:textFontWeight="500" android:textSize="14sp"/>
         <ToggleButton
             android:id="@+id/tbStartMode"
+            android:focusable="true"
+            android:focusableInTouchMode="false"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
             android:minWidth="190dp"
@@ -194,6 +196,7 @@
         android:id="@+id/settingsMainSpacer"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:layout_marginTop="@dimen/settings_start_mode_margin_bottom"
         app:layout_constraintTop_toBottomOf="@id/itemStartMode"
         app:layout_constraintBottom_toTopOf="@id/btnResetSettings"
         app:layout_constraintStart_toStartOf="parent"
