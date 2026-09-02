@@ -1306,6 +1306,9 @@ class MainActivity : AppCompatActivity() {
         val authorized = isAuthorizedUser()
         ivHomeProfile.visibility = if (authorized) View.GONE else View.VISIBLE
         ivHomeSettings.visibility = View.VISIBLE
+        if (authorized) {
+            homeActionIndex = 0
+        }
         if (!authorized) {
             ivHomeProfile.setImageResource(R.drawable.profile)
             ivHomeProfile.imageTintList = ColorStateList.valueOf(Color.WHITE)
