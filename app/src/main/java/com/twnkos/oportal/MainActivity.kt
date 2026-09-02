@@ -863,14 +863,14 @@ class MainActivity : AppCompatActivity() {
             findViewById<TextView>(id).setTextSize(TypedValue.COMPLEX_UNIT_PX, baseSp * scale * resources.displayMetrics.density)
         }
 
-        // Карточка профиля — равные вертикальные отступы
+        // Карточка профиля — равные вертикальные отступы, без minHeight-перекоса
         (findViewById<View>(R.id.userProfileHeaderCard).layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
         }
         val profileCard = findViewById<View>(R.id.userProfileHeaderCard)
         val profilePadV = resources.getDimensionPixelSize(R.dimen.profile_card_padding_v)
+        profileCard.minimumHeight = 0
         profileCard.setPadding(profileCard.paddingLeft, profilePadV, profileCard.paddingRight, profilePadV)
-        profileCard.minimumHeight = scalePx(112f, scale)
         height(R.id.profileAvatarFrame, 84f)
         (findViewById<View>(R.id.profileAvatarFrame).layoutParams as? ViewGroup.LayoutParams)?.let { lp ->
             lp.width = scalePx(84f, scale)
@@ -1182,7 +1182,7 @@ class MainActivity : AppCompatActivity() {
             seekStatusHoldUntilMs = System.currentTimeMillis() + 2200L
             handler.removeCallbacks(applySeekDeltaRunnable)
             handler.postDelayed(applySeekDeltaRunnable, 900L)
-            showTransientSeekSpinner()
+            showSeekSpinner()
             showUI(preferFocus = btnBackLeft)
         }
         btnBackRight.setOnClickListener {
@@ -1197,7 +1197,7 @@ class MainActivity : AppCompatActivity() {
             seekStatusHoldUntilMs = System.currentTimeMillis() + 2200L
             handler.removeCallbacks(applySeekDeltaRunnable)
             handler.postDelayed(applySeekDeltaRunnable, 900L)
-            showTransientSeekSpinner()
+            showSeekSpinner()
             showUI(preferFocus = btnBackRight)
         }
         btnEpgPlayer.setOnClickListener {
@@ -2951,6 +2951,11 @@ class MainActivity : AppCompatActivity() {
                 lp.bottomToBottom = ConstraintLayout.LayoutParams.UNSET
                 tvNickname.layoutParams = lp
             }
+            (findViewById<View>(R.id.tvProfileTokenLabel).layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+                lp.topToBottom = R.id.tvProfileNickname
+                lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+                findViewById<View>(R.id.tvProfileTokenLabel).layoutParams = lp
+            }
             tvTokenValue.setOnLongClickListener {
                 copyTextToClipboard("token", token, "Токен скопирован")
                 true
@@ -2962,8 +2967,13 @@ class MainActivity : AppCompatActivity() {
             tokenRowViews.forEach { it.visibility = View.GONE }
             (tvNickname.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
                 lp.bottomToTop = ConstraintLayout.LayoutParams.UNSET
-                lp.bottomToBottom = R.id.profileAvatarFrame
+                lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
                 tvNickname.layoutParams = lp
+            }
+            (findViewById<View>(R.id.tvProfileTokenLabel).layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+                lp.topToBottom = ConstraintLayout.LayoutParams.UNSET
+                lp.bottomToBottom = ConstraintLayout.LayoutParams.UNSET
+                findViewById<View>(R.id.tvProfileTokenLabel).layoutParams = lp
             }
             tvTokenValue.setOnLongClickListener(null)
             tvTokenValue.isLongClickable = false
@@ -3067,7 +3077,8 @@ class MainActivity : AppCompatActivity() {
             }
             homePanel.setBackgroundColor(Color.TRANSPARENT)
             homeSettingsScreen.setBackgroundResource(R.drawable.bg_player_settings_modal)
-            homeSettingsScreen.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
+            val inset = resources.getDimensionPixelSize(R.dimen.settings_content_padding_v)
+            homeSettingsScreen.setPadding(inset, inset, inset, inset)
             tunePlayerSettingsRows()
         } else {
             (homeSettingsScreen.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
@@ -3086,7 +3097,8 @@ class MainActivity : AppCompatActivity() {
             }
             homePanel.setBackgroundResource(R.drawable.bg_home_screen)
             homeSettingsScreen.setBackgroundColor(Color.TRANSPARENT)
-            homeSettingsScreen.setPadding(dpToPx(12), dpToPx(4), dpToPx(12), dpToPx(8))
+            val inset = resources.getDimensionPixelSize(R.dimen.settings_content_padding_v)
+            homeSettingsScreen.setPadding(0, inset, 0, inset)
             restoreDefaultSettingsRows()
         }
         homePanel.visibility = View.VISIBLE
@@ -5210,20 +5222,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val spinnerAnimators = mutableMapOf<Int, ObjectAnimator>()
+    private var seekSpinnerActive = false
+    private var seekSpinnerStartedAtMs = 0L
 
     private fun showReloadingStatus(title: String, subtitle: String, isError: Boolean = false) {
         val ring = findViewById<ImageView>(R.id.ivReloadingRing)
         if (isError) {
             ring?.visibility = View.GONE
-            stopSpinnerOnImageView(ivReloadingIcon)
+            stopSpinnerOnView(ivReloadingIcon)
             ivReloadingIcon.setImageResource(R.drawable.alert)
         } else {
-            ring?.visibility = View.VISIBLE
-            ring?.setImageResource(R.drawable.load2)
-            ring?.rotation = 0f
-            ring?.let { stopSpinnerOnImageView(it) }
-            ivReloadingIcon.setImageResource(R.drawable.load1)
-            startSpinnerOnImageView(ivReloadingIcon)
+            // Use portal CSS-style spinner in the icon slot; hide static ring asset.
+            ring?.visibility = View.GONE
+            ivReloadingIcon.setImageDrawable(null)
+            ivReloadingIcon.setBackgroundResource(R.drawable.bg_portal_spinner)
+            startSpinnerOnView(ivReloadingIcon, durationMs = 700L)
         }
         tvReloadingTitle.text = title
         tvReloadingSubtitle.text = subtitle
@@ -5233,24 +5246,24 @@ class MainActivity : AppCompatActivity() {
         tvReloadingStatus.parent?.let { (it as? View)?.requestLayout() }
     }
 
-    private fun startSpinnerOnImageView(imageView: ImageView) {
-        val key = System.identityHashCode(imageView)
+    private fun startSpinnerOnView(view: View, durationMs: Long = 700L) {
+        val key = System.identityHashCode(view)
         val existing = spinnerAnimators[key]
         if (existing?.isRunning == true) return
-        stopSpinnerOnImageView(imageView)
+        stopSpinnerOnView(view)
         fun startNow() {
-            val w = imageView.width.takeIf { it > 0 } ?: imageView.measuredWidth
-            val h = imageView.height.takeIf { it > 0 } ?: imageView.measuredHeight
+            val w = view.width.takeIf { it > 0 } ?: view.measuredWidth
+            val h = view.height.takeIf { it > 0 } ?: view.measuredHeight
             if (w <= 0 || h <= 0) {
-                imageView.post { startNow() }
+                view.post { startNow() }
                 return
             }
-            imageView.pivotX = w * 0.5f
-            imageView.pivotY = h * 0.5f
-            imageView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
-            val from = imageView.rotation
-            val animator = ObjectAnimator.ofFloat(imageView, View.ROTATION, from, from + 360f).apply {
-                duration = 1000L
+            view.pivotX = w * 0.5f
+            view.pivotY = h * 0.5f
+            view.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            val from = view.rotation
+            val animator = ObjectAnimator.ofFloat(view, View.ROTATION, from, from + 360f).apply {
+                duration = durationMs
                 repeatCount = ValueAnimator.INFINITE
                 repeatMode = ValueAnimator.RESTART
                 interpolator = LinearInterpolator()
@@ -5258,42 +5271,31 @@ class MainActivity : AppCompatActivity() {
             }
             spinnerAnimators[key] = animator
         }
-        imageView.post { startNow() }
+        view.post { startNow() }
     }
 
-    private fun stopSpinnerOnImageView(imageView: ImageView) {
-        spinnerAnimators.remove(System.identityHashCode(imageView))?.let {
+    private fun stopSpinnerOnView(view: View) {
+        spinnerAnimators.remove(System.identityHashCode(view))?.let {
             it.removeAllListeners()
             it.cancel()
         }
-        imageView.animate().cancel()
-        imageView.clearAnimation()
-        imageView.setLayerType(View.LAYER_TYPE_NONE, null)
+        view.animate().cancel()
+        view.clearAnimation()
+        view.setLayerType(View.LAYER_TYPE_NONE, null)
     }
 
     private fun startCompositeSpinner(root: View?) {
         if (root == null) return
-        val arc = root.findViewById<ImageView>(R.id.ivLoadArc) ?: return
-        val ring = root.findViewById<ImageView>(R.id.ivLoadRing)
-        // load2 (ring) stays still; only load1 (white arc) rotates.
-        ring?.setImageResource(R.drawable.load2)
-        ring?.scaleType = ImageView.ScaleType.CENTER
-        ring?.let { stopSpinnerOnImageView(it) }
-        ring?.rotation = 0f
-        ring?.animate()?.cancel()
-        ring?.clearAnimation()
-        arc.setImageResource(R.drawable.load1)
-        arc.scaleType = ImageView.ScaleType.CENTER
-        startSpinnerOnImageView(arc)
+        val spinner = root.findViewById<View>(R.id.ivLoadArc) ?: root
+        spinner.setBackgroundResource(R.drawable.bg_portal_spinner)
+        startSpinnerOnView(spinner, durationMs = 700L)
     }
 
     private fun stopCompositeSpinner(root: View?) {
         if (root == null) return
-        val arc = root.findViewById<ImageView>(R.id.ivLoadArc)
-        val ring = root.findViewById<ImageView>(R.id.ivLoadRing)
-        arc?.let { stopSpinnerOnImageView(it) }
-        ring?.let { stopSpinnerOnImageView(it) }
-        ring?.rotation = 0f
+        val spinner = root.findViewById<View>(R.id.ivLoadArc) ?: root
+        stopSpinnerOnView(spinner)
+        spinner.rotation = 0f
     }
 
     private fun showAppLoadingSpinner() {
@@ -5311,17 +5313,33 @@ class MainActivity : AppCompatActivity() {
 
     private var hideSeekSpinnerRunnable: Runnable? = null
 
-    private fun showTransientSeekSpinner(minVisibleMs: Long = 280L) {
+    /** Spinner for seek/rewind freeze — stays until playback leaves BUFFERING. */
+    private fun showSeekSpinner() {
         if (homePanel.visibility == View.VISIBLE) return
+        seekSpinnerActive = true
+        seekSpinnerStartedAtMs = System.currentTimeMillis()
+        hideSeekSpinnerRunnable?.let { handler.removeCallbacks(it) }
         showAppLoadingSpinner()
-        // Make loading panel non-blocking for seek so controls stay usable.
         findViewById<View>(R.id.loadingPanel)?.apply {
             isClickable = false
             isFocusable = false
             setBackgroundColor(Color.TRANSPARENT)
         }
+    }
+
+    private fun hideSeekSpinnerIfReady(minVisibleMs: Long = 280L) {
+        if (!seekSpinnerActive) return
+        val player = mediaPlayer
+        if (player != null && player.playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
+            return
+        }
+        val elapsed = System.currentTimeMillis() - seekSpinnerStartedAtMs
+        val delay = (minVisibleMs - elapsed).coerceAtLeast(0L)
         hideSeekSpinnerRunnable?.let { handler.removeCallbacks(it) }
         val hide = Runnable {
+            if (!seekSpinnerActive) return@Runnable
+            if (mediaPlayer?.playbackState == androidx.media3.common.Player.STATE_BUFFERING) return@Runnable
+            seekSpinnerActive = false
             hideAppLoadingSpinner()
             findViewById<View>(R.id.loadingPanel)?.apply {
                 isClickable = true
@@ -5330,7 +5348,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
         hideSeekSpinnerRunnable = hide
-        handler.postDelayed(hide, minVisibleMs)
+        if (delay == 0L) hide.run() else handler.postDelayed(hide, delay)
+    }
+
+    private fun showTransientSeekSpinner(minVisibleMs: Long = 280L) {
+        showSeekSpinner()
     }
 
     private fun showPlayerLoadingUi() {
@@ -5710,6 +5732,7 @@ class MainActivity : AppCompatActivity() {
                         onPlaybackRecoverySucceeded()
                         handler.removeCallbacks(startupSlowStreamRunnable)
                         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+                        hideSeekSpinnerIfReady(0L)
                         hidePlayerLoadingUi()
                         if (homePanel.visibility != View.VISIBLE && !isPlayerOverlayOpen()) {
                             showUI()
@@ -5744,6 +5767,13 @@ class MainActivity : AppCompatActivity() {
                         logDebug("PLAYER_STATE", "state=$state isLoading=${player.isLoading} playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying} suppression=${player.playbackSuppressionReason} playerError=${player.playerError?.message} videoSize=${player.videoSize.width}x${player.videoSize.height} url=$lastRequestedPlaybackUrl")
                         if (playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
                             logMemoryStats("state_buffering")
+                            if (seekSpinnerActive) showSeekSpinner()
+                        } else if (
+                            playbackState == androidx.media3.common.Player.STATE_READY ||
+                            playbackState == androidx.media3.common.Player.STATE_ENDED ||
+                            playbackState == androidx.media3.common.Player.STATE_IDLE
+                        ) {
+                            hideSeekSpinnerIfReady()
                         }
                     }
 
@@ -6904,7 +6934,7 @@ class MainActivity : AppCompatActivity() {
         }
         val targetAbs = currentAbs + deltaSec * 1000L
         seekToAbsoluteTime(targetAbs)
-        showTransientSeekSpinner()
+        showSeekSpinner()
         showUI(preferFocus = if (deltaSec < 0) btnBackLeft else btnBackRight)
     }
 
@@ -6958,6 +6988,7 @@ class MainActivity : AppCompatActivity() {
         val p = currentArchiveProgram ?: return
         val previous = mediaPlayer?.currentPosition ?: 0L
         val offset = (targetProgramTimeMs - p.start).coerceAtLeast(0L)
+        showSeekSpinner()
         mediaPlayer?.seekTo(offset)
         val deltaMin = kotlin.math.abs(((offset - previous) / 60_000L).toInt())
         tvEpg.text = "Перематываем передачу на ${formatMinutesRu(deltaMin)}"
@@ -6965,6 +6996,8 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(restoreEpgRunnable)
         handler.postDelayed(restoreEpgRunnable, 2200L)
         updateTimelineUi()
+        // If seek is already ready (no buffer stall), still hide after a short beat.
+        handler.postDelayed({ hideSeekSpinnerIfReady() }, 300L)
     }
 
     private fun startEpgTicker() {
