@@ -274,40 +274,31 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <ScrollView
+        <LinearLayout
+            android:id="@+id/playlistSettingsForm"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:fillViewport="true"
-            android:overScrollMode="ifContentScrolls"
-            android:scrollbars="none"
-            android:clipToPadding="false">
-
-            <LinearLayout
-                android:id="@+id/playlistSettingsForm"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingHorizontal="@dimen/settings_form_padding_horizontal">
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="@dimen/settings_form_padding_horizontal">
 
             <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:includeFontPadding="false" android:text="Раздел для настройки плейлистов" android:textColor="#FFFFFF" android:textSize="@dimen/settings_sub_panel_title_size" android:textStyle="bold"/>
             <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:includeFontPadding="false" android:text="поддерживается не более 3 источников формата M3U/M3U8" android:textColor="#99FFFFFF" android:textSize="@dimen/settings_sub_panel_subtitle_size"/>
 
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center_vertical" android:orientation="horizontal">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="center_vertical" android:orientation="horizontal">
                 <EditText android:id="@+id/etPlaylistUrl1" android:layout_width="0dp" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_weight="1" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="@dimen/settings_sub_panel_field_text_size"/>
                 <FrameLayout android:id="@+id/ivPlaylistToggle1" android:focusable="true" android:focusableInTouchMode="false" android:layout_width="@dimen/settings_sub_panel_field_height" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_marginStart="8dp" android:background="@drawable/bg_epg_url_field">
                     <View android:id="@+id/dotPlaylistActive1" android:layout_width="10dp" android:layout_height="10dp" android:layout_gravity="center" android:background="@drawable/bg_playlist_active_dot" android:visibility="visible"/>
                 </FrameLayout>
             </LinearLayout>
 
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center_vertical" android:orientation="horizontal">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="center_vertical" android:orientation="horizontal">
                 <EditText android:id="@+id/etPlaylistUrl2" android:layout_width="0dp" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_weight="1" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="@dimen/settings_sub_panel_field_text_size"/>
                 <FrameLayout android:id="@+id/ivPlaylistToggle2" android:focusable="true" android:focusableInTouchMode="false" android:layout_width="@dimen/settings_sub_panel_field_height" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_marginStart="8dp" android:background="@drawable/bg_epg_url_field">
                     <View android:id="@+id/dotPlaylistActive2" android:layout_width="10dp" android:layout_height="10dp" android:layout_gravity="center" android:background="@drawable/bg_playlist_active_dot" android:visibility="gone"/>
                 </FrameLayout>
             </LinearLayout>
 
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:layout_marginBottom="0dp" android:gravity="center_vertical" android:orientation="horizontal">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="center_vertical" android:orientation="horizontal">
                 <EditText android:id="@+id/etPlaylistUrl3" android:layout_width="0dp" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_weight="1" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="@dimen/settings_sub_panel_field_text_size"/>
                 <FrameLayout android:id="@+id/ivPlaylistToggle3" android:focusable="true" android:focusableInTouchMode="false" android:layout_width="@dimen/settings_sub_panel_field_height" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_marginStart="8dp" android:background="@drawable/bg_epg_url_field">
                     <View android:id="@+id/dotPlaylistActive3" android:layout_width="10dp" android:layout_height="10dp" android:layout_gravity="center" android:background="@drawable/bg_playlist_active_dot" android:visibility="gone"/>
@@ -318,8 +309,13 @@
             <EditText android:id="@+id/etPlaylistName2" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone"/>
             <EditText android:id="@+id/etPlaylistName3" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone"/>
 
-            </LinearLayout>
-        </ScrollView>
+        </LinearLayout>
+
+        <Space
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:minHeight="@dimen/settings_sub_actions_top_gap" />
 
         <LinearLayout
             android:id="@+id/playlistSettingsActions"
@@ -356,37 +352,33 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <ScrollView
+        <LinearLayout
+            android:id="@+id/epgSettingsForm"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:fillViewport="true"
-            android:overScrollMode="ifContentScrolls"
-            android:scrollbars="none"
-            android:clipToPadding="false">
-
-            <LinearLayout
-                android:id="@+id/epgSettingsForm"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingHorizontal="@dimen/settings_form_padding_horizontal">
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="@dimen/settings_form_padding_horizontal">
 
             <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:includeFontPadding="false" android:text="Раздел для настройки EPG" android:textColor="#FFFFFF" android:textSize="@dimen/settings_sub_panel_title_size" android:textStyle="bold"/>
             <TextView android:id="@+id/tvEpgScreenSubtitle" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:includeFontPadding="false" android:text="поддерживается не более 3 источников формата XML" android:textColor="#99FFFFFF" android:textSize="@dimen/settings_sub_panel_subtitle_size"/>
             <TextView android:id="@+id/tvEpgSourceHint" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone"/>
 
-            <EditText android:id="@+id/etEpgUrl1" android:layout_width="match_parent" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_marginTop="8dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="@dimen/settings_sub_panel_field_text_size"/>
-            <EditText android:id="@+id/etEpgUrl2" android:layout_width="match_parent" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_marginTop="8dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="@dimen/settings_sub_panel_field_text_size"/>
-            <EditText android:id="@+id/etEpgUrl3" android:layout_width="match_parent" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_marginTop="8dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="@dimen/settings_sub_panel_field_text_size"/>
+            <EditText android:id="@+id/etEpgUrl1" android:layout_width="match_parent" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_marginTop="12dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="@dimen/settings_sub_panel_field_text_size"/>
+            <EditText android:id="@+id/etEpgUrl2" android:layout_width="match_parent" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_marginTop="12dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="@dimen/settings_sub_panel_field_text_size"/>
+            <EditText android:id="@+id/etEpgUrl3" android:layout_width="match_parent" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_marginTop="12dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="@dimen/settings_sub_panel_field_text_size"/>
 
             <ImageView android:id="@+id/ivEpgToggle1" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:src="@drawable/toggleright"/>
             <ImageView android:id="@+id/ivEpgToggle2" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:src="@drawable/toggleright"/>
             <ImageView android:id="@+id/ivEpgToggle3" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:src="@drawable/toggleright"/>
             <ToggleButton android:id="@+id/tbEpgRefreshInterval" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:textOff="1 день" android:textOn="1 день"/>
 
-            </LinearLayout>
-        </ScrollView>
+        </LinearLayout>
+
+        <Space
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:minHeight="@dimen/settings_sub_actions_top_gap" />
 
         <LinearLayout
             android:id="@+id/epgSettingsActions"

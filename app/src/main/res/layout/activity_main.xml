@@ -956,21 +956,7 @@
                 android:textSize="@dimen/profile_nickname_size"
                 app:layout_constraintStart_toStartOf="@id/tvProfileName"
                 app:layout_constraintTop_toBottomOf="@id/tvProfileName"
-                app:layout_constraintBottom_toTopOf="@id/tvProfileTokenLabel" />
-
-            <TextView
-                android:id="@+id/tvProfileTokenLabel"
-                style="@style/AppGolosText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:includeFontPadding="false"
-                android:text="Токен:"
-                android:textColor="#FFFFFF"
-                android:textSize="@dimen/profile_token_label_size"
-                app:layout_constraintStart_toStartOf="@id/tvProfileName"
-                app:layout_constraintTop_toBottomOf="@id/tvProfileNickname"
-                app:layout_constraintBottom_toBottomOf="parent" />
+                app:layout_constraintBottom_toTopOf="@id/tvProfileTokenValue" />
 
             <TextView
                 android:id="@+id/tvProfileTokenValue"
@@ -978,6 +964,7 @@
                 android:layout_width="0dp"
                 android:layout_height="@dimen/profile_token_value_height"
                 android:layout_marginStart="8dp"
+                android:layout_marginTop="8dp"
                 android:layout_marginEnd="8dp"
                 android:background="@drawable/bg_settings_row"
                 android:gravity="center_vertical"
@@ -989,8 +976,21 @@
                 android:textSize="@dimen/profile_token_value_size"
                 app:layout_constraintStart_toEndOf="@id/tvProfileTokenLabel"
                 app:layout_constraintEnd_toStartOf="@id/btnProfileChangeToken"
-                app:layout_constraintTop_toTopOf="@id/tvProfileTokenLabel"
-                app:layout_constraintBottom_toBottomOf="@id/tvProfileTokenLabel" />
+                app:layout_constraintTop_toBottomOf="@id/tvProfileNickname"
+                app:layout_constraintBottom_toBottomOf="parent" />
+
+            <TextView
+                android:id="@+id/tvProfileTokenLabel"
+                style="@style/AppGolosText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:text="Токен:"
+                android:textColor="#FFFFFF"
+                android:textSize="@dimen/profile_token_label_size"
+                app:layout_constraintStart_toStartOf="@id/tvProfileName"
+                app:layout_constraintTop_toTopOf="@id/tvProfileTokenValue"
+                app:layout_constraintBottom_toBottomOf="@id/tvProfileTokenValue" />
 
             <ImageView
                 android:id="@+id/btnProfileChangeToken"
