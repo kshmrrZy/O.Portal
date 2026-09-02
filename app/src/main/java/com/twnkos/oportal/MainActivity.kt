@@ -5150,7 +5150,17 @@ class MainActivity : AppCompatActivity() {
                 ch.url
             }
             if (!isQualityOverrideForThisChannel) {
-                fetchStreamQualityInfo(ch.url)
+                val channelBase = ch.url.substringBefore('?')
+                val masterBase = masterStreamUrl?.substringBefore('?')
+                val needFetch =
+                    (availableQualities.isEmpty() && availableSubtitleTracks.isEmpty()) ||
+                        masterBase == null ||
+                        masterBase != channelBase
+                if (needFetch) {
+                    fetchStreamQualityInfo(ch.url)
+                } else {
+                    updateCcHdButtons()
+                }
             }
             startupPlaybackUrlLock = lastRequestedPlaybackUrl
             videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
