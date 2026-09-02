@@ -2806,6 +2806,24 @@ class MainActivity : AppCompatActivity() {
             isFocusable = false
             isFocusableInTouchMode = false
         }
+        // Pull playlist/EPG/About content closer under the profile card.
+        applySettingsSubScreenContentInsets(tightUnderProfile = true)
+    }
+
+    /** Tight top inset for sub-screens under the profile; restore normal insets on the main grid. */
+    private fun applySettingsSubScreenContentInsets(tightUnderProfile: Boolean) {
+        if (settingsOpenedFromPlayer) {
+            val inset = resources.getDimensionPixelSize(R.dimen.settings_content_padding_v)
+            homeSettingsScreen.setPadding(inset, inset, inset, inset)
+            return
+        }
+        val bottom = resources.getDimensionPixelSize(R.dimen.settings_content_padding_v)
+        val top = if (tightUnderProfile) {
+            0
+        } else {
+            bottom
+        }
+        homeSettingsScreen.setPadding(0, top, 0, bottom)
     }
 
     private fun restoreSettingsProfileHeaderInteractivity() {
@@ -2823,6 +2841,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
+        applySettingsSubScreenContentInsets(tightUnderProfile = false)
         val settingsRowIds = intArrayOf(
             R.id.btnPlaylistSettings, R.id.btnEpgSelect, R.id.btnSleepTimerSettings,
             R.id.btnAdvancedSettings, R.id.btnAppInfo, R.id.btnRefreshServices, R.id.itemStartMode,
