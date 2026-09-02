@@ -34,13 +34,13 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:scaleType="fitCenter"
-                android:src="@drawable/load1" />
+                android:src="@drawable/load2" />
             <ImageView
                 android:id="@+id/ivReloadingIcon"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:scaleType="fitCenter"
-                android:src="@drawable/load2" />
+                android:src="@drawable/load1" />
         </FrameLayout>
 
         <LinearLayout
@@ -805,11 +805,27 @@
             android:textColor="#FFFFFF"
             android:textFontWeight="500"
             android:textSize="@dimen/home_clock_size"
-            app:layout_constraintEnd_toStartOf="@id/ivHomeSettings"
+            app:layout_constraintEnd_toStartOf="@id/ivHomeProfile"
             app:layout_constraintTop_toTopOf="@id/tvHomeAppTitle"
             app:layout_constraintBottom_toBottomOf="@id/tvHomeAppTitle"
             android:layout_marginEnd="@dimen/home_header_clock_gap"
             tools:text="21:00" />
+
+        <ImageView
+            android:id="@+id/ivHomeProfile"
+            android:layout_width="@dimen/home_header_icon_size"
+            android:layout_height="@dimen/home_header_icon_size"
+            android:background="@drawable/bg_home_icon_selector"
+            android:clickable="true"
+            android:contentDescription="Авторизация"
+            android:focusable="false"
+            android:scaleType="fitCenter"
+            android:src="@drawable/profile"
+            android:tint="#FFFFFF"
+            app:layout_constraintEnd_toStartOf="@id/ivHomeSettings"
+            app:layout_constraintTop_toTopOf="@id/tvHomeAppTitle"
+            app:layout_constraintBottom_toBottomOf="@id/tvHomeAppTitle"
+            android:layout_marginEnd="@dimen/home_header_icon_gap" />
 
         <ImageView
             android:id="@+id/ivHomeSettings"
@@ -881,6 +897,9 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="0dp"
             android:background="@drawable/bg_profile_header_card"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:minHeight="96dp"
             android:paddingHorizontal="16dp"
             android:paddingTop="14dp"
             android:paddingBottom="12dp"
@@ -895,8 +914,8 @@
                 android:layout_height="@dimen/profile_avatar_size"
                 android:background="@drawable/bg_profile_avatar"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="@id/tvProfileName"
-                app:layout_constraintBottom_toBottomOf="@id/tvProfileTokenValue">
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent">
 
                 <ImageView
                     android:id="@+id/ivProfileAvatar"
@@ -918,7 +937,9 @@
                 android:textSize="@dimen/profile_name_size"
                 android:textStyle="bold"
                 app:layout_constraintStart_toEndOf="@id/profileAvatarFrame"
-                app:layout_constraintTop_toTopOf="@id/profileAvatarFrame" />
+                app:layout_constraintTop_toTopOf="@id/profileAvatarFrame"
+                app:layout_constraintVertical_chainStyle="packed"
+                app:layout_constraintBottom_toTopOf="@id/tvProfileNickname" />
 
             <TextView
                 android:id="@+id/tvProfileNickname"
@@ -930,7 +951,8 @@
                 android:textColor="#80FFFFFF"
                 android:textSize="@dimen/profile_nickname_size"
                 app:layout_constraintStart_toStartOf="@id/tvProfileName"
-                app:layout_constraintTop_toBottomOf="@id/tvProfileName" />
+                app:layout_constraintTop_toBottomOf="@id/tvProfileName"
+                app:layout_constraintBottom_toTopOf="@id/tvProfileTokenLabel" />
 
             <TextView
                 android:id="@+id/tvProfileTokenLabel"
@@ -942,7 +964,8 @@
                 android:textColor="#FFFFFF"
                 android:textSize="@dimen/profile_token_label_size"
                 app:layout_constraintStart_toStartOf="@id/tvProfileName"
-                app:layout_constraintTop_toBottomOf="@id/tvProfileNickname" />
+                app:layout_constraintTop_toBottomOf="@id/tvProfileNickname"
+                app:layout_constraintBottom_toBottomOf="@id/profileAvatarFrame" />
 
             <TextView
                 android:id="@+id/tvProfileTokenValue"
