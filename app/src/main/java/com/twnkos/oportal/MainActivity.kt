@@ -863,11 +863,14 @@ class MainActivity : AppCompatActivity() {
             findViewById<TextView>(id).setTextSize(TypedValue.COMPLEX_UNIT_PX, baseSp * scale * resources.displayMetrics.density)
         }
 
-        // Карточка профиля
+        // Карточка профиля — равные вертикальные отступы
         (findViewById<View>(R.id.userProfileHeaderCard).layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
             lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
         }
-        findViewById<View>(R.id.userProfileHeaderCard).minimumHeight = scalePx(112f, scale)
+        val profileCard = findViewById<View>(R.id.userProfileHeaderCard)
+        val profilePadV = resources.getDimensionPixelSize(R.dimen.profile_card_padding_v)
+        profileCard.setPadding(profileCard.paddingLeft, profilePadV, profileCard.paddingRight, profilePadV)
+        profileCard.minimumHeight = scalePx(112f, scale)
         height(R.id.profileAvatarFrame, 84f)
         (findViewById<View>(R.id.profileAvatarFrame).layoutParams as? ViewGroup.LayoutParams)?.let { lp ->
             lp.width = scalePx(84f, scale)
@@ -1387,7 +1390,14 @@ class MainActivity : AppCompatActivity() {
             val spanSize = lookup?.getSpanSize(position) ?: 1
             outRect.left = 0
             outRect.right = if (spanIndex + spanSize >= spanCount) 0 else spacingPx
-            outRect.bottom = spacingPx
+            val itemCount = parent.adapter?.itemCount ?: 0
+            val lastRowStart = when {
+                itemCount <= 0 || columns <= 0 -> 0
+                itemCount % columns == 0 -> itemCount - columns
+                else -> itemCount - (itemCount % columns)
+            }
+            // No bottom gap on the last row — otherwise a fitting grid still scrolls a few dp.
+            outRect.bottom = if (position >= lastRowStart) 0 else spacingPx
         }
     }
 
@@ -1632,6 +1642,9 @@ class MainActivity : AppCompatActivity() {
         }
         val contentScale = computeContentDpScale()
         setupHomeBottomActionTiles(contentScale, HOME_BOTTOM_TILE_TEXT_SP)
+        (homePlaylistTilesPanel as? ContentAwareScrollView)?.post {
+            (homePlaylistTilesPanel as? ContentAwareScrollView)?.updateScrollEnabled()
+        }
     }
 
     private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic", titleSizeSp: Float = 18f) {
@@ -1693,6 +1706,7 @@ class MainActivity : AppCompatActivity() {
             )
             logHomeGridRealCoords(source, tileWidth, columns)
             applyHomeBottomTilesGeometry()
+            (homePlaylistTilesPanel as? ContentAwareScrollView)?.updateScrollEnabled()
             if (!rvHomeTiles.hasFocus()) {
                 first?.requestFocus()
             }
@@ -2999,6 +3013,9 @@ class MainActivity : AppCompatActivity() {
             isFocusable = false
         }
         val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
+        // Для экрана авторизации гостя блок профиля не показываем.
+        findViewById<View>(R.id.userProfileHeaderCard).visibility =
+            if (isAuthorizedUser) View.VISIBLE else View.GONE
         applyHomeAppTitleStyle(
             settingsMode = true,
             settingsTitle = if (isAuthorizedUser) "профиль" else "авторизация"

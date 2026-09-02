@@ -4,13 +4,14 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#15202B">
+    android:background="#000000">
 
     <androidx.media3.ui.PlayerView
         android:id="@+id/videoLayout"
         app:use_controller="false"
         app:surface_type="texture_view"
         app:resize_mode="fit"
+        app:shutter_background_color="#000000"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
@@ -883,7 +884,8 @@
             android:visibility="gone"
             android:background="@drawable/bg_settings_unified_panel"
             android:clipToOutline="true"
-            android:paddingBottom="12dp"
+            android:paddingTop="@dimen/settings_main_panel_padding_v"
+            android:paddingBottom="@dimen/settings_main_panel_padding_v"
             app:layout_constraintTop_toBottomOf="@id/tvHomeWelcome"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
             app:layout_constraintEnd_toEndOf="@id/ivHomePower"
@@ -901,8 +903,8 @@
             android:clipToPadding="false"
             android:minHeight="96dp"
             android:paddingHorizontal="16dp"
-            android:paddingTop="16dp"
-            android:paddingBottom="16dp"
+            android:paddingTop="@dimen/profile_card_padding_v"
+            android:paddingBottom="@dimen/profile_card_padding_v"
             android:visibility="gone"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
@@ -1074,12 +1076,14 @@
             android:layout_marginStart="@dimen/home_edge_margin"
             android:layout_marginEnd="@dimen/home_edge_margin" />
 
-        <ScrollView
+        <com.twnkos.oportal.ContentAwareScrollView
             android:id="@+id/homePlaylistTilesPanel"
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:visibility="gone"
             android:scrollbars="none"
+            android:fillViewport="true"
+            android:overScrollMode="never"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             android:layout_marginStart="@dimen/home_edge_margin"
@@ -1087,8 +1091,7 @@
             app:layout_constraintTop_toBottomOf="@id/tvPlaylistPageSubtitle"
             app:layout_constraintBottom_toBottomOf="parent"
             android:layout_marginTop="@dimen/home_grid_margin_top"
-            android:layout_marginBottom="@dimen/home_bottom_margin"
-            android:paddingBottom="4dp">
+            android:layout_marginBottom="@dimen/home_bottom_margin">
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -1099,6 +1102,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:clipToPadding="false"
+                    android:nestedScrollingEnabled="false"
                     android:overScrollMode="never"
                     android:scrollbars="none" />
 
@@ -1136,7 +1140,7 @@
                     </FrameLayout>
                 </LinearLayout>
             </LinearLayout>
-        </ScrollView>
+        </com.twnkos.oportal.ContentAwareScrollView>
 
         <GridView
             android:id="@+id/gvHomeChannelList"
@@ -1153,8 +1157,8 @@
             android:clipToPadding="false"
             android:paddingStart="0dp"
             android:paddingEnd="0dp"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp"
+            android:paddingTop="0dp"
+            android:paddingBottom="0dp"
             android:overScrollMode="never"
             android:scrollbars="none"
             android:listSelector="@drawable/grid_item_selector"
