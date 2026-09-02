@@ -42,13 +42,13 @@
     <dimen name="home_header_icon_size">18dp</dimen>
     <dimen name="home_header_icon_gap">10dp</dimen>
     <dimen name="home_header_clock_gap">10dp</dimen>
-    <dimen name="profile_avatar_size">72dp</dimen>
-    <dimen name="profile_avatar_icon_size">32dp</dimen>
-    <dimen name="profile_name_size">26sp</dimen>
-    <dimen name="profile_nickname_size">17sp</dimen>
-    <dimen name="profile_token_label_size">17sp</dimen>
-    <dimen name="profile_token_value_height">38dp</dimen>
-    <dimen name="profile_token_value_size">15sp</dimen>
+    <dimen name="profile_avatar_size">84dp</dimen>
+    <dimen name="profile_avatar_icon_size">38dp</dimen>
+    <dimen name="profile_name_size">30sp</dimen>
+    <dimen name="profile_nickname_size">20sp</dimen>
+    <dimen name="profile_token_label_size">20sp</dimen>
+    <dimen name="profile_token_value_height">44dp</dimen>
+    <dimen name="profile_token_value_size">18sp</dimen>
     <dimen name="settings_profile_to_grid_gap">8dp</dimen>
     <dimen name="home_page_title_size">22sp</dimen>
     <dimen name="home_page_subtitle_size">13sp</dimen>
@@ -84,7 +84,9 @@
     <dimen name="settings_sub_panel_field_text_size">@dimen/settings_auth_field_text_size</dimen>
     <dimen name="settings_sub_panel_playlist_action_text_size">@dimen/settings_auth_button_text_size</dimen>
     <dimen name="settings_sub_panel_epg_action_text_size">@dimen/settings_auth_button_text_size</dimen>
-    <dimen name="settings_auth_label_text_size">17sp</dimen>
-    <dimen name="settings_auth_field_text_size">17sp</dimen>
-    <dimen name="settings_auth_button_text_size">21sp</dimen>
+    <dimen name="settings_auth_label_text_size">20sp</dimen>
+    <dimen name="settings_auth_field_text_size">20sp</dimen>
+    <dimen name="settings_auth_button_text_size">24sp</dimen>
+    <dimen name="settings_auth_field_height">58dp</dimen>
+    <dimen name="settings_auth_button_height">48dp</dimen>
 </resources>
