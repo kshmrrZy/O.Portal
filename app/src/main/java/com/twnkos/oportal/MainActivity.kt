@@ -5226,17 +5226,23 @@ class MainActivity : AppCompatActivity() {
     private var seekSpinnerStartedAtMs = 0L
 
     private fun showReloadingStatus(title: String, subtitle: String, isError: Boolean = false) {
+        // Center / seek / player spinners must not sit under the reload/error plate.
+        dismissCenterSpinnersForStatusPlate()
         val ring = findViewById<ImageView>(R.id.ivReloadingRing)
+        ring?.visibility = View.GONE
+        stopSpinnerOnView(ivReloadingIcon)
+        ivReloadingIcon.setBackground(null)
+        ivReloadingIcon.rotation = 0f
         if (isError) {
-            ring?.visibility = View.GONE
-            stopSpinnerOnView(ivReloadingIcon)
+            // Error plate: alert icon only, never a spinner.
             ivReloadingIcon.setImageResource(R.drawable.alert)
+            ivReloadingIcon.visibility = View.VISIBLE
+            (ivReloadingIcon.parent as? View)?.visibility = View.VISIBLE
         } else {
-            // Use portal CSS-style spinner in the icon slot; hide static ring asset.
-            ring?.visibility = View.GONE
+            // Reload plate: text only — no spinner beside or under the title.
             ivReloadingIcon.setImageDrawable(null)
-            ivReloadingIcon.setBackgroundResource(R.drawable.bg_portal_spinner)
-            startSpinnerOnView(ivReloadingIcon, durationMs = 700L)
+            ivReloadingIcon.visibility = View.GONE
+            (ivReloadingIcon.parent as? View)?.visibility = View.GONE
         }
         tvReloadingTitle.text = title
         tvReloadingSubtitle.text = subtitle
@@ -5244,6 +5250,22 @@ class MainActivity : AppCompatActivity() {
         tvReloadingStatus.visibility = View.VISIBLE
         tvReloadingStatus.bringToFront()
         tvReloadingStatus.parent?.let { (it as? View)?.requestLayout() }
+    }
+
+    /** Hides full-screen/center loading spinners so they do not overlap status plates. */
+    private fun dismissCenterSpinnersForStatusPlate() {
+        hideSeekSpinnerRunnable?.let { handler.removeCallbacks(it) }
+        hideSeekSpinnerRunnable = null
+        if (seekSpinnerActive) {
+            seekSpinnerActive = false
+            findViewById<View>(R.id.loadingPanel)?.apply {
+                isClickable = true
+                isFocusable = true
+                setBackgroundColor(Color.parseColor("#99000000"))
+            }
+        }
+        hideAppLoadingSpinner()
+        hidePlayerLoadingUi()
     }
 
     private fun startSpinnerOnView(view: View, durationMs: Long = 700L) {
@@ -5299,6 +5321,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showAppLoadingSpinner() {
+        if (tvReloadingStatus.visibility == View.VISIBLE) return
         val panel = findViewById<View>(R.id.loadingPanel) ?: return
         panel.visibility = View.VISIBLE
         panel.bringToFront()
@@ -5316,6 +5339,7 @@ class MainActivity : AppCompatActivity() {
     /** Spinner for seek/rewind freeze — stays until playback leaves BUFFERING. */
     private fun showSeekSpinner() {
         if (homePanel.visibility == View.VISIBLE) return
+        if (tvReloadingStatus.visibility == View.VISIBLE) return
         seekSpinnerActive = true
         seekSpinnerStartedAtMs = System.currentTimeMillis()
         hideSeekSpinnerRunnable?.let { handler.removeCallbacks(it) }
@@ -5358,6 +5382,11 @@ class MainActivity : AppCompatActivity() {
     private fun showPlayerLoadingUi() {
         if (homePanel.visibility == View.VISIBLE || isSettingsModalVisible) {
             hidePlayerChromeFully()
+            return
+        }
+        if (tvReloadingStatus.visibility == View.VISIBLE) {
+            // Status plate already on screen — do not stack a center spinner under it.
+            hidePlayerLoadingUi()
             return
         }
         // Только назад + время, без остальных элементов плеера.
