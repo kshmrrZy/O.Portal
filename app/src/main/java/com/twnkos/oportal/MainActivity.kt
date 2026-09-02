@@ -2947,13 +2947,19 @@ class MainActivity : AppCompatActivity() {
             tokenRowViews.forEach { it.visibility = View.VISIBLE }
             tvTokenValue.text = token
             (tvNickname.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
-                lp.bottomToTop = R.id.tvProfileTokenLabel
+                lp.bottomToTop = R.id.tvProfileTokenValue
                 lp.bottomToBottom = ConstraintLayout.LayoutParams.UNSET
                 tvNickname.layoutParams = lp
             }
-            (findViewById<View>(R.id.tvProfileTokenLabel).layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+            (tvTokenValue.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
                 lp.topToBottom = R.id.tvProfileNickname
                 lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+                tvTokenValue.layoutParams = lp
+            }
+            (findViewById<View>(R.id.tvProfileTokenLabel).layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+                lp.topToBottom = ConstraintLayout.LayoutParams.UNSET
+                lp.topToTop = R.id.tvProfileTokenValue
+                lp.bottomToBottom = R.id.tvProfileTokenValue
                 findViewById<View>(R.id.tvProfileTokenLabel).layoutParams = lp
             }
             tvTokenValue.setOnLongClickListener {
@@ -2970,7 +2976,13 @@ class MainActivity : AppCompatActivity() {
                 lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
                 tvNickname.layoutParams = lp
             }
+            (tvTokenValue.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+                lp.topToBottom = ConstraintLayout.LayoutParams.UNSET
+                lp.bottomToBottom = ConstraintLayout.LayoutParams.UNSET
+                tvTokenValue.layoutParams = lp
+            }
             (findViewById<View>(R.id.tvProfileTokenLabel).layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+                lp.topToTop = ConstraintLayout.LayoutParams.UNSET
                 lp.topToBottom = ConstraintLayout.LayoutParams.UNSET
                 lp.bottomToBottom = ConstraintLayout.LayoutParams.UNSET
                 findViewById<View>(R.id.tvProfileTokenLabel).layoutParams = lp
