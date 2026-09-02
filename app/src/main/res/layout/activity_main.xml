@@ -884,7 +884,7 @@
             android:visibility="gone"
             android:background="@drawable/bg_settings_unified_panel"
             android:clipToOutline="true"
-            android:paddingBottom="12dp"
+            android:paddingBottom="0dp"
             app:layout_constraintTop_toBottomOf="@id/tvHomeWelcome"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
             app:layout_constraintEnd_toEndOf="@id/ivHomePower"
@@ -900,7 +900,6 @@
             android:background="@drawable/bg_profile_header_card"
             android:clipChildren="false"
             android:clipToPadding="false"
-            android:minHeight="96dp"
             android:paddingHorizontal="16dp"
             android:paddingTop="@dimen/profile_card_padding_v"
             android:paddingBottom="@dimen/profile_card_padding_v"
@@ -916,7 +915,8 @@
                 android:background="@drawable/bg_profile_avatar"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent"
-                app:layout_constraintBottom_toBottomOf="parent">
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintVertical_bias="0.5">
 
                 <ImageView
                     android:id="@+id/ivProfileAvatar"
@@ -933,21 +933,24 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="18dp"
+                android:includeFontPadding="false"
                 android:text="Пользователь"
                 android:textColor="#FFFFFF"
                 android:textSize="@dimen/profile_name_size"
                 android:textStyle="bold"
                 app:layout_constraintStart_toEndOf="@id/profileAvatarFrame"
-                app:layout_constraintTop_toTopOf="@id/profileAvatarFrame"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toTopOf="@id/tvProfileNickname"
                 app:layout_constraintVertical_chainStyle="packed"
-                app:layout_constraintBottom_toTopOf="@id/tvProfileNickname" />
+                app:layout_constraintVertical_bias="0.5" />
 
             <TextView
                 android:id="@+id/tvProfileNickname"
                 style="@style/AppGolosText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="4dp"
+                android:includeFontPadding="false"
                 android:text="@nickname"
                 android:textColor="#80FFFFFF"
                 android:textSize="@dimen/profile_nickname_size"
@@ -961,12 +964,13 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
+                android:includeFontPadding="false"
                 android:text="Токен:"
                 android:textColor="#FFFFFF"
                 android:textSize="@dimen/profile_token_label_size"
                 app:layout_constraintStart_toStartOf="@id/tvProfileName"
                 app:layout_constraintTop_toBottomOf="@id/tvProfileNickname"
-                app:layout_constraintBottom_toBottomOf="@id/profileAvatarFrame" />
+                app:layout_constraintBottom_toBottomOf="parent" />
 
             <TextView
                 android:id="@+id/tvProfileTokenValue"
@@ -1009,6 +1013,9 @@
             android:scrollbars="none"
             android:fillViewport="true"
             android:paddingHorizontal="0dp"
+            android:paddingTop="@dimen/settings_content_padding_v"
+            android:paddingBottom="@dimen/settings_content_padding_v"
+            android:clipToPadding="false"
             app:layout_constraintTop_toBottomOf="@id/userProfileHeaderCard"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
@@ -1220,8 +1227,8 @@
         <include
             android:id="@+id/loadingSpinner"
             layout="@layout/view_loading_spinner"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
+            android:layout_width="@dimen/portal_spinner_size"
+            android:layout_height="@dimen/portal_spinner_size"
             android:layout_gravity="center" />
     </FrameLayout>
 
@@ -1237,8 +1244,8 @@
         <include
             android:id="@+id/playerLoadingSpinnerInner"
             layout="@layout/view_loading_spinner"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
+            android:layout_width="@dimen/portal_spinner_size"
+            android:layout_height="@dimen/portal_spinner_size"
             android:layout_gravity="center" />
     </FrameLayout>
 

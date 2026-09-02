@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CSS analog: border 3px rgba(255,255,255,.15) + border-top #fff, rotate 0.7s -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="ring"
+            android:innerRadiusRatio="2.6"
+            android:thickness="3dp"
+            android:useLevel="false">
+            <size android:width="40dp" android:height="40dp" />
+            <gradient
+                android:type="sweep"
+                android:startColor="#FFFFFFFF"
+                android:centerColor="#26FFFFFF"
+                android:endColor="#26FFFFFF"
+                android:useLevel="false" />
+        </shape>
+    </item>
+</layer-list>
