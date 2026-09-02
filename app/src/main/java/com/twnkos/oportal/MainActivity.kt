@@ -1179,6 +1179,7 @@ class MainActivity : AppCompatActivity() {
             seekStatusHoldUntilMs = System.currentTimeMillis() + 2200L
             handler.removeCallbacks(applySeekDeltaRunnable)
             handler.postDelayed(applySeekDeltaRunnable, 900L)
+            showTransientSeekSpinner()
             showUI(preferFocus = btnBackLeft)
         }
         btnBackRight.setOnClickListener {
@@ -1193,6 +1194,7 @@ class MainActivity : AppCompatActivity() {
             seekStatusHoldUntilMs = System.currentTimeMillis() + 2200L
             handler.removeCallbacks(applySeekDeltaRunnable)
             handler.postDelayed(applySeekDeltaRunnable, 900L)
+            showTransientSeekSpinner()
             showUI(preferFocus = btnBackRight)
         }
         btnEpgPlayer.setOnClickListener {
@@ -1301,17 +1303,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateHomeHeaderActions() {
-        ivHomeProfile.visibility = View.VISIBLE
+        val authorized = isAuthorizedUser()
+        ivHomeProfile.visibility = if (authorized) View.GONE else View.VISIBLE
         ivHomeSettings.visibility = View.VISIBLE
-        ivHomeProfile.setImageResource(R.drawable.profile)
-        ivHomeProfile.imageTintList = ColorStateList.valueOf(Color.WHITE)
-        ivHomeProfile.contentDescription = "Авторизация"
-        ivHomeProfile.setOnClickListener {
-            if (isSettingsModalVisible && findViewById<View>(R.id.userSettingsPanel).visibility == View.VISIBLE) {
-                hideSettingsScreen()
-            } else {
-                openHomeAuthScreen()
+        if (!authorized) {
+            ivHomeProfile.setImageResource(R.drawable.profile)
+            ivHomeProfile.imageTintList = ColorStateList.valueOf(Color.WHITE)
+            ivHomeProfile.contentDescription = "Авторизация"
+            ivHomeProfile.setOnClickListener {
+                if (isSettingsModalVisible && findViewById<View>(R.id.userSettingsPanel).visibility == View.VISIBLE) {
+                    hideSettingsScreen()
+                } else {
+                    openHomeAuthScreen()
+                }
             }
+        } else {
+            ivHomeProfile.setOnClickListener(null)
         }
         ivHomeSettings.setImageResource(R.drawable.fibssettings)
         ivHomeSettings.imageTintList = null
@@ -1754,9 +1761,7 @@ class MainActivity : AppCompatActivity() {
     private fun showPlaylistPageOnHome(source: String = "playlist_page") {
         homePanel.visibility = View.VISIBLE
         homeStartCenterBlock.visibility = View.GONE
-        topInfoPanel.visibility = View.GONE
-        topGradientOverlay.visibility = View.GONE
-        controlsPanel.visibility = View.GONE
+        hidePlayerChromeFully()
         showPlaylistPageHeader(true)
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
@@ -1894,13 +1899,17 @@ class MainActivity : AppCompatActivity() {
                 categoryOpenInProgress = true
                 selectedCategoryName = category
                 logDebug("NAV", "CATEGORY_OPEN_CHANNELS_START name=$category")
-                showReloadingStatus("Открываем раздел...", category)
+                val startedAt = System.currentTimeMillis()
+                showAppLoadingSpinner()
                 val filtered = cachedCategoryGroups[category].orEmpty()
                 homePlaylistTilesPanel.visibility = View.GONE
-                showHomeChannelList(category, filtered)
-                tvReloadingStatus.visibility = View.GONE
-                logDebug("NAV", "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}")
-                categoryOpenInProgress = false
+                val remaining = (220L - (System.currentTimeMillis() - startedAt)).coerceAtLeast(0L)
+                handler.postDelayed({
+                    showHomeChannelList(category, filtered)
+                    hideAppLoadingSpinner()
+                    logDebug("NAV", "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}")
+                    categoryOpenInProgress = false
+                }, remaining)
             }
         }, source = "categories")
     }
@@ -1920,6 +1929,7 @@ class MainActivity : AppCompatActivity() {
         programs.filter { it.start >= afterMs }.minByOrNull { it.start }
 
     private fun showHomeChannelList(category: String, channelsForCategory: List<Channel>) {
+        hidePlayerChromeFully()
         showPlaylistPageHeader(showWelcome = true, showTitle = false)
         val lastUrl = prefs.getString(PREF_LAST_CHANNEL_URL, null)
         val lastName = prefs.getString(PREF_LAST_CHANNEL_NAME, null)
@@ -2926,14 +2936,22 @@ class MainActivity : AppCompatActivity() {
             findViewById<View>(R.id.tvProfileTokenValue),
             findViewById<View>(R.id.btnProfileChangeToken)
         )
+        val tvTokenValue = findViewById<TextView>(R.id.tvProfileTokenValue)
         if (token.isNotBlank()) {
             tokenRowViews.forEach { it.visibility = View.VISIBLE }
-            findViewById<TextView>(R.id.tvProfileTokenValue).text = token
+            tvTokenValue.text = token
             (tvNickname.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
                 lp.bottomToTop = R.id.tvProfileTokenLabel
                 lp.bottomToBottom = ConstraintLayout.LayoutParams.UNSET
                 tvNickname.layoutParams = lp
             }
+            tvTokenValue.setOnLongClickListener {
+                copyTextToClipboard("token", token, "Токен скопирован")
+                true
+            }
+            tvTokenValue.isLongClickable = true
+            tvTokenValue.isClickable = true
+            tvTokenValue.isFocusable = true
         } else {
             tokenRowViews.forEach { it.visibility = View.GONE }
             (tvNickname.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
@@ -2941,10 +2959,18 @@ class MainActivity : AppCompatActivity() {
                 lp.bottomToBottom = R.id.profileAvatarFrame
                 tvNickname.layoutParams = lp
             }
+            tvTokenValue.setOnLongClickListener(null)
+            tvTokenValue.isLongClickable = false
         }
         findViewById<View>(R.id.btnProfileChangeToken).setOnClickListener {
             openProfileAuthScreen()
         }
+    }
+
+    private fun copyTextToClipboard(label: String, text: String, toast: String) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText(label, text))
+        showAppToast(toast)
     }
 
     private fun openProfileAuthScreen() {
@@ -3196,14 +3222,10 @@ class MainActivity : AppCompatActivity() {
                 .setNegativeButton("Отмена", null)
                 .show()
         }
-        // Guest profile card opens auth form.
-        if (!authorized) {
-            findViewById<View>(R.id.userProfileHeaderCard).setOnClickListener {
-                openProfileAuthScreen()
-            }
-        } else {
-            findViewById<View>(R.id.userProfileHeaderCard).setOnClickListener(null)
-        }
+        // Guest profile card is informational only — no navigation.
+        findViewById<View>(R.id.userProfileHeaderCard).setOnClickListener(null)
+        findViewById<View>(R.id.userProfileHeaderCard).isClickable = false
+        findViewById<View>(R.id.userProfileHeaderCard).isFocusable = false
         configureBackButtonsForSettings("showSettingsDialog_final")
     }
 
@@ -3244,16 +3266,26 @@ class MainActivity : AppCompatActivity() {
         showAppLoadingSpinner()
         clearPlaylistContentCache()
         cachedCategoryGroups = emptyMap()
+        lastChannelListCategory = null
+        settingsOpenedFromHomeChannelList = false
         syncPortalPlaylistsForAuthorizedUser(token)
-        // Allow sync to finish, then reload current playlist from network.
+        // После обновления — только главный экран сервисов, без входа в категории.
         handler.postDelayed({
-            loadPlaylist(forceReload = true, showErrors = true, autoPlay = false)
             hideAppLoadingSpinner()
-            showAppToast("Сервисы обновлены")
-            if (isSettingsModalVisible) {
-                hideSettingsScreen()
-            }
+            isSettingsModalVisible = false
+            settingsOpenedAsAuthOnly = false
+            settingsOpenedFromPlayer = false
+            homeSettingsScreen.visibility = View.GONE
+            findViewById<View>(R.id.settingsMainPanel).visibility = View.GONE
+            findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
+            findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
+            findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
+            findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
+            findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
+            applyHomeAppTitleStyle(settingsMode = false)
+            showPlaylistPageHeader(showWelcome = false, showTitle = false)
             showPlaylistPageOnHome(source = "refresh_services")
+            showAppToast("Сервисы обновлены")
         }, 1500L)
     }
 
@@ -4896,13 +4928,59 @@ class MainActivity : AppCompatActivity() {
         }
         val mode = prefs.getString(PREF_ASPECT_RATIO_MODE, "auto") ?: "auto"
         val isWinkChannel = selectedPlaylistDisplayName.contains("wink", ignoreCase = true)
-        playerView.resizeMode = when (mode) {
-            "fit" -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-            "fill" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-            "aspect_16_9" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-            "zoom" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-            else -> if (isWinkChannel) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
+        when (mode) {
+            "aspect_16_9" -> {
+                // Жёсткий кадр 16:9: на 18:9 появляются поля сверху/снизу, без crop.
+                applyForcedPlayerAspect(16f / 9f)
+                playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
+            }
+            "fit" -> {
+                clearForcedPlayerAspect()
+                playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            }
+            "fill" -> {
+                clearForcedPlayerAspect()
+                playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
+            }
+            "zoom" -> {
+                clearForcedPlayerAspect()
+                playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            }
+            else -> {
+                clearForcedPlayerAspect()
+                playerView.resizeMode =
+                    if (isWinkChannel) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    else AspectRatioFrameLayout.RESIZE_MODE_FIT
+            }
         }
+    }
+
+    private fun applyForcedPlayerAspect(ratio: Float) {
+        val playerView = findViewById<PlayerView>(R.id.videoLayout)
+        val parent = playerView.parent as? View ?: return
+        parent.post {
+            val parentW = parent.width.takeIf { it > 0 } ?: return@post
+            val parentH = parent.height.takeIf { it > 0 } ?: return@post
+            val targetH = (parentW / ratio).toInt().coerceAtMost(parentH)
+            val targetW = if (targetH == parentH) (parentH * ratio).toInt().coerceAtMost(parentW) else parentW
+            val lp = playerView.layoutParams as? FrameLayout.LayoutParams ?: return@post
+            lp.width = targetW
+            lp.height = targetH
+            lp.gravity = Gravity.CENTER
+            playerView.layoutParams = lp
+        }
+    }
+
+    private fun clearForcedPlayerAspect() {
+        val playerView = findViewById<PlayerView>(R.id.videoLayout)
+        val lp = playerView.layoutParams as? FrameLayout.LayoutParams ?: return
+        if (lp.width == ViewGroup.LayoutParams.MATCH_PARENT &&
+            lp.height == ViewGroup.LayoutParams.MATCH_PARENT
+        ) return
+        lp.width = ViewGroup.LayoutParams.MATCH_PARENT
+        lp.height = ViewGroup.LayoutParams.MATCH_PARENT
+        lp.gravity = Gravity.CENTER
+        playerView.layoutParams = lp
     }
 
     private fun initAspectRatioState() {
@@ -5145,29 +5223,42 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startSpinnerOnImageView(imageView: ImageView) {
+        val existing = spinnerAnimators[imageView.id]
+        if (existing?.isRunning == true) return
         stopSpinnerOnImageView(imageView)
-        imageView.post {
+        fun startNow() {
             val w = imageView.width.takeIf { it > 0 } ?: imageView.measuredWidth
             val h = imageView.height.takeIf { it > 0 } ?: imageView.measuredHeight
-            if (w > 0 && h > 0) {
-                imageView.pivotX = w / 2f
-                imageView.pivotY = h / 2f
+            if (w <= 0 || h <= 0) {
+                imageView.post { startNow() }
+                return
             }
-            val animator = ObjectAnimator.ofFloat(imageView, View.ROTATION, 0f, 360f).apply {
-                duration = 900L
+            // Pivot by exact geometric center — avoids up/down jump of the white arc.
+            imageView.pivotX = w * 0.5f
+            imageView.pivotY = h * 0.5f
+            imageView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            val from = imageView.rotation
+            val animator = ObjectAnimator.ofFloat(imageView, View.ROTATION, from, from + 360f).apply {
+                duration = 1000L
                 repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.RESTART
                 interpolator = LinearInterpolator()
                 start()
             }
             spinnerAnimators[imageView.id] = animator
         }
+        imageView.post { startNow() }
     }
 
     private fun stopSpinnerOnImageView(imageView: ImageView) {
-        spinnerAnimators.remove(imageView.id)?.cancel()
+        spinnerAnimators.remove(imageView.id)?.let {
+            it.removeAllListeners()
+            it.cancel()
+        }
         imageView.animate().cancel()
         imageView.clearAnimation()
-        imageView.rotation = 0f
+        imageView.setLayerType(View.LAYER_TYPE_NONE, null)
+        // Keep current angle to avoid a visible jump if restarted immediately.
     }
 
     private fun startCompositeSpinner(root: View?) {
@@ -5175,7 +5266,11 @@ class MainActivity : AppCompatActivity() {
         val arc = root.findViewById<ImageView>(R.id.ivLoadArc) ?: return
         val ring = root.findViewById<ImageView>(R.id.ivLoadRing)
         ring?.setImageResource(R.drawable.load2)
+        ring?.rotation = 0f
+        ring?.scaleType = ImageView.ScaleType.CENTER
         arc.setImageResource(R.drawable.load1)
+        // CENTER keeps the 56×56 asset pixel-aligned in the 56dp box (no FIT rescale jitter).
+        arc.scaleType = ImageView.ScaleType.CENTER
         startSpinnerOnImageView(arc)
     }
 
@@ -5197,7 +5292,35 @@ class MainActivity : AppCompatActivity() {
         panel.visibility = View.GONE
     }
 
+    private var hideSeekSpinnerRunnable: Runnable? = null
+
+    private fun showTransientSeekSpinner(minVisibleMs: Long = 280L) {
+        if (homePanel.visibility == View.VISIBLE) return
+        showAppLoadingSpinner()
+        // Make loading panel non-blocking for seek so controls stay usable.
+        findViewById<View>(R.id.loadingPanel)?.apply {
+            isClickable = false
+            isFocusable = false
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+        hideSeekSpinnerRunnable?.let { handler.removeCallbacks(it) }
+        val hide = Runnable {
+            hideAppLoadingSpinner()
+            findViewById<View>(R.id.loadingPanel)?.apply {
+                isClickable = true
+                isFocusable = true
+                setBackgroundColor(Color.parseColor("#99000000"))
+            }
+        }
+        hideSeekSpinnerRunnable = hide
+        handler.postDelayed(hide, minVisibleMs)
+    }
+
     private fun showPlayerLoadingUi() {
+        if (homePanel.visibility == View.VISIBLE || isSettingsModalVisible) {
+            hidePlayerChromeFully()
+            return
+        }
         // Только назад + время, без остальных элементов плеера.
         // INVISIBLE (не GONE) для среднего блока — плашка времени остаётся справа.
         topGradientOverlay.visibility = View.GONE
@@ -5219,10 +5342,22 @@ class MainActivity : AppCompatActivity() {
         startCompositeSpinner(findViewById(R.id.playerLoadingSpinnerInner))
     }
 
+    private fun hidePlayerChromeFully() {
+        topInfoPanel.visibility = View.GONE
+        topGradientOverlay.visibility = View.GONE
+        controlsPanel.visibility = View.GONE
+        findViewById<View>(R.id.playerLoadingSpinner)?.visibility = View.GONE
+        stopCompositeSpinner(findViewById(R.id.playerLoadingSpinnerInner))
+    }
+
     private fun hidePlayerLoadingUi() {
         val spinner = findViewById<View>(R.id.playerLoadingSpinner)
         stopCompositeSpinner(findViewById(R.id.playerLoadingSpinnerInner))
         spinner?.visibility = View.GONE
+        if (isHomeOrSettingsForeground()) {
+            hidePlayerChromeFully()
+            return
+        }
         findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
         findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
     }
@@ -6163,23 +6298,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun isHomeOrSettingsForeground(): Boolean =
+        homePanel.visibility == View.VISIBLE ||
+            isSettingsModalVisible ||
+            (::homeSettingsScreen.isInitialized && homeSettingsScreen.visibility == View.VISIBLE)
+
     private fun showUI(preferFocus: View? = null) {
-        if (isSettingsModalVisible) {
-            topInfoPanel.visibility = View.GONE
-            topGradientOverlay.visibility = View.GONE
-            controlsPanel.visibility = View.GONE
+        // В меню/настройках хром плеера никогда не должен «проскакивать».
+        if (isHomeOrSettingsForeground()) {
+            hidePlayerChromeFully()
+            handler.removeCallbacks(hideUiRunnable)
             return
         }
         // Пока открыт EPG — панель управления и верхний бар не показываем.
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
-            topInfoPanel.visibility = View.GONE
-            topGradientOverlay.visibility = View.GONE
-            controlsPanel.visibility = View.GONE
+            hidePlayerChromeFully()
             handler.removeCallbacks(hideUiRunnable)
             return
         }
         // До первого кадра — только назад и время.
-        if (!firstFrameRendered && homePanel.visibility != View.VISIBLE) {
+        if (!firstFrameRendered) {
             showPlayerLoadingUi()
             return
         }
@@ -6217,6 +6355,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hideUI() {
+        if (isHomeOrSettingsForeground()) {
+            hidePlayerChromeFully()
+            sbTimeline.isEnabled = false
+            hideSystemUI()
+            return
+        }
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
             // Пока пользователь читает программу передач, автоскрытие интерфейса не должно её задевать.
             return
@@ -6225,7 +6369,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         // Во время загрузки канала оставляем назад + время.
-        if (!firstFrameRendered && homePanel.visibility != View.VISIBLE) {
+        if (!firstFrameRendered) {
             showPlayerLoadingUi()
             return
         }
@@ -6341,9 +6485,11 @@ class MainActivity : AppCompatActivity() {
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> return true
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    val delta = if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) 1 else -1
-                    homeActionIndex = (homeActionIndex + delta + 3) % 3
                     val icons = listOf(ivHomeProfile, ivHomeSettings, ivHomePower)
+                        .filter { it.visibility == View.VISIBLE }
+                    if (icons.isEmpty()) return true
+                    val delta = if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) 1 else -1
+                    homeActionIndex = (homeActionIndex + delta + icons.size) % icons.size
                     icons.forEachIndexed { index, icon ->
                         val selected = index == homeActionIndex
                         icon.alpha = if (selected) 1f else 0.5f
@@ -6353,11 +6499,10 @@ class MainActivity : AppCompatActivity() {
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                    when (homeActionIndex) {
-                        0 -> ivHomeProfile.performClick()
-                        1 -> ivHomeSettings.performClick()
-                        else -> ivHomePower.performClick()
-                    }
+                    val icons = listOf(ivHomeProfile, ivHomeSettings, ivHomePower)
+                        .filter { it.visibility == View.VISIBLE }
+                    icons.getOrNull(homeActionIndex.coerceIn(0, (icons.size - 1).coerceAtLeast(0)))
+                        ?.performClick()
                     return true
                 }
             }
@@ -6369,6 +6514,7 @@ class MainActivity : AppCompatActivity() {
         if (homePanel.visibility == View.VISIBLE && tvHomeStartTitle.visibility != View.VISIBLE) {
             val focused = currentFocus
             val headerIcons = listOf(ivHomeProfile, ivHomeSettings, ivHomePower)
+                .filter { it.visibility == View.VISIBLE }
             val iconsHaveFocus = focused != null && focused in headerIcons
             if (iconsHaveFocus) {
                 when (keyCode) {
@@ -6405,7 +6551,8 @@ class MainActivity : AppCompatActivity() {
                 val isTopRow = focused == null || focusedLoc[1] <= gridLoc[1] + dpToPx(8)
                 if (isTopRow) {
                     headerIcons.forEach { it.isFocusable = true }
-                    ivHomeSettings.requestFocus()
+                    (if (ivHomeSettings.visibility == View.VISIBLE) ivHomeSettings else headerIcons.firstOrNull())
+                        ?.requestFocus()
                     return true
                 }
                 // иначе — не наш случай, пусть обычная навигация внутри сетки решает сама
@@ -6740,6 +6887,7 @@ class MainActivity : AppCompatActivity() {
         }
         val targetAbs = currentAbs + deltaSec * 1000L
         seekToAbsoluteTime(targetAbs)
+        showTransientSeekSpinner()
         showUI(preferFocus = if (deltaSec < 0) btnBackLeft else btnBackRight)
     }
 
