@@ -309,6 +309,10 @@ class MainActivity : AppCompatActivity() {
     private val channels = mutableListOf<Channel>()
     private val epgData = mutableMapOf<String, MutableList<Program>>()
     private val epgDataLock = Any()
+    /** Last XMLTV channel ids / display-names / icons — used to re-bind after playlist reload. */
+    private var lastEpgXmlIds: Set<String> = emptySet()
+    private var lastEpgXmlDisplayNames: Map<String, Set<String>> = emptyMap()
+    private var lastEpgXmlIcons: Map<String, String> = emptyMap()
     private val handler = Handler(Looper.getMainLooper())
     private var inputNumber = ""
     private var epgDatePickedByUser = false
@@ -3321,7 +3325,7 @@ class MainActivity : AppCompatActivity() {
         currentPlaylistText = ""
         channels.clear()
         cachedCategoryGroups = emptyMap()
-        synchronized(epgDataLock) { epgData.clear() }
+        clearEpgRuntimeData()
         isSettingsModalVisible = false
         settingsOpenedAsAuthOnly = false
         settingsOpenedFromPlayer = false
@@ -3348,7 +3352,7 @@ class MainActivity : AppCompatActivity() {
         channels.clear()
         selectedEpgSources.clear()
         cachedCategoryGroups = emptyMap()
-        synchronized(epgDataLock) { epgData.clear() }
+        clearEpgRuntimeData()
         hideSettingsScreen()
         showStartPage()
     }
@@ -3970,10 +3974,24 @@ class MainActivity : AppCompatActivity() {
             else -> customSources.isNotEmpty()
         }
 
+        fun normalizeEpgUrl(raw: String): String =
+            raw.trim().trimEnd('/')
+
+        fun statusForSource(source: String): String {
+            if (source.isBlank()) return ""
+            epgSourceStatus[source]?.takeIf { it.isNotBlank() }?.let { return it }
+            val norm = normalizeEpgUrl(source)
+            return epgSourceStatus.entries.firstOrNull {
+                normalizeEpgUrl(it.key) == norm
+            }?.value.orEmpty()
+        }
+
         fun bindUrlStatuses(sources: List<String>) {
+            // Show per-form status only when this form's URL itself has a status
+            // (so switching Custom <-> Builtin keeps status only for shared URLs).
             urls.forEachIndexed { i, _ ->
                 val source = sources.getOrNull(i).orEmpty()
-                val status = if (source.isNotBlank()) epgSourceStatus[source].orEmpty() else ""
+                val status = statusForSource(source)
                 val tv = statusViews[i]
                 if (status.isNotBlank()) {
                     tv.visibility = View.VISIBLE
@@ -4045,20 +4063,26 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        fun refreshBuiltinUrlFields() {
+            val builtin = resolveBuiltinPlaylistEpgSources()
+            fillUrlFields(builtin.take(3))
+            applyEpgSourceModeLock(manual = false)
+            // Always re-read selected playlist header so Избранные x-tvg-url appears
+            // even after cache clear / cold start.
+            ensureBuiltinPlaylistEpgSourcesAsync(forceNetwork = true) { sources ->
+                if (!tbSourceMode.isChecked) {
+                    fillUrlFields(sources.take(3))
+                    applyEpgSourceModeLock(manual = false)
+                }
+            }
+        }
+
         tbSourceMode.isChecked = modeCustom
         applyEpgSourceModeLock(modeCustom)
         if (modeCustom) {
             fillUrlFields(customSources.take(3))
         } else {
-            fillUrlFields(playlistOwnSources.take(3))
-            if (playlistOwnSources.isEmpty()) {
-                ensureBuiltinPlaylistEpgSourcesAsync { sources ->
-                    if (!tbSourceMode.isChecked) {
-                        fillUrlFields(sources.take(3))
-                        applyEpgSourceModeLock(manual = false)
-                    }
-                }
-            }
+            refreshBuiltinUrlFields()
         }
 
         tbSourceMode.setOnCheckedChangeListener { _, isChecked ->
@@ -4066,16 +4090,7 @@ class MainActivity : AppCompatActivity() {
             if (isChecked) {
                 fillUrlFields(getCustomEpgSources().take(3).ifEmpty { emptyList() })
             } else {
-                val builtin = resolveBuiltinPlaylistEpgSources()
-                fillUrlFields(builtin.take(3))
-                if (builtin.isEmpty()) {
-                    ensureBuiltinPlaylistEpgSourcesAsync { sources ->
-                        if (!tbSourceMode.isChecked) {
-                            fillUrlFields(sources.take(3))
-                            applyEpgSourceModeLock(manual = false)
-                        }
-                    }
-                }
+                refreshBuiltinUrlFields()
             }
         }
 
@@ -4947,7 +4962,7 @@ class MainActivity : AppCompatActivity() {
             selectedEpgSources = localSelection
             saveSelectedEpgSources(selectedEpgSources)
             if (selectedEpgSources.isNotEmpty()) {
-                synchronized(epgDataLock) { epgData.clear() }
+                clearEpgRuntimeData()
                 fetchEpgSources(selectedEpgSources.toList(), rows)
             }
             dialog.dismiss()
@@ -5003,6 +5018,7 @@ class MainActivity : AppCompatActivity() {
                     hideAppLoadingSpinner()
                     channels.clear()
                     channels.addAll(parsedChannels)
+                    rebindEpgAliasesForCurrentPlaylist()
                     applyCachedLogosToChannels()
                     // Keep playlist-embedded EPG URLs for the settings UI only.
                     // Active EPG sources come strictly from settings — never auto-select
@@ -5016,7 +5032,7 @@ class MainActivity : AppCompatActivity() {
                     )
 
                     if (shouldRefreshEpgNow()) {
-                        synchronized(epgDataLock) { epgData.clear() }
+                        clearEpgRuntimeData()
                     }
 
                     if (channels.isEmpty()) {
@@ -5421,6 +5437,7 @@ class MainActivity : AppCompatActivity() {
         val channelIdsSeen = LinkedHashSet<String>()
         val programmeChannelIdsSeen = LinkedHashSet<String>()
         val xmlChannelDisplayNames = HashMap<String, MutableSet<String>>()
+        val xmlChannelIcons = HashMap<String, String>()
 
         ProgressInputStream(inputStream, totalBytes.toLong(), onProgress).use { stream ->
             val parser = Xml.newPullParser()
@@ -5428,43 +5445,9 @@ class MainActivity : AppCompatActivity() {
             var eventType = parser.eventType
             var tempId = ""
 
-            val channelLookupByKey = HashMap<String, MutableList<Channel>>()
-            channels.forEach { ch ->
-                listOfNotNull(ch.tvgId, ch.tvgName, ch.name).forEach { rawKey ->
-                    val key = rawKey.lowercase().trim()
-                    if (key.isNotEmpty()) {
-                        channelLookupByKey.getOrPut(key) { mutableListOf() }.add(ch)
-                    }
-                }
-            }
-            logDebug(
-                "EPG_DEBUG",
-                "channelLookupByKey keys sample=${channelLookupByKey.keys.take(10)} totalKeys=${channelLookupByKey.size}"
-            )
-
-            fun storeKeysForXmlChannel(xmlChannelId: String): Set<String> {
-                val idKey = xmlChannelId.lowercase().trim()
-                if (idKey.isEmpty()) return emptySet()
-                val aliasKeys = linkedSetOf(idKey)
-                xmlChannelDisplayNames[idKey]?.let { aliasKeys.addAll(it) }
-                val matchedChannels = linkedSetOf<Channel>()
-                aliasKeys.forEach { alias ->
-                    channelLookupByKey[alias]?.let { matchedChannels.addAll(it) }
-                }
-                if (matchedChannels.isEmpty()) return emptySet()
-                val storeKeys = linkedSetOf<String>()
-                storeKeys.addAll(aliasKeys)
-                matchedChannels.forEach { ch ->
-                    ch.tvgId?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { storeKeys += it }
-                    ch.tvgName?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { storeKeys += it }
-                    ch.name.lowercase().trim().takeIf { it.isNotEmpty() }?.let { storeKeys += it }
-                }
-                return storeKeys
-            }
-
             while (eventType != XmlPullParser.END_DOCUMENT) {
-                if (eventType == XmlPullParser.START_TAG) {
-                    when (parser.name) {
+                when (eventType) {
+                    XmlPullParser.START_TAG -> when (parser.name) {
                         "channel" -> {
                             tempId = parser.getAttributeValue(null, "id") ?: ""
                             if (tempId.isNotBlank()) channelIdsSeen += tempId
@@ -5482,17 +5465,12 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                         "icon" -> {
-                            val src = parser.getAttributeValue(null, "src")
+                            val src = parser.getAttributeValue(null, "src")?.trim().orEmpty()
                             val idKey = tempId.lowercase().trim()
-                            val keys = buildList {
-                                if (idKey.isNotBlank()) add(idKey)
-                                xmlChannelDisplayNames[idKey]?.let { addAll(it) }
-                            }
-                            keys.forEach { key ->
-                                channelLookupByKey[key]?.forEach { it.logoFromEpg = src }
+                            if (idKey.isNotBlank() && src.isNotBlank()) {
+                                xmlChannelIcons[idKey] = src
                             }
                         }
-
                         "programme" -> {
                             val rawChannel = parser.getAttributeValue(null, "channel") ?: ""
                             val rawStart = parser.getAttributeValue(null, "start")
@@ -5521,8 +5499,13 @@ class MainActivity : AppCompatActivity() {
                                 loggedProgrammeSamples++
                             }
 
-                            val storeKeys = storeKeysForXmlChannel(chId)
-                            if (chId.isNotEmpty() && storeKeys.isNotEmpty()) {
+                            if (chId.isEmpty()) {
+                                programmeSkippedEmptyChannel++
+                            } else {
+                                // Always index by XML channel id and its display-names so matching
+                                // works even if the playlist was not loaded yet at parse time.
+                                val indexKeys = linkedSetOf(chId)
+                                xmlChannelDisplayNames[chId]?.let { indexKeys.addAll(it) }
                                 val trimmedDesc = desc.take(300)
                                 val program = Program(title, start, stop, trimmedDesc)
                                 synchronized(epgDataLock) {
@@ -5530,14 +5513,10 @@ class MainActivity : AppCompatActivity() {
                                     if (primary.size < MAX_PROGRAMS_PER_CHANNEL) {
                                         primary.add(program)
                                     }
-                                    storeKeys.forEach { key ->
-                                        if (key != chId) {
-                                            epgData[key] = primary
-                                        }
+                                    indexKeys.forEach { key ->
+                                        if (key != chId) epgData[key] = primary
                                     }
                                 }
-                            } else {
-                                programmeSkippedEmptyChannel++
                             }
                         }
                     }
@@ -5546,10 +5525,22 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        val xmlIds = (channelIdsSeen.map { it.lowercase().trim() } + programmeChannelIdsSeen).toSet()
+        lastEpgXmlIds = xmlIds
+        lastEpgXmlDisplayNames = xmlChannelDisplayNames.mapValues { it.value.toSet() }
+        lastEpgXmlIcons = xmlChannelIcons.toMap()
+
+        // 1:1 bind playlist channels to XML channels and alias playlist keys + logos.
+        bindEpgChannelsToPlaylist(
+            xmlIds = xmlIds,
+            xmlDisplayNames = lastEpgXmlDisplayNames,
+            xmlIcons = lastEpgXmlIcons
+        )
+
         logDebug(
             "EPG_DEBUG",
             "PARSE SUMMARY programmeTotal=$programmeTotal programmeZeroDate=$programmeZeroDate " +
-                "programmeSkippedNotInPlaylist=$programmeSkippedEmptyChannel " +
+                "programmeSkippedEmptyChannel=$programmeSkippedEmptyChannel " +
                 "distinctChannelIdsInXml=${channelIdsSeen.size} distinctProgrammeChannelIds=${programmeChannelIdsSeen.size}"
         )
         logDebug("EPG_DEBUG", "channelIdsSeen sample=${channelIdsSeen.take(10)}")
@@ -5561,6 +5552,135 @@ class MainActivity : AppCompatActivity() {
             }"
         )
     }
+
+    /**
+     * When playlist loads after EPG, re-run 1:1 bind using last XMLTV metadata
+     * (or fall back to aliasing by existing epgData keys).
+     */
+    private fun rebindEpgAliasesForCurrentPlaylist() {
+        if (channels.isEmpty()) return
+        if (lastEpgXmlIds.isNotEmpty()) {
+            bindEpgChannelsToPlaylist(
+                xmlIds = lastEpgXmlIds,
+                xmlDisplayNames = lastEpgXmlDisplayNames,
+                xmlIcons = lastEpgXmlIcons
+            )
+            return
+        }
+        synchronized(epgDataLock) {
+            if (epgData.isEmpty()) return
+            channels.forEach { ch ->
+                val keys = listOfNotNull(
+                    ch.tvgId?.lowercase()?.trim()?.takeIf { it.isNotEmpty() },
+                    ch.tvgName?.lowercase()?.trim()?.takeIf { it.isNotEmpty() },
+                    ch.name.lowercase().trim().takeIf { it.isNotEmpty() }
+                )
+                if (keys.isEmpty()) return@forEach
+                val primary = keys.firstNotNullOfOrNull { epgData[it] } ?: return@forEach
+                keys.forEach { key -> epgData[key] = primary }
+            }
+        }
+        applyCachedLogosToChannels()
+    }
+
+    /**
+     * Bind each playlist channel to at most one XMLTV channel id.
+     * Priority: tvg-id == xml id → tvg-name == xml id → tvg-id/tvg-name == display-name →
+     * channel name == xml id / display-name.
+     */
+
+    private fun bindEpgChannelsToPlaylist(
+        xmlIds: Set<String>,
+        xmlDisplayNames: Map<String, Set<String>>,
+        xmlIcons: Map<String, String>
+    ) {
+        if (channels.isEmpty() || xmlIds.isEmpty()) {
+            // Still keep icons in cache keyed by xml id / display-name for later playlist loads.
+            xmlIcons.forEach { (xmlId, icon) ->
+                if (icon.isBlank()) return@forEach
+                cachedLogos[xmlId] = icon
+                xmlDisplayNames[xmlId].orEmpty().forEach { dn -> cachedLogos[dn] = icon }
+            }
+            saveLogoCacheToPrefs()
+            return
+        }
+
+        val boundPlaylistUrls = mutableSetOf<String>()
+        val boundXmlIds = mutableSetOf<String>()
+
+        fun playlistKeys(ch: Channel): List<String> = listOfNotNull(
+            ch.tvgId?.lowercase()?.trim()?.takeIf { it.isNotEmpty() },
+            ch.tvgName?.lowercase()?.trim()?.takeIf { it.isNotEmpty() },
+            ch.name.lowercase().trim().takeIf { it.isNotEmpty() }
+        )
+
+        fun applyBind(xmlId: String, ch: Channel) {
+            if (xmlId in boundXmlIds || ch.url in boundPlaylistUrls) return
+            boundXmlIds += xmlId
+            boundPlaylistUrls += ch.url
+            val primary = synchronized(epgDataLock) { epgData[xmlId] }
+            if (primary != null) {
+                synchronized(epgDataLock) {
+                    playlistKeys(ch).forEach { key -> epgData[key] = primary }
+                }
+            }
+            val icon = xmlIcons[xmlId]?.takeIf { it.isNotBlank() }
+            if (icon != null) {
+                ch.logoFromEpg = icon
+                cachedLogos[xmlId] = icon
+                playlistKeys(ch).forEach { cachedLogos[it] = icon }
+                xmlDisplayNames[xmlId].orEmpty().forEach { cachedLogos[it] = icon }
+            } else {
+                // Keep playlist logo only; clear stale EPG logo for this channel.
+                ch.logoFromEpg = null
+            }
+        }
+
+        fun findUnbound(predicate: (Channel) -> Boolean): Channel? =
+            channels.firstOrNull { it.url !in boundPlaylistUrls && predicate(it) }
+
+        val allXmlIds = xmlIds.filter { it.isNotBlank() }.toSet()
+
+        // 1) tvg-id == xml channel id
+        allXmlIds.forEach { xmlId ->
+            findUnbound { ch -> ch.tvgId?.lowercase()?.trim() == xmlId }?.let { applyBind(xmlId, it) }
+        }
+        // 2) tvg-name == xml channel id
+        allXmlIds.forEach { xmlId ->
+            if (xmlId in boundXmlIds) return@forEach
+            findUnbound { ch -> ch.tvgName?.lowercase()?.trim() == xmlId }?.let { applyBind(xmlId, it) }
+        }
+        // 3) tvg-id / tvg-name == display-name
+        allXmlIds.forEach { xmlId ->
+            if (xmlId in boundXmlIds) return@forEach
+            val names = xmlDisplayNames[xmlId].orEmpty()
+            if (names.isEmpty()) return@forEach
+            findUnbound { ch ->
+                val tvgId = ch.tvgId?.lowercase()?.trim()
+                val tvgName = ch.tvgName?.lowercase()?.trim()
+                (tvgId != null && tvgId in names) || (tvgName != null && tvgName in names)
+            }?.let { applyBind(xmlId, it) }
+        }
+        // 4) channel name == xml id or display-name
+        allXmlIds.forEach { xmlId ->
+            if (xmlId in boundXmlIds) return@forEach
+            val names = xmlDisplayNames[xmlId].orEmpty() + xmlId
+            findUnbound { ch -> ch.name.lowercase().trim() in names }?.let { applyBind(xmlId, it) }
+        }
+
+        // Cache icons for unbound xml channels too (future playlist loads).
+        xmlIcons.forEach { (xmlId, icon) ->
+            if (icon.isBlank()) return@forEach
+            cachedLogos.putIfAbsent(xmlId, icon)
+            xmlDisplayNames[xmlId].orEmpty().forEach { dn -> cachedLogos.putIfAbsent(dn, icon) }
+        }
+        saveLogoCacheToPrefs()
+        logDebug(
+            "EPG_DEBUG",
+            "BIND SUMMARY boundXml=${boundXmlIds.size}/${allXmlIds.size} boundChannels=${boundPlaylistUrls.size}/${channels.size}"
+        )
+    }
+
 
     private fun isArchiveAvailable(channel: Channel, program: Program): Boolean {
         if (channel.catchupDays <= 0 || channel.catchupSource.isNullOrBlank()) return false
@@ -6299,10 +6419,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun clearEpgRuntimeData() {
+        synchronized(epgDataLock) { epgData.clear() }
+        lastEpgXmlIds = emptySet()
+        lastEpgXmlDisplayNames = emptyMap()
+        lastEpgXmlIcons = emptyMap()
+    }
+
     private fun cancelAndClearEpgCache() {
         epgFetchGeneration += 1
         epgFetchInProgress = false
-        synchronized(epgDataLock) { epgData.clear() }
+        clearEpgRuntimeData()
         epgSourceStatus.clear()
         clearEpgCacheFiles()
         prefs.edit()
@@ -6351,14 +6478,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadLogoWithGlide(url: String?, target: ImageView) {
-        val glideUrl = if (url.isNullOrEmpty()) null else GlideUrl(
+        if (url.isNullOrBlank()) {
+            Glide.with(this).clear(target)
+            target.setImageDrawable(null)
+            return
+        }
+        val glideUrl = GlideUrl(
             url,
             LazyHeaders.Builder().addHeader("User-Agent", userAgent).build()
         )
         Glide.with(this)
             .load(glideUrl)
             .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.ALL)
-            .placeholder(R.mipmap.ic_launcher)
             .into(target)
     }
 
@@ -8704,13 +8835,14 @@ class MainActivity : AppCompatActivity() {
     private fun extractEpgSourcesFromPlaylist(content: String): List<String> {
         if (content.isBlank()) return emptyList()
         val regex = Regex(
-            """(?i)(?:x-tvg-url|url-tvg)\s*=\s*["“”']([^"“”']+)["“”']"""
+            """(?i)(?:x-tvg-url|url-tvg|tvg-url)\s*=\s*["“”']([^"“”']+)["“”']"""
         )
         val match = regex.find(content) ?: run {
             // Legacy fallback for unquoted / odd headers.
             val tagName = when {
                 content.contains("x-tvg-url=\"", ignoreCase = true) -> "x-tvg-url=\""
                 content.contains("url-tvg=\"", ignoreCase = true) -> "url-tvg=\""
+                content.contains("tvg-url=\"", ignoreCase = true) -> "tvg-url=\""
                 else -> return emptyList()
             }
             val idx = content.indexOf(tagName, ignoreCase = true)
@@ -8731,6 +8863,7 @@ class MainActivity : AppCompatActivity() {
             .take(3)
     }
 
+
     /** Builtin EPG URLs from the active/selected playlist (memory or m3u content cache). */
     private fun resolveBuiltinPlaylistEpgSources(): List<String> {
         val url = resolveCurrentPlaylistUrl()
@@ -8747,19 +8880,24 @@ class MainActivity : AppCompatActivity() {
                 return parsed
             }
         }
-        if (availableEpgSources.isNotEmpty()) return availableEpgSources.take(3)
         return emptyList()
     }
 
     /**
      * If builtin x-tvg-url is not in memory/cache yet (e.g. after services refresh),
      * fetch the selected playlist header once and fill EPG URL forms.
+     * When [forceNetwork] is true, always re-fetch the selected playlist header.
      */
-    private fun ensureBuiltinPlaylistEpgSourcesAsync(onResolved: (List<String>) -> Unit) {
-        val existing = resolveBuiltinPlaylistEpgSources()
-        if (existing.isNotEmpty()) {
-            onResolved(existing)
-            return
+    private fun ensureBuiltinPlaylistEpgSourcesAsync(
+        forceNetwork: Boolean = false,
+        onResolved: (List<String>) -> Unit
+    ) {
+        if (!forceNetwork) {
+            val existing = resolveBuiltinPlaylistEpgSources()
+            if (existing.isNotEmpty()) {
+                onResolved(existing)
+                return
+            }
         }
         val playlistUrl = resolveCurrentPlaylistUrl()
         if (playlistUrl.isBlank()) {
