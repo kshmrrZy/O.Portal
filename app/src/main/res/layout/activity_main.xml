@@ -500,6 +500,27 @@
                 android:textSize="12sp"
                 android:textStyle="bold"
                 android:nextFocusLeft="@id/btnAspectRatio"
+                android:nextFocusRight="@id/btnAudioTrack"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/btnAudioTrack"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/player_cc_hd_button_height"
+                android:minWidth="@dimen/player_cc_hd_button_min_width"
+                android:layout_marginEnd="8dp"
+                android:paddingHorizontal="10dp"
+                android:background="@drawable/bg_player_quality_badge"
+                android:defaultFocusHighlightEnabled="false"
+                android:fontFamily="@font/golos_text"
+                android:gravity="center"
+                android:text="AU"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:nextFocusLeft="@id/btnCcSubtitles"
                 android:nextFocusRight="@id/btnHdQuality"
                 android:visibility="gone" />
 
@@ -520,7 +541,7 @@
                 android:textColor="#FFFFFF"
                 android:textSize="12sp"
                 android:textStyle="bold"
-                android:nextFocusLeft="@id/btnCcSubtitles"
+                android:nextFocusLeft="@id/btnAudioTrack"
                 android:nextFocusRight="@id/btnLiveReload"
                 android:visibility="gone" />
 

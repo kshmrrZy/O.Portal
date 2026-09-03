@@ -3,7 +3,7 @@
     android:id="@+id/playerTrackMenuRoot"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:background="@drawable/bg_player_track_menu"
+    android:background="@android:color/transparent"
     android:minWidth="120dp"
     android:orientation="vertical"
-    android:padding="10dp" />
+    android:padding="0dp" />

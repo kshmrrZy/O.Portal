@@ -361,6 +361,16 @@
 
             <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:includeFontPadding="false" android:text="Раздел для настройки EPG" android:textColor="#FFFFFF" android:textSize="@dimen/settings_sub_panel_title_size" android:textStyle="bold"/>
             <TextView android:id="@+id/tvEpgScreenSubtitle" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:includeFontPadding="false" android:text="поддерживается не более 3 источников формата XML" android:textColor="#99FFFFFF" android:textSize="@dimen/settings_sub_panel_subtitle_size"/>
+            <TextView
+                android:id="@+id/tvEpgLoadStatus"
+                style="@style/AppGolosText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:includeFontPadding="false"
+                android:text="EPG: ожидание"
+                android:textColor="#B3FFFFFF"
+                android:textSize="@dimen/settings_sub_panel_subtitle_size"/>
             <TextView android:id="@+id/tvEpgSourceHint" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone"/>
 
             <EditText android:id="@+id/etEpgUrl1" android:layout_width="match_parent" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_marginTop="12dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="@dimen/settings_sub_panel_field_text_size"/>

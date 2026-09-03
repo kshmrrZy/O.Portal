@@ -70,6 +70,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
@@ -206,6 +207,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnLock: ImageButton
     private lateinit var btnAspectRatio: ImageButton
     private lateinit var btnCcSubtitles: TextView
+    private lateinit var btnAudioTrack: TextView
     private lateinit var btnHdQuality: TextView
     private var availableQualities: List<QualityOption> = emptyList()
     private var currentQualityIndex: Int = -1 // -1 = Авто (master URL)
@@ -213,6 +215,8 @@ class MainActivity : AppCompatActivity() {
     private var selectedSubtitleIndex: Int = -1 // -1 = Выкл
     private var availableSubtitleUrl: String? = null
     private var subtitlesEnabled: Boolean = false
+    private var availableAudioTracks: List<AudioOption> = emptyList()
+    private var selectedAudioIndex: Int = -1 // -1 = Авто
     private var qualityFetchToken: Int = 0
     private var manualQualityOverrideUrl: String? = null
     private var manualQualityOverrideChannelIndex: Int = -1
@@ -220,9 +224,17 @@ class MainActivity : AppCompatActivity() {
     private var playerTrackMenu: PopupWindow? = null
     private lateinit var playerSubtitlesOverlay: FrameLayout
     private lateinit var tvPlayerSubtitles: TextView
+    private var suppressAutoPlayerUiOnce: Boolean = false
+    private var tvEpgLoadStatus: TextView? = null
 
     data class QualityOption(val label: String, val height: Int, val url: String)
     data class SubtitleOption(val label: String, val language: String?, val url: String)
+    data class AudioOption(
+        val label: String,
+        val language: String?,
+        val groupIndex: Int = -1,
+        val trackIndex: Int = -1
+    )
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnSleepTimer: ImageButton
     private lateinit var btnLiveReload: TextView
@@ -315,6 +327,8 @@ class MainActivity : AppCompatActivity() {
     private var shouldReloadStreamOnStart = false
     @Volatile
     private var epgFetchInProgress = false
+    @Volatile
+    private var epgFetchGeneration: Int = 0
     private var archiveStreamStartMs: Long = 0L
     private var lastRequestedPlaybackUrl: String = ""
     private var startupRecoveryAttempts = 0
@@ -504,6 +518,11 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_LAST_CHANNEL = "last_channel"
         private const val PREF_LAST_CHANNEL_URL = "last_channel_url"
         private const val PREF_LAST_CHANNEL_NAME = "last_channel_name"
+        private const val PREF_SUBTITLE_LANGUAGE = "pref_subtitle_language"
+        private const val PREF_SUBTITLE_ENABLED = "pref_subtitle_enabled"
+        private const val PREF_QUALITY_HEIGHT = "pref_quality_height"
+        private const val PREF_AUDIO_LANGUAGE = "pref_audio_language"
+        private const val PREF_SERVICES_CACHE = "pref_services_cache"
         private const val PREF_ASPECT_RATIO_MODE = "pref_aspect_ratio_mode"
         private val ASPECT_RATIO_LABEL_BY_KEY = mapOf(
             "auto" to "Автоматически",
@@ -539,6 +558,8 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_EPG_UNPACKED_BYTES = 1800L * 1024L * 1024L
         private const val EPG_KEEP_PAST_DAYS = 7
         private const val EPG_KEEP_FUTURE_DAYS = 7
+        private const val EPG_PANEL_PAST_DAYS = 3
+        private const val EPG_PANEL_FUTURE_DAYS = 3
         private const val MAX_PROGRAMS_PER_CHANNEL = 500
 
         private const val HOME_BASE_WIDTH = 1280f
@@ -587,21 +608,73 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun buildPlaceholderPrograms(): List<Program> {
+    private fun buildPlaceholderPrograms(
+        pastDays: Int = EPG_PANEL_PAST_DAYS,
+        futureDays: Int = EPG_PANEL_FUTURE_DAYS,
+        title: String = "Программа передач недоступна"
+    ): List<Program> {
         val result = mutableListOf<Program>()
         val cal = Calendar.getInstance().apply {
-            add(Calendar.DAY_OF_YEAR, -EPG_KEEP_PAST_DAYS)
+            add(Calendar.DAY_OF_YEAR, -pastDays)
+            set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        val end = System.currentTimeMillis() + EPG_KEEP_FUTURE_DAYS * 24L * 60L * 60L * 1000L
+        val end = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_YEAR, futureDays + 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
         while (cal.timeInMillis < end) {
             val start = cal.timeInMillis
             cal.add(Calendar.HOUR_OF_DAY, 1)
-            result += Program("Выполняется обновление программы передач", start, cal.timeInMillis)
+            result += Program(title, start, cal.timeInMillis)
         }
         return result
+    }
+
+    private fun buildHourlyUnavailableProgramsForDate(dateKey: String): List<Program> {
+        val dateFmt = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+        val dayStart = dateFmt.parse(dateKey)?.time ?: return emptyList()
+        val cal = Calendar.getInstance().apply { timeInMillis = dayStart }
+        val result = mutableListOf<Program>()
+        repeat(24) {
+            val start = cal.timeInMillis
+            cal.add(Calendar.HOUR_OF_DAY, 1)
+            result += Program("Программа передач недоступна", start, cal.timeInMillis)
+        }
+        return result
+    }
+
+    private fun buildEpgPanelDateModel(realPrograms: List<Program>): Pair<List<String>, Map<String, List<Program>>> {
+        val dateFmt = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+        val programsByDate = realPrograms
+            .distinctBy { Triple(it.title.trim(), it.start, it.stop) }
+            .sortedBy { it.start }
+            .groupBy { dateFmt.format(Date(it.start)) }
+        val baseKeys = mutableListOf<String>()
+        val cal = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_YEAR, -EPG_PANEL_PAST_DAYS)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        repeat(EPG_PANEL_PAST_DAYS + EPG_PANEL_FUTURE_DAYS + 1) {
+            baseKeys += dateFmt.format(cal.time)
+            cal.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        val dateKeys = (baseKeys + programsByDate.keys).distinct().sortedBy { key ->
+            dateFmt.parse(key)?.time ?: 0L
+        }
+        val enriched = dateKeys.associateWith { key ->
+            val dayPrograms = programsByDate[key].orEmpty()
+            if (dayPrograms.isNotEmpty()) dayPrograms else buildHourlyUnavailableProgramsForDate(key)
+        }
+        return dateKeys to enriched
     }
 
     /**
@@ -773,7 +846,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeBreadcrumbPill.setOnClickListener { onBreadcrumbClick() }
         tvHomeBreadcrumbPill2.isClickable = true
         tvHomeBreadcrumbPill2.isFocusable = false
-        tvHomeBreadcrumbPill2.setOnClickListener { onBreadcrumbClick() }
+        tvHomeBreadcrumbPill2.setOnClickListener { onCategoryBreadcrumbClick() }
         tvHomeAppTitle.text = SpannableString("O.Portal").apply {
             setSpan(StyleSpan(Typeface.BOLD), 2, length, 0)
             tvHomeAppTitle.typeface = Typeface.create(tvHomeAppTitle.typeface, 800, false)
@@ -795,7 +868,9 @@ class MainActivity : AppCompatActivity() {
         topGradientOverlay = findViewById(R.id.topGradientOverlay)
         btnAspectRatio = findViewById(R.id.btnAspectRatio)
         btnCcSubtitles = findViewById(R.id.btnCcSubtitles)
+        btnAudioTrack = findViewById(R.id.btnAudioTrack)
         btnHdQuality = findViewById(R.id.btnHdQuality)
+        tvEpgLoadStatus = findViewById(R.id.tvEpgLoadStatus)
         btnPlayPause = findViewById(R.id.btnPlayPause)
         btnSleepTimer = findViewById(R.id.btnSleepTimer)
         btnLiveReload = findViewById(R.id.btnLiveReload)
@@ -1023,8 +1098,8 @@ class MainActivity : AppCompatActivity() {
         tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(14f))
         tvHomeWelcome.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(11f))
         tvHomeCategoryBack.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(12f))
-        tvPlaylistPageTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(22f))
-        tvPlaylistPageSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(13f))
+        tvPlaylistPageTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(18f))
+        tvPlaylistPageSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(11f))
         tvHomeStartTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(26f))
         tvHomeStartSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(15f))
 
@@ -1248,6 +1323,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnCcSubtitles.setOnClickListener { showSubtitleTrackMenu() }
+        btnAudioTrack.setOnClickListener { showAudioTrackMenu() }
         btnHdQuality.setOnClickListener { showQualityTrackMenu() }
 
         updatePlayerControlFocusChain()
@@ -1297,12 +1373,13 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (dx > 120 && abs(dx) > abs(dy)) {
-                    showChannelListPanel()
+                    showEpgPanel()
                     return true
                 }
 
                 if (dx < -120 && abs(dx) > abs(dy)) {
-                    return false
+                    showChannelListPanel()
+                    return true
                 }
 
                 return false
@@ -1765,6 +1842,22 @@ class MainActivity : AppCompatActivity() {
         if (categoryBack.hasOnClickListeners()) {
             categoryBack.performClick()
         }
+    }
+
+    private fun onCategoryBreadcrumbClick() {
+        if (isSettingsModalVisible) {
+            handleSettingsBackPress()
+            return
+        }
+        if (::gvHomeChannelList.isInitialized && gvHomeChannelList.visibility == View.VISIBLE) {
+            gvHomeChannelList.setSelection(0)
+            gvHomeChannelList.smoothScrollToPosition(0)
+            gvHomeChannelList.post {
+                gvHomeChannelList.getChildAt(0)?.requestFocus()
+            }
+            return
+        }
+        onBreadcrumbClick()
     }
 
     private fun goHomeFromLogoClick() {
@@ -2629,28 +2722,14 @@ class MainActivity : AppCompatActivity() {
         epgPanel.post {
             thread(name = "epg-panel-prep") {
                 val realPrograms = getProgramsForChannel(ch)
-                val programsSource = realPrograms.ifEmpty { buildArchivePlaceholderPrograms(ch) }
-                if (programsSource.isEmpty()) {
-                    handler.post {
-                        if (epgPanel.visibility != View.VISIBLE) return@post
-                        epgDateRow.visibility = View.GONE
-                        lvEpgPrograms.visibility = View.GONE
-                        lvEpgPrograms.adapter = null
-                        tvEpgEmptyState.text = epgUnavailableMessage()
-                        tvEpgEmptyState.visibility = View.VISIBLE
-                        syncEpgPanelBounds()
+                val programsSource = when {
+                    realPrograms.isNotEmpty() -> realPrograms
+                    else -> {
+                        val archive = buildArchivePlaceholderPrograms(ch)
+                        if (archive.isNotEmpty()) archive else buildPlaceholderPrograms()
                     }
-                    return@thread
                 }
-
-                val programs = programsSource
-                    .distinctBy { Triple(it.title.trim(), it.start, it.stop) }
-                    .sortedBy { it.start }
-                val dateFmt = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
-                val programsByDate = programs.groupBy { dateFmt.format(Date(it.start)) }
-                val dateKeys = programsByDate.keys.sortedBy { key ->
-                    dateFmt.parse(key)?.time ?: 0L
-                }
+                val (dateKeys, programsByDate) = buildEpgPanelDateModel(programsSource)
                 val selectedDate = if (epgPanelSelectedDate.isEmpty() || !dateKeys.contains(epgPanelSelectedDate)) {
                     resolveEpgDefaultDateKey(dateKeys)
                 } else {
@@ -3660,9 +3739,11 @@ class MainActivity : AppCompatActivity() {
             handleSettingsBackPress()
         }
         findViewById<View>(R.id.btnResetEpgCache).setOnClickListener {
-            synchronized(epgDataLock) { epgData.clear() }
-            showAppToast("Кэш EPG очищен")
+            cancelAndClearEpgCache()
+            showAppToast("Кэш EPG очищен, загрузка отменена")
+            updateEpgLoadStatusUi()
         }
+        updateEpgLoadStatusUi()
 
         tbSourceMode.post { tbSourceMode.requestFocus() }
         configureBackButtonsForSettings("openEpgSettingsScreen")
@@ -3689,53 +3770,63 @@ class MainActivity : AppCompatActivity() {
         if (cleanToken.isBlank()) return
         val login = prefs.getString(PREF_USER_LOGIN, "") ?: ""
         thread {
-            runCatching {
-                val url = "https://o.avff.pw/api.php?module=app&action=services&token=${
-                    Uri.encode(cleanToken)
-                }&login=${Uri.encode(login)}"
-                JSONObject(URL(url).readText())
-            }.onSuccess { json ->
-                if (json.optBoolean("success", false)) {
-                    val servicesArray = json.optJSONArray("services")
-                    val portal = mutableListOf<PlaylistProfile>()
-                    if (servicesArray != null) {
-                        for (i in 0 until servicesArray.length()) {
-                            val svc = servicesArray.optJSONObject(i) ?: continue
-                            val code = svc.optString("code").trim()
-                            val title = svc.optString("title").trim()
-                            if (code.isBlank() || title.isBlank()) continue
-                            portal.add(
-                                PlaylistProfile(
-                                    title, "url",
-                                    "https://o.avff.pw/list/$code.m3u8?token=$cleanToken", true
-                                )
-                            )
-                        }
-                    }
-                    portal.add(PlaylistProfile("Избранные", "url", "https://o.avff.pw/my/$cleanToken.m3u", true))
-                    logDebug(
-                        "PLAYLIST_FLOW",
-                        "SERVICES_RAW_RESPONSE names=${portal.map { it.name }} rawServicesCount=${servicesArray?.length() ?: 0}"
-                    )
-                    handler.post {
-                        prefs.edit().putStringSet(
-                            PREF_KNOWN_SERVICE_NAMES,
-                            portal.map { it.name }.toSet() - "Избранные"
-                        ).apply()
-                        val known = getKnownServiceNames() + setOf("Избранные", "Пользователь", "По умолчанию")
-                        val existing = getPlaylistProfiles().filter { it.name !in known }
-                        savePlaylistProfiles((portal + existing).distinctBy { it.name })
-                        logDebug("PLAYLIST_FLOW", "SERVICES_SYNCED count=${portal.size}")
-                        if (homePlaylistTilesPanel.visibility == View.VISIBLE) {
-                            showPlaylistPageOnHome()
-                        }
-                    }
-                } else {
-                    logDebug("PLAYLIST_FLOW", "SERVICES_SYNC_FAILED message=${json.optString("message")}")
+            val url = "https://o.avff.pw/api.php?module=app&action=services&token=${
+                Uri.encode(cleanToken)
+            }&login=${Uri.encode(login)}"
+            fun applyServicesJson(json: JSONObject, fromCache: Boolean) {
+                if (!json.optBoolean("success", false)) {
+                    if (!fromCache) logDebug("PLAYLIST_FLOW", "SERVICES_SYNC_FAILED message=${json.optString("message")}")
+                    return
                 }
-            }.onFailure { e ->
-                logDebug("PLAYLIST_FLOW", "SERVICES_SYNC_ERROR ${e.message}")
+                val servicesArray = json.optJSONArray("services")
+                val portal = mutableListOf<PlaylistProfile>()
+                if (servicesArray != null) {
+                    for (i in 0 until servicesArray.length()) {
+                        val svc = servicesArray.optJSONObject(i) ?: continue
+                        val code = svc.optString("code").trim()
+                        val title = svc.optString("title").trim()
+                        if (code.isBlank() || title.isBlank()) continue
+                        portal.add(
+                            PlaylistProfile(
+                                title, "url",
+                                "https://o.avff.pw/list/$code.m3u8?token=$cleanToken", true
+                            )
+                        )
+                    }
+                }
+                portal.add(PlaylistProfile("Избранные", "url", "https://o.avff.pw/my/$cleanToken.m3u", true))
+                logDebug(
+                    "PLAYLIST_FLOW",
+                    "SERVICES_RAW_RESPONSE fromCache=$fromCache names=${portal.map { it.name }} rawServicesCount=${servicesArray?.length() ?: 0}"
+                )
+                handler.post {
+                    prefs.edit().putStringSet(
+                        PREF_KNOWN_SERVICE_NAMES,
+                        portal.map { it.name }.toSet() - "Избранные"
+                    ).apply()
+                    val known = getKnownServiceNames() + setOf("Избранные", "Пользователь", "По умолчанию")
+                    val existing = getPlaylistProfiles().filter { it.name !in known }
+                    savePlaylistProfiles((portal + existing).distinctBy { it.name })
+                    logDebug("PLAYLIST_FLOW", "SERVICES_SYNCED count=${portal.size} fromCache=$fromCache")
+                    if (homePlaylistTilesPanel.visibility == View.VISIBLE) {
+                        showPlaylistPageOnHome()
+                    }
+                }
             }
+            // Prefer fresh network, fall back to cached services JSON.
+            runCatching { JSONObject(URL(url).readText()) }
+                .onSuccess { json ->
+                    prefs.edit().putString(PREF_SERVICES_CACHE, json.toString()).apply()
+                    applyServicesJson(json, fromCache = false)
+                }
+                .onFailure { e ->
+                    logDebug("PLAYLIST_FLOW", "SERVICES_SYNC_ERROR ${e.message}")
+                    val cached = prefs.getString(PREF_SERVICES_CACHE, null)
+                    if (!cached.isNullOrBlank()) {
+                        runCatching { JSONObject(cached) }
+                            .onSuccess { applyServicesJson(it, fromCache = true) }
+                    }
+                }
         }
     }
 
@@ -4550,8 +4641,10 @@ class MainActivity : AppCompatActivity() {
         statusViews: Map<String, TextView> = emptyMap()
     ) {
         if (epgFetchInProgress || urls.isEmpty()) return
+        val fetchGen = epgFetchGeneration
         epgFetchInProgress = true
         updateEpgDisplay()
+        updateEpgLoadStatusUi()
         refreshOpenOverlayPanelsAfterEpgUpdate()
         thread {
             fun humanReadableEpgError(t: Throwable): String {
@@ -4578,12 +4671,18 @@ class MainActivity : AppCompatActivity() {
             }
 
             fun applyEpgStatus(source: String, status: String) {
+                if (fetchGen != epgFetchGeneration) return
                 epgSourceStatus[source] = status
                 saveEpgStatusCache()
-                handler.post { statusViews[source]?.text = status }
+                handler.post {
+                    if (fetchGen != epgFetchGeneration) return@post
+                    statusViews[source]?.text = status
+                    updateEpgLoadStatusUi()
+                }
             }
 
             urls.forEach { sourceUrl ->
+                if (fetchGen != epgFetchGeneration) return@forEach
                 applyEpgStatus(sourceUrl, "Загрузка файла: 0%")
                 var parsed = false
                 var lastError = "Неизвестная ошибка"
@@ -4591,6 +4690,7 @@ class MainActivity : AppCompatActivity() {
                 candidates = epgUrlVariants
 
                 for (candidateUrl in epgUrlVariants) {
+                    if (fetchGen != epgFetchGeneration) break
                     try {
                         parseEpgUrlStreaming(
                             candidateUrl,
@@ -4628,16 +4728,24 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            runCatching {
-                trimEpgCacheToWeek()
-                saveEpgCache()
-                saveCurrentEpgSourceFingerprint()
-            }.onFailure { Log.e("EPG", "Ошибка сохранения EPG кэша", it) }
+            if (fetchGen == epgFetchGeneration) {
+                runCatching {
+                    trimEpgCacheToWeek()
+                    saveEpgCache()
+                    saveCurrentEpgSourceFingerprint()
+                }.onFailure { Log.e("EPG", "Ошибка сохранения EPG кэша", it) }
+            }
             handler.post {
+                if (fetchGen != epgFetchGeneration) {
+                    epgFetchInProgress = false
+                    updateEpgLoadStatusUi()
+                    return@post
+                }
                 prefs.edit().putLong(PREF_EPG_LAST_REFRESH, System.currentTimeMillis()).apply()
                 updateEpgDisplay()
                 refreshLogo()
                 epgFetchInProgress = false
+                updateEpgLoadStatusUi()
                 refreshOpenOverlayPanelsAfterEpgUpdate()
             }
         }
@@ -5132,6 +5240,7 @@ class MainActivity : AppCompatActivity() {
             }
             logDebug("NAV", "open_player")
             homePanel.visibility = View.GONE
+            ensurePlayerControlsInteractive()
             setPlayerVideoVisible(true)
             applyAspectRatioMode()
             val shouldUseSoftware = !preferGpuDecoding
@@ -5547,7 +5656,46 @@ class MainActivity : AppCompatActivity() {
 
     private fun epgUnavailableMessage(): String =
         if (epgFetchInProgress) "Выполняется обновление программы передач"
-        else "Для канала отсутствует EPG. Проверьте настройки плейлиста"
+        else "Программа передач недоступна"
+
+    private fun updateEpgLoadStatusUi() {
+        val statusView = tvEpgLoadStatus ?: findViewById(R.id.tvEpgLoadStatus) ?: return
+        tvEpgLoadStatus = statusView
+        val text = when {
+            epgFetchInProgress -> {
+                val active = epgSourceStatus.entries.firstOrNull { (_, v) ->
+                    v.contains("Загрузка") || v.contains("Распаковка") || v.contains("Чтение")
+                }?.value
+                active ?: "EPG: обновление..."
+            }
+            epgSourceStatus.isNotEmpty() -> {
+                val ok = epgSourceStatus.count { it.value.contains("100%") || it.value.contains("готово", true) }
+                val err = epgSourceStatus.count { it.value.contains("Ошибка", true) }
+                when {
+                    err > 0 && ok == 0 -> "EPG: ошибка загрузки"
+                    err > 0 -> "EPG: частично обновлено ($ok ок, $err ошиб.)"
+                    ok > 0 -> "EPG: обновлено ($ok ист.)"
+                    else -> epgSourceStatus.values.firstOrNull() ?: "EPG: ожидание"
+                }
+            }
+            synchronized(epgDataLock) { epgData.isNotEmpty() } -> "EPG: загружено из кэша"
+            else -> "EPG: ожидание"
+        }
+        statusView.text = text
+    }
+
+    private fun cancelAndClearEpgCache() {
+        epgFetchGeneration += 1
+        epgFetchInProgress = false
+        synchronized(epgDataLock) { epgData.clear() }
+        epgSourceStatus.clear()
+        prefs.edit()
+            .remove(PREF_EPG_CACHE)
+            .remove(PREF_EPG_STATUS)
+            .remove(PREF_EPG_LAST_REFRESH)
+            .apply()
+        updateEpgLoadStatusUi()
+    }
 
     private fun updateEpgDisplay() {
         if (inputNumber.isNotEmpty()) return
@@ -5620,9 +5768,12 @@ class MainActivity : AppCompatActivity() {
         availableSubtitleTracks = emptyList()
         selectedSubtitleIndex = -1
         availableSubtitleUrl = null
+        availableAudioTracks = emptyList()
+        selectedAudioIndex = -1
         subtitlesEnabled = false
         masterStreamUrl = baseUrl
         btnCcSubtitles.visibility = View.GONE
+        btnAudioTrack.visibility = View.GONE
         btnHdQuality.visibility = View.GONE
         clearPlayerSubtitles()
         thread {
@@ -5633,6 +5784,7 @@ class MainActivity : AppCompatActivity() {
                 val lines = textBody.lines()
                 val subtitles = mutableListOf<SubtitleOption>()
                 val qualities = mutableListOf<QualityOption>()
+                val audios = mutableListOf<AudioOption>()
                 for (i in lines.indices) {
                     val line = lines[i].trim()
                     if (line.startsWith("#EXT-X-MEDIA:") && line.contains("TYPE=SUBTITLES")) {
@@ -5647,6 +5799,15 @@ class MainActivity : AppCompatActivity() {
                             else -> "Субтитры"
                         }
                         subtitles.add(SubtitleOption(label = label, language = language, url = uri))
+                    } else if (line.startsWith("#EXT-X-MEDIA:") && line.contains("TYPE=AUDIO")) {
+                        val name = Regex("NAME=\"([^\"]+)\"").find(line)?.groupValues?.get(1)
+                        val language = Regex("LANGUAGE=\"([^\"]+)\"").find(line)?.groupValues?.get(1)
+                        val label = when {
+                            !name.isNullOrBlank() -> name
+                            !language.isNullOrBlank() -> languageLabel(language)
+                            else -> "Аудио"
+                        }
+                        audios.add(AudioOption(label = label, language = language))
                     } else if (line.startsWith("#EXT-X-STREAM-INF:")) {
                         val height = Regex("RESOLUTION=\\d+x(\\d+)").find(line)?.groupValues?.get(1)?.toIntOrNull()
                             ?: continue
@@ -5661,22 +5822,23 @@ class MainActivity : AppCompatActivity() {
                         )
                     }
                 }
-                Triple(
+                Quadruple(
                     masterUrl,
                     subtitles.distinctBy { it.url },
-                    qualities.distinctBy { it.height }.sortedByDescending { it.height }
+                    qualities.distinctBy { it.height }.sortedByDescending { it.height },
+                    audios.distinctBy { "${it.language}|${it.label}" }
                 )
-            }.onSuccess { (masterUrl, subtitles, qualities) ->
+            }.onSuccess { (masterUrl, subtitles, qualities, audios) ->
                 handler.post {
                     if (myToken != qualityFetchToken) return@post
                     masterStreamUrl = masterUrl
                     availableSubtitleTracks = subtitles
                     availableSubtitleUrl = subtitles.firstOrNull()?.url
                     availableQualities = qualities
-                    currentQualityIndex = -1
-                    selectedSubtitleIndex = -1
-                    subtitlesEnabled = false
-                    applySubtitleTrackSelection(enabled = false, language = null)
+                    if (audios.isNotEmpty()) {
+                        availableAudioTracks = audios
+                    }
+                    applyPersistedTrackPreferences()
                     updateCcHdButtons()
                 }
             }.onFailure {
@@ -5685,6 +5847,75 @@ class MainActivity : AppCompatActivity() {
                     "fetchStreamQualityInfo failed url=${redactSensitive(baseUrl)} error=${it.message}"
                 )
             }
+        }
+    }
+
+    private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+
+    private fun applyPersistedTrackPreferences() {
+        val preferSubtitles = prefs.getBoolean(PREF_SUBTITLE_ENABLED, false)
+        val preferLang = prefs.getString(PREF_SUBTITLE_LANGUAGE, null)
+        if (preferSubtitles && availableSubtitleTracks.isNotEmpty()) {
+            val idx = when {
+                !preferLang.isNullOrBlank() ->
+                    availableSubtitleTracks.indexOfFirst {
+                        it.language.equals(preferLang, true) || it.label.equals(preferLang, true)
+                    }
+                else -> 0
+            }.takeIf { it >= 0 } ?: 0
+            selectedSubtitleIndex = idx
+            subtitlesEnabled = true
+            applySubtitleTrackSelection(
+                enabled = true,
+                language = availableSubtitleTracks.getOrNull(idx)?.language
+            )
+        } else {
+            selectedSubtitleIndex = -1
+            subtitlesEnabled = false
+            applySubtitleTrackSelection(enabled = false, language = null)
+            clearPlayerSubtitles()
+        }
+
+        val preferHeight = prefs.getInt(PREF_QUALITY_HEIGHT, -1)
+        var qualityRestartNeeded = false
+        if (preferHeight > 0 && availableQualities.isNotEmpty()) {
+            val idx = availableQualities.indexOfFirst { it.height == preferHeight }
+            if (idx >= 0) {
+                currentQualityIndex = idx
+                val targetUrl = availableQualities[idx].url
+                manualQualityOverrideUrl = targetUrl
+                manualQualityOverrideChannelIndex = currentChannelIndex
+                if (lastRequestedPlaybackUrl.isNotBlank() && lastRequestedPlaybackUrl != targetUrl) {
+                    qualityRestartNeeded = true
+                }
+            } else {
+                currentQualityIndex = -1
+                manualQualityOverrideUrl = null
+                manualQualityOverrideChannelIndex = -1
+            }
+        } else {
+            currentQualityIndex = -1
+            // Keep Auto; do not clear an in-flight manual override from the quality menu mid-session
+            // unless preference is Auto.
+            if (preferHeight <= 0) {
+                manualQualityOverrideUrl = null
+                manualQualityOverrideChannelIndex = -1
+            }
+        }
+
+        val preferAudio = prefs.getString(PREF_AUDIO_LANGUAGE, null)
+        if (!preferAudio.isNullOrBlank() && availableAudioTracks.isNotEmpty()) {
+            val idx = availableAudioTracks.indexOfFirst {
+                it.language.equals(preferAudio, true) || it.label.equals(preferAudio, true)
+            }
+            selectedAudioIndex = if (idx >= 0) idx else -1
+            applyAudioTrackSelection(selectedAudioIndex)
+        } else {
+            selectedAudioIndex = -1
+            applyAudioTrackSelection(-1)
+        }
+        if (qualityRestartNeeded) {
+            playChannel(forcePlay = true)
         }
     }
 
@@ -5709,6 +5940,16 @@ class MainActivity : AppCompatActivity() {
         btnCcSubtitles.text = "CC  $subtitleLabel"
         btnCcSubtitles.alpha = if (subtitlesEnabled) 1f else 0.55f
 
+        val hasAudioChoice = availableAudioTracks.size > 1
+        btnAudioTrack.visibility = if (hasAudioChoice) View.VISIBLE else View.GONE
+        val audioLabel = if (selectedAudioIndex >= 0) {
+            availableAudioTracks.getOrNull(selectedAudioIndex)?.label ?: "Авто"
+        } else {
+            "Авто"
+        }
+        btnAudioTrack.text = "AU  $audioLabel"
+        btnAudioTrack.alpha = if (hasAudioChoice) 1f else 0.55f
+
         if (availableQualities.isEmpty()) {
             btnHdQuality.visibility = View.GONE
         } else {
@@ -5722,30 +5963,22 @@ class MainActivity : AppCompatActivity() {
             btnHdQuality.alpha = if (availableQualities.size > 1) 1f else 0.6f
         }
         updatePlayerControlFocusChain()
+        layoutPlayerSubtitlesOverlay()
     }
 
     private fun updatePlayerControlFocusChain() {
-        val rightAfterAspect = when {
-            btnCcSubtitles.visibility == View.VISIBLE -> R.id.btnCcSubtitles
-            btnHdQuality.visibility == View.VISIBLE -> R.id.btnHdQuality
-            else -> R.id.btnLiveReload
-        }
-        btnAspectRatio.nextFocusRightId = rightAfterAspect
+        val chain = mutableListOf<Int>()
+        if (btnCcSubtitles.visibility == View.VISIBLE) chain += R.id.btnCcSubtitles
+        if (btnAudioTrack.visibility == View.VISIBLE) chain += R.id.btnAudioTrack
+        if (btnHdQuality.visibility == View.VISIBLE) chain += R.id.btnHdQuality
 
-        if (btnCcSubtitles.visibility == View.VISIBLE) {
-            btnCcSubtitles.nextFocusRightId =
-                if (btnHdQuality.visibility == View.VISIBLE) R.id.btnHdQuality else R.id.btnLiveReload
+        btnAspectRatio.nextFocusRightId = chain.firstOrNull() ?: R.id.btnLiveReload
+        chain.forEachIndexed { index, id ->
+            val view = findViewById<View>(id)
+            view.nextFocusLeftId = if (index == 0) R.id.btnAspectRatio else chain[index - 1]
+            view.nextFocusRightId = if (index == chain.lastIndex) R.id.btnLiveReload else chain[index + 1]
         }
-        if (btnHdQuality.visibility == View.VISIBLE) {
-            btnHdQuality.nextFocusLeftId =
-                if (btnCcSubtitles.visibility == View.VISIBLE) R.id.btnCcSubtitles else R.id.btnAspectRatio
-            btnHdQuality.nextFocusRightId = R.id.btnLiveReload
-        }
-        btnLiveReload.nextFocusLeftId = when {
-            btnHdQuality.visibility == View.VISIBLE -> R.id.btnHdQuality
-            btnCcSubtitles.visibility == View.VISIBLE -> R.id.btnCcSubtitles
-            else -> R.id.btnAspectRatio
-        }
+        btnLiveReload.nextFocusLeftId = chain.lastOrNull() ?: R.id.btnAspectRatio
     }
 
     private fun showSubtitleTrackMenu() {
@@ -5761,8 +5994,28 @@ class MainActivity : AppCompatActivity() {
             selectedSubtitleIndex = index
             subtitlesEnabled = index >= 0
             val language = tracks.getOrNull(index)?.language
+            prefs.edit()
+                .putBoolean(PREF_SUBTITLE_ENABLED, subtitlesEnabled)
+                .putString(PREF_SUBTITLE_LANGUAGE, language ?: tracks.getOrNull(index)?.label)
+                .apply()
             applySubtitleTrackSelection(enabled = subtitlesEnabled, language = language)
             if (!subtitlesEnabled) clearPlayerSubtitles()
+            updateCcHdButtons()
+        }
+    }
+
+    private fun showAudioTrackMenu() {
+        if (availableAudioTracks.size <= 1) return
+        val items = mutableListOf(Triple("Авто", selectedAudioIndex < 0, -1))
+        availableAudioTracks.forEachIndexed { index, track ->
+            items.add(Triple(track.label, selectedAudioIndex == index, index))
+        }
+        showPlayerTrackMenu(btnAudioTrack, items) { index ->
+            selectedAudioIndex = index
+            val lang = availableAudioTracks.getOrNull(index)?.language
+                ?: availableAudioTracks.getOrNull(index)?.label
+            prefs.edit().putString(PREF_AUDIO_LANGUAGE, lang).apply()
+            applyAudioTrackSelection(index)
             updateCcHdButtons()
         }
     }
@@ -5775,6 +6028,8 @@ class MainActivity : AppCompatActivity() {
         }
         showPlayerTrackMenu(btnHdQuality, items) { index ->
             currentQualityIndex = index
+            val height = availableQualities.getOrNull(index)?.height ?: -1
+            prefs.edit().putInt(PREF_QUALITY_HEIGHT, height).apply()
             updateCcHdButtons()
             if (index < 0) {
                 manualQualityOverrideUrl = null
@@ -5868,13 +6123,55 @@ class MainActivity : AppCompatActivity() {
         videoLayout.subtitleView?.visibility = View.GONE
     }
 
+    private fun applyAudioTrackSelection(index: Int) {
+        val player = mediaPlayer ?: return
+        val builder = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+        val option = availableAudioTracks.getOrNull(index)
+        if (option != null && option.groupIndex >= 0 && option.trackIndex >= 0) {
+            val groups = player.currentTracks.groups
+            val group = groups.getOrNull(option.groupIndex)
+            if (group != null && group.type == C.TRACK_TYPE_AUDIO) {
+                builder.setOverrideForType(
+                    TrackSelectionOverride(group.mediaTrackGroup, listOf(option.trackIndex))
+                )
+            }
+        } else if (option != null && !option.language.isNullOrBlank()) {
+            builder.setPreferredAudioLanguage(option.language)
+        }
+        player.trackSelectionParameters = builder.build()
+    }
+
+    private fun ensurePlayerControlsInteractive() {
+        if (!::controlsPanel.isInitialized) return
+        controlsPanel.isEnabled = true
+        controlsPanel.isClickable = true
+        controlsPanel.isFocusable = false
+        listOf(
+            R.id.btnPlayPause, R.id.btnLiveReload, R.id.btnBackLeft, R.id.btnBackRight,
+            R.id.btnLock, R.id.btnEpgPlayer, R.id.btnAspectRatio,
+            R.id.btnCcSubtitles, R.id.btnAudioTrack, R.id.btnHdQuality
+        ).forEach { id ->
+            findViewById<View?>(id)?.let { v ->
+                v.isEnabled = true
+                v.isClickable = true
+            }
+        }
+    }
+
     private fun layoutPlayerSubtitlesOverlay() {
         if (!::playerSubtitlesOverlay.isInitialized || !::tvPlayerSubtitles.isInitialized) return
         val w = playerSubtitlesOverlay.width.takeIf { it > 0 } ?: return
         val h = playerSubtitlesOverlay.height.takeIf { it > 0 } ?: return
         val side = (w * 0.08f).toInt()
-        val bottom = (h * 0.12f).toInt()
-        val maxH = (h * 0.28f).toInt()
+        val controlsLift = if (::controlsPanel.isInitialized && controlsPanel.visibility == View.VISIBLE) {
+            controlsPanel.height + dpToPx(12)
+        } else {
+            (h * 0.12f).toInt()
+        }
+        val bottom = controlsLift.coerceAtLeast((h * 0.08f).toInt())
+        val maxH = (h * 0.22f).toInt()
         playerSubtitlesOverlay.setPadding(side, 0, side, bottom)
         tvPlayerSubtitles.maxHeight = maxH.coerceAtLeast(dpToPx(40))
         val lp = tvPlayerSubtitles.layoutParams as FrameLayout.LayoutParams
@@ -5882,6 +6179,11 @@ class MainActivity : AppCompatActivity() {
         lp.width = ViewGroup.LayoutParams.WRAP_CONTENT
         lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
         tvPlayerSubtitles.layoutParams = lp
+        // Keep captions under top chrome but above the control panel.
+        if (::controlsPanel.isInitialized) {
+            playerSubtitlesOverlay.elevation = 0f
+            controlsPanel.elevation = 8f
+        }
     }
 
     private fun updatePlayerSubtitlesFromCues(cueGroup: CueGroup) {
@@ -5911,29 +6213,60 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun discoverSubtitleTracksFromPlayer(tracks: Tracks) {
-        if (availableSubtitleTracks.isNotEmpty()) return
-        val discovered = mutableListOf<SubtitleOption>()
-        for (group in tracks.groups) {
-            if (group.type != C.TRACK_TYPE_TEXT) continue
+        var changed = false
+        if (availableSubtitleTracks.isEmpty()) {
+            val discovered = mutableListOf<SubtitleOption>()
+            for (group in tracks.groups) {
+                if (group.type != C.TRACK_TYPE_TEXT) continue
+                for (i in 0 until group.length) {
+                    val format = group.getTrackFormat(i)
+                    val language = format.language
+                    val label = format.label?.takeIf { it.isNotBlank() }
+                        ?: language?.let { languageLabel(it) }
+                        ?: "Субтитры"
+                    discovered.add(
+                        SubtitleOption(
+                            label = label,
+                            language = language,
+                            url = ""
+                        )
+                    )
+                }
+            }
+            if (discovered.isNotEmpty()) {
+                availableSubtitleTracks = discovered.distinctBy { "${it.language}|${it.label}" }
+                availableSubtitleUrl = availableSubtitleTracks.firstOrNull()?.url
+                changed = true
+            }
+        }
+        val audioDiscovered = mutableListOf<AudioOption>()
+        tracks.groups.forEachIndexed { groupIndex, group ->
+            if (group.type != C.TRACK_TYPE_AUDIO) return@forEachIndexed
             for (i in 0 until group.length) {
+                if (!group.isTrackSupported(i)) continue
                 val format = group.getTrackFormat(i)
                 val language = format.language
                 val label = format.label?.takeIf { it.isNotBlank() }
                     ?: language?.let { languageLabel(it) }
-                    ?: "Субтитры"
-                discovered.add(
-                    SubtitleOption(
+                    ?: "Аудио ${audioDiscovered.size + 1}"
+                audioDiscovered.add(
+                    AudioOption(
                         label = label,
                         language = language,
-                        url = ""
+                        groupIndex = groupIndex,
+                        trackIndex = i
                     )
                 )
             }
         }
-        if (discovered.isEmpty()) return
-        availableSubtitleTracks = discovered.distinctBy { "${it.language}|${it.label}" }
-        availableSubtitleUrl = availableSubtitleTracks.firstOrNull()?.url
-        updateCcHdButtons()
+        if (audioDiscovered.size > 1) {
+            availableAudioTracks = audioDiscovered.distinctBy { "${it.groupIndex}:${it.trackIndex}:${it.language}|${it.label}" }
+            changed = true
+        }
+        if (changed) {
+            applyPersistedTrackPreferences()
+            updateCcHdButtons()
+        }
     }
 
     private fun toggleSubtitles() {
@@ -6107,8 +6440,14 @@ class MainActivity : AppCompatActivity() {
                         hideSeekSpinnerIfReady(0L)
                         hidePlayerLoadingUi()
                         if (homePanel.visibility != View.VISIBLE && !isPlayerOverlayOpen()) {
-                            showUI()
+                            if (suppressAutoPlayerUiOnce) {
+                                suppressAutoPlayerUiOnce = false
+                                hideUI()
+                            } else {
+                                showUI()
+                            }
                         }
+                        layoutPlayerSubtitlesOverlay()
                         logDebug("PLAYER_STATE", "onRenderedFirstFrame videoOnlyMode=$videoOnlyMinimalMode url=$lastRequestedPlaybackUrl")
                         logAudioTrackState("first_frame_rendered")
                         logPathState("STARTUP_PATH onRenderedFirstFrame")
@@ -6764,10 +7103,12 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(hideUiRunnable)
         handler.postDelayed(hideUiRunnable, 5000)
         updatePlayPauseButton()
+        ensurePlayerControlsInteractive()
+        layoutPlayerSubtitlesOverlay()
         val controlsPanelButtonIds = intArrayOf(
             R.id.btnPlayPause, R.id.btnLiveReload, R.id.btnBackLeft,
             R.id.btnBackRight, R.id.btnLock, R.id.btnEpgPlayer, R.id.btnAspectRatio,
-            R.id.btnCcSubtitles, R.id.btnHdQuality
+            R.id.btnCcSubtitles, R.id.btnAudioTrack, R.id.btnHdQuality
         )
         val current = currentFocus
         val keepCurrent = current != null && controlsPanelButtonIds.any { findViewById<View>(it) === current }
@@ -6803,6 +7144,7 @@ class MainActivity : AppCompatActivity() {
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         sbTimeline.isEnabled = false
+        layoutPlayerSubtitlesOverlay()
         hideSystemUI()
     }
 
@@ -6860,7 +7202,7 @@ class MainActivity : AppCompatActivity() {
         val controlsPanelButtonIds = intArrayOf(
             R.id.btnPlayPause, R.id.btnLiveReload, R.id.btnBackLeft,
             R.id.btnBackRight, R.id.btnLock, R.id.btnEpgPlayer, R.id.btnAspectRatio,
-            R.id.btnCcSubtitles, R.id.btnHdQuality
+            R.id.btnCcSubtitles, R.id.btnAudioTrack, R.id.btnHdQuality
         )
         return controlsPanelButtonIds.any { findViewById<View>(it) === focused }
     }
@@ -7005,9 +7347,10 @@ class MainActivity : AppCompatActivity() {
 
         if (controlsPanel.visibility == View.VISIBLE) {
             if (handleWatchingHotkeys(keyCode)) return true
+            // Keep CENTER/ENTER for control buttons; L/R open side panels (channels/EPG)
+            // unless the timeline is seeking in archive mode.
             if (isFocusInPlayerControlsRow()) {
                 when (keyCode) {
-                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
                     KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                         handler.removeCallbacks(hideUiRunnable)
@@ -7017,6 +7360,24 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         } else if (handleWatchingHotkeys(keyCode)) {
+            return true
+        }
+
+        // MENU на пульте во время просмотра — только хром плеера, не настройки приложения.
+        if ((keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_INFO) &&
+            homePanel.visibility != View.VISIBLE &&
+            homeSettingsScreen.visibility != View.VISIBLE &&
+            (!::playerSettingsOverlay.isInitialized || playerSettingsOverlay.visibility != View.VISIBLE)
+        ) {
+            if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
+                hideEpgPanel()
+                return true
+            }
+            if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
+                hideChannelListPanel()
+                return true
+            }
+            if (controlsPanel.visibility == View.VISIBLE) hideUI() else showUI()
             return true
         }
 
@@ -7043,28 +7404,22 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                if (controlsPanel.visibility == View.VISIBLE && isArchivePlayback && sbTimeline.isEnabled) {
+                if (controlsPanel.visibility == View.VISIBLE && isArchivePlayback && sbTimeline.isEnabled &&
+                    (currentFocus === sbTimeline || currentFocus === timelineArea)
+                ) {
                     sbTimeline.progress = (sbTimeline.progress + 20).coerceAtMost(1000)
                     return true
-                }
-                if (controlsPanel.visibility == View.VISIBLE && isFocusInPlayerControlsRow()) {
-                    handler.removeCallbacks(hideUiRunnable)
-                    handler.postDelayed(hideUiRunnable, 5000)
-                    return super.onKeyDown(keyCode, event)
                 }
                 toggleEpgPanel()
                 return true
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_LEFT -> {
-                if (controlsPanel.visibility == View.VISIBLE && isArchivePlayback && sbTimeline.isEnabled) {
+                if (controlsPanel.visibility == View.VISIBLE && isArchivePlayback && sbTimeline.isEnabled &&
+                    (currentFocus === sbTimeline || currentFocus === timelineArea)
+                ) {
                     sbTimeline.progress = (sbTimeline.progress - 20).coerceAtLeast(0)
                     return true
-                }
-                if (controlsPanel.visibility == View.VISIBLE && isFocusInPlayerControlsRow()) {
-                    handler.removeCallbacks(hideUiRunnable)
-                    handler.postDelayed(hideUiRunnable, 5000)
-                    return super.onKeyDown(keyCode, event)
                 }
                 showChannelListPanel()
                 return true
@@ -7839,6 +8194,11 @@ class MainActivity : AppCompatActivity() {
         if (index < 0) return false
         currentChannelIndex = index
         logDebug("NAV", "startup_restore_last_channel index=$index name=${channels[index].name}")
+        // Keep chrome hidden so D-pad L/R open channel list / EPG instead of focusing controls.
+        suppressAutoPlayerUiOnce = true
+        homePanel.visibility = View.GONE
+        resetSettingsOverlayState()
+        ensurePlayerControlsInteractive()
         playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
         return true
     }
@@ -8003,6 +8363,7 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {
             cachedLogos.clear()
         }
+        updateEpgLoadStatusUi()
     }
 
     private fun applyCachedLogosToChannels() {
