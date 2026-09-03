@@ -205,9 +205,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvPlaylistPageSubtitle: TextView
     private lateinit var homePlaylistTilesPanel: View
     private lateinit var gvHomeChannelList: GridView
+    private lateinit var etHomeListSearch: EditText
+    private lateinit var etChannelListSearch: EditText
     private lateinit var rvHomeTiles: RecyclerView
     private lateinit var tvHomeCategoryBack: TextView
     private var homeCategoryBackHandler: (() -> Unit)? = null
+    private enum class HomeSearchMode { HIDDEN, CATEGORIES, CHANNELS }
+    private var homeSearchMode: HomeSearchMode = HomeSearchMode.HIDDEN
+    private var homeChannelListSource: List<Channel> = emptyList()
+    private var homeChannelListCategory: String = ""
+    private var allCategoryNamesForSearch: List<String> = emptyList()
+    private var channelListSearchQuery: String = ""
     private lateinit var liveStatusBadge: View
     private lateinit var tvLiveStatusText: TextView
     private lateinit var liveStatusDot: View
@@ -445,8 +453,7 @@ class MainActivity : AppCompatActivity() {
                 lastProgressWallClockMs = now
                 stuckPositionSinceMs = 0L
                 consecutiveForwardProgressTicks++
-                // First frame plus one live-window jump is not proof the picture is moving.
-                // Require two forward ticks before hiding the recovery plate / starting grace.
+                // Require two healthy ticks before hiding the recovery plate.
                 if (consecutiveForwardProgressTicks >= 2) {
                     onPlaybackRecoverySucceeded()
                 }
@@ -458,12 +465,24 @@ class MainActivity : AppCompatActivity() {
                         if (lastProgressWallClockMs > 0L) lastProgressWallClockMs else now
                 }
             }
-            pos < lastPlaybackPositionMs - 1_000L -> {
+            // Healthy live DVR wrap: position jumps backwards but stays non-negative while
+            // segments keep loading. Count as progress so recovery can clear (otherwise
+            // wrap/forward/wrap never reaches 2 consecutive forward-only ticks).
+            pos >= 0L && pos < lastPlaybackPositionMs - 1_000L -> {
+                lastPlaybackPositionMs = pos
+                lastProgressWallClockMs = now
+                stuckPositionSinceMs = 0L
+                consecutiveForwardProgressTicks++
+                if (consecutiveForwardProgressTicks >= 2) {
+                    onPlaybackRecoverySucceeded()
+                }
+            }
+            // Negative sliding with no forward progress — frozen picture that only drifts.
+            pos < 0L && pos < lastPlaybackPositionMs - 1_000L -> {
                 consecutiveForwardProgressTicks = 0
                 lastPlaybackPositionMs = pos
                 stuckPositionSinceMs = 0L
-                // Live window can slide backwards while playback is healthy. Keep the
-                // last-forward wall-clock so a frozen picture that only drifts still stalls.
+                // Keep lastProgressWallClockMs from the last healthy tick.
             }
             else -> {
                 consecutiveForwardProgressTicks = 0
@@ -530,6 +549,21 @@ class MainActivity : AppCompatActivity() {
         if (!playbackRecoveryActive) return
         if (isSettingsModalVisible || homePanel.visibility == View.VISIBLE || isPlayerOverlayOpen()) {
             resetPlaybackRecoveryState()
+            if (::tvReloadingStatus.isInitialized && tvReloadingStatus.visibility == View.VISIBLE) {
+                stopReloadingPlateSpinner()
+                tvReloadingStatus.visibility = View.GONE
+            }
+            return
+        }
+        // If playback already looks healthy, clear the plate instead of reloading again.
+        val player = mediaPlayer
+        if (player != null &&
+            player.playWhenReady &&
+            player.isPlaying &&
+            player.playbackState == androidx.media3.common.Player.STATE_READY &&
+            consecutiveForwardProgressTicks >= 2
+        ) {
+            onPlaybackRecoverySucceeded()
             return
         }
         val elapsed = System.currentTimeMillis() - playbackRecoveryStartedAtMs
@@ -729,12 +763,16 @@ class MainActivity : AppCompatActivity() {
     private val timerWarnRunnable = Runnable { showTimerWarning() }
 
     private fun getProgramsForChannel(ch: Channel): List<Program> {
-        val key1 = ch.tvgId?.lowercase()?.trim()
-        val key2 = ch.tvgName?.lowercase()?.trim()
-        val key3 = ch.name.lowercase().trim()
+        val keys = listOfNotNull(
+            ch.tvgId?.lowercase()?.trim()?.takeIf { it.isNotEmpty() },
+            ch.tvgName?.lowercase()?.trim()?.takeIf { it.isNotEmpty() },
+            ch.name.lowercase().trim().takeIf { it.isNotEmpty() }
+        )
         return synchronized(epgDataLock) {
-            val list = epgData[key1] ?: epgData[key2] ?: epgData[key3]
-            list?.toList().orEmpty()
+            for (key in keys) {
+                epgData[key]?.let { return@synchronized it.toList() }
+            }
+            emptyList()
         }
     }
 
@@ -989,7 +1027,10 @@ class MainActivity : AppCompatActivity() {
         tvPlaylistPageSubtitle = findViewById(R.id.tvPlaylistPageSubtitle)
         homePlaylistTilesPanel = findViewById(R.id.homePlaylistTilesPanel)
         gvHomeChannelList = findViewById(R.id.gvHomeChannelList)
+        etHomeListSearch = findViewById(R.id.etHomeListSearch)
+        etChannelListSearch = findViewById(R.id.etChannelListSearch)
         rvHomeTiles = findViewById(R.id.rvHomeTiles)
+        setupHomeAndChannelSearch()
         tvHomeCategoryBack = findViewById(R.id.tvHomeCategoryBack)
         liveStatusBadge = findViewById(R.id.liveStatusBadge)
         tvLiveStatusText = findViewById(R.id.tvLiveStatusText)
@@ -1524,6 +1565,7 @@ class MainActivity : AppCompatActivity() {
         tvHomeAppTitle.visibility = View.VISIBLE
         tvHomeSystemTime.visibility = View.VISIBLE
         ivHomePower.visibility = View.VISIBLE
+        if (::etHomeListSearch.isInitialized) setHomeSearchMode(HomeSearchMode.HIDDEN)
         disableHomeCategoryBack("showStartPage")
         homePanel.post { applyHomeScreenScale(force = true) }
         topInfoPanel.visibility = View.GONE
@@ -2002,14 +2044,99 @@ class MainActivity : AppCompatActivity() {
         tvPlaylistPageTitle.visibility = if (showTitle) View.VISIBLE else View.GONE
         tvPlaylistPageSubtitle.visibility = if (showTitle) View.VISIBLE else View.GONE
         (homePlaylistTilesPanel.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
-            if (showTitle) {
-                lp.topToBottom = R.id.tvPlaylistPageSubtitle
-                lp.topMargin = resources.getDimensionPixelSize(R.dimen.home_grid_margin_top)
+            lp.topToBottom = R.id.homeContentTopBarrier
+            lp.topMargin = if (showTitle) {
+                resources.getDimensionPixelSize(R.dimen.home_grid_margin_top)
             } else {
-                lp.topToBottom = R.id.tvHomeWelcome
-                lp.topMargin = dpToPx(24)
+                dpToPx(12)
             }
             homePlaylistTilesPanel.layoutParams = lp
+        }
+    }
+
+    private fun setupHomeAndChannelSearch() {
+        golosTypeface?.let {
+            etHomeListSearch.typeface = Typeface.create(it, Typeface.NORMAL)
+            etChannelListSearch.typeface = Typeface.create(it, Typeface.NORMAL)
+        }
+        etHomeListSearch.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                applyHomeListSearch(s?.toString().orEmpty())
+            }
+        })
+        etChannelListSearch.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                channelListSearchQuery = s?.toString().orEmpty()
+                if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
+                    bindChannelListPanelAdapter()
+                }
+            }
+        })
+    }
+
+    private fun setHomeSearchMode(mode: HomeSearchMode, hint: String = "Поиск") {
+        homeSearchMode = mode
+        if (mode == HomeSearchMode.HIDDEN) {
+            etHomeListSearch.setText("")
+            etHomeListSearch.visibility = View.GONE
+            return
+        }
+        etHomeListSearch.hint = hint
+        etHomeListSearch.visibility = View.VISIBLE
+        if (etHomeListSearch.text?.isNotEmpty() == true) {
+            etHomeListSearch.setText("")
+        }
+    }
+
+    private fun applyHomeListSearch(query: String) {
+        when (homeSearchMode) {
+            HomeSearchMode.CATEGORIES -> {
+                val q = query.trim()
+                val names = if (q.isBlank()) {
+                    allCategoryNamesForSearch
+                } else {
+                    allCategoryNamesForSearch.filter {
+                        it.contains(q, ignoreCase = true)
+                    }
+                }
+                bindHomeTiles(names.map { category ->
+                    HomeTileItem(category) {
+                        logDebug("NAV", "CATEGORY_TILE_CLICK_RECEIVED name=$category")
+                        if (categoryOpenInProgress) {
+                            logDebug("NAV", "CLICK_BLOCKED reason=category_open_in_progress")
+                            return@HomeTileItem
+                        }
+                        categoryOpenInProgress = true
+                        selectedCategoryName = category
+                        logDebug("NAV", "CATEGORY_OPEN_CHANNELS_START name=$category")
+                        val startedAt = System.currentTimeMillis()
+                        showAppLoadingSpinner()
+                        val filtered = cachedCategoryGroups[category].orEmpty()
+                        homePlaylistTilesPanel.visibility = View.GONE
+                        val remaining = (220L - (System.currentTimeMillis() - startedAt)).coerceAtLeast(0L)
+                        handler.postDelayed({
+                            showHomeChannelList(category, filtered)
+                            hideAppLoadingSpinner()
+                            logDebug("NAV", "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}")
+                            categoryOpenInProgress = false
+                        }, remaining)
+                    }
+                }, source = "categories")
+            }
+            HomeSearchMode.CHANNELS -> {
+                val q = query.trim()
+                val filtered = if (q.isBlank()) {
+                    homeChannelListSource
+                } else {
+                    homeChannelListSource.filter { it.name.contains(q, ignoreCase = true) }
+                }
+                bindHomeChannelListAdapter(homeChannelListCategory, filtered)
+            }
+            HomeSearchMode.HIDDEN -> Unit
         }
     }
 
@@ -2032,6 +2159,7 @@ class MainActivity : AppCompatActivity() {
         homePlaylistTilesPanel.visibility = View.VISIBLE
         gvHomeChannelList.visibility = View.GONE
         gvHomeChannelList.adapter = null
+        setHomeSearchMode(HomeSearchMode.HIDDEN)
         applyHomeAppTitleStyle(settingsMode = false)
         disableHomeCategoryBack("showPlaylistPageOnHome_end")
         updateHomeHeaderActions()
@@ -2118,6 +2246,7 @@ class MainActivity : AppCompatActivity() {
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "категории", settingsTitle2 = playlistName)
         enableHomeCategoryBack { showPlaylistPageOnHome() }
         updateHomeHeaderActions()
+        setHomeSearchMode(HomeSearchMode.CATEGORIES, hint = "Поиск категории")
 
         val allChannels = groupedCategories.values.flatten()
         fun categoryGroupOrder(name: String): Int {
@@ -2137,36 +2266,14 @@ class MainActivity : AppCompatActivity() {
                 .thenBy { it.key.lowercase(Locale.getDefault()) })
             .forEach { (key, value) -> grouped[key] = value }
         cachedCategoryGroups = grouped
+        allCategoryNamesForSearch = grouped.keys.toList()
         logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS count=${grouped.size}")
         logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS names=${grouped.keys.joinToString(separator = " | ")}")
         bindCategoryTilesOnHome()
     }
 
     private fun bindCategoryTilesOnHome() {
-        val categoryNames = cachedCategoryGroups.keys.toList()
-        bindHomeTiles(categoryNames.map { category ->
-            HomeTileItem(category) {
-                logDebug("NAV", "CATEGORY_TILE_CLICK_RECEIVED name=$category")
-                if (categoryOpenInProgress) {
-                    logDebug("NAV", "CLICK_BLOCKED reason=category_open_in_progress")
-                    return@HomeTileItem
-                }
-                categoryOpenInProgress = true
-                selectedCategoryName = category
-                logDebug("NAV", "CATEGORY_OPEN_CHANNELS_START name=$category")
-                val startedAt = System.currentTimeMillis()
-                showAppLoadingSpinner()
-                val filtered = cachedCategoryGroups[category].orEmpty()
-                homePlaylistTilesPanel.visibility = View.GONE
-                val remaining = (220L - (System.currentTimeMillis() - startedAt)).coerceAtLeast(0L)
-                handler.postDelayed({
-                    showHomeChannelList(category, filtered)
-                    hideAppLoadingSpinner()
-                    logDebug("NAV", "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}")
-                    categoryOpenInProgress = false
-                }, remaining)
-            }
-        }, source = "categories")
+        applyHomeListSearch(etHomeListSearch.text?.toString().orEmpty())
     }
 
     private fun returnToCategoryTilesOnHome() {
@@ -2179,6 +2286,7 @@ class MainActivity : AppCompatActivity() {
         val playlistName = getSelectedPlaylistName()
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "категории", settingsTitle2 = playlistName)
         enableHomeCategoryBack { showPlaylistPageOnHome() }
+        setHomeSearchMode(HomeSearchMode.CATEGORIES, hint = "Поиск категории")
         bindCategoryTilesOnHome()
     }
 
@@ -2188,18 +2296,12 @@ class MainActivity : AppCompatActivity() {
     private fun showHomeChannelList(category: String, channelsForCategory: List<Channel>) {
         hidePlayerChromeFully()
         showPlaylistPageHeader(showWelcome = true, showTitle = false)
-        val lastUrl = prefs.getString(PREF_LAST_CHANNEL_URL, null)
-        val lastName = prefs.getString(PREF_LAST_CHANNEL_NAME, null)
         channels.clear()
         channels.addAll(channelsForCategory)
-        val highlightIdx = when {
-            !lastUrl.isNullOrBlank() -> channelsForCategory.indexOfFirst {
-                it.url == lastUrl && (lastName.isNullOrBlank() || it.name == lastName)
-            }
-            else -> -1
-        }
         selectedCategoryName = category
         lastChannelListCategory = category
+        homeChannelListCategory = category
+        homeChannelListSource = channelsForCategory.toList()
         applyHomeAppTitleStyle(
             settingsMode = true,
             settingsTitle = getSelectedPlaylistName(),
@@ -2209,12 +2311,22 @@ class MainActivity : AppCompatActivity() {
         homePlaylistTilesPanel.visibility = View.GONE
         findViewById<View>(R.id.homeBottomTilesRow).visibility = View.GONE
         gvHomeChannelList.visibility = View.VISIBLE
+        setHomeSearchMode(HomeSearchMode.CHANNELS, hint = "Поиск канала")
 
         // EPG download starts only from settings Save — here we only use already-cached data.
         if (selectedEpgSources.isNotEmpty()) {
             ensureEpgLoadedLazy()
         }
+        bindHomeChannelListAdapter(category, channelsForCategory)
+    }
 
+    private fun bindHomeChannelListAdapter(category: String, channelsForCategory: List<Channel>) {
+        val lastUrl = prefs.getString(PREF_LAST_CHANNEL_URL, null)
+        val lastName = prefs.getString(PREF_LAST_CHANNEL_NAME, null)
+        val highlightUrlName = when {
+            !lastUrl.isNullOrBlank() -> lastUrl to lastName
+            else -> null
+        }
         gvHomeChannelList.adapter = object : ArrayAdapter<Channel>(this, 0, channelsForCategory) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val itemView = convertView
@@ -2232,8 +2344,11 @@ class MainActivity : AppCompatActivity() {
                 archiveBadge.visibility =
                     if (channel.catchupDays > 0 && !channel.catchupSource.isNullOrBlank()) View.VISIBLE else View.GONE
 
+                val isCurrent = highlightUrlName != null &&
+                    channel.url == highlightUrlName.first &&
+                    (highlightUrlName.second.isNullOrBlank() || channel.name == highlightUrlName.second)
                 itemView.setBackgroundResource(
-                    if (highlightIdx >= 0 && position == highlightIdx) R.drawable.channel_grid_tile_bg_current
+                    if (isCurrent) R.drawable.channel_grid_tile_bg_current
                     else R.drawable.channel_grid_tile_bg
                 )
 
@@ -2253,7 +2368,10 @@ class MainActivity : AppCompatActivity() {
                     logDebug("NAV", "home_channel_card_click name=${channel.name}")
                     homeReturnTarget = HomeReturnTarget.CHANNEL_LIST
                     lastChannelListCategory = category
-                    currentChannelIndex = position
+                    val realIndex = channels.indexOfFirst {
+                        it.url == channel.url && it.name == channel.name
+                    }
+                    currentChannelIndex = if (realIndex >= 0) realIndex else position
                     playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
                 }
                 return itemView
@@ -2265,14 +2383,20 @@ class MainActivity : AppCompatActivity() {
                 view.performClick()
             }
         gvHomeChannelList.post {
-            val focusIdx = if (highlightIdx >= 0) highlightIdx else 0
-            gvHomeChannelList.setSelection(focusIdx)
-            gvHomeChannelList.requestFocus()
-            gvHomeChannelList.post {
-                val child = gvHomeChannelList.getChildAt(
-                    focusIdx - gvHomeChannelList.firstVisiblePosition
-                )
-                child?.requestFocus()
+            val focusIdx = channelsForCategory.indexOfFirst { ch ->
+                highlightUrlName != null &&
+                    ch.url == highlightUrlName.first &&
+                    (highlightUrlName.second.isNullOrBlank() || ch.name == highlightUrlName.second)
+            }.takeIf { it >= 0 } ?: 0
+            if (channelsForCategory.isNotEmpty()) {
+                gvHomeChannelList.setSelection(focusIdx.coerceAtMost(channelsForCategory.lastIndex))
+                gvHomeChannelList.requestFocus()
+                gvHomeChannelList.post {
+                    val child = gvHomeChannelList.getChildAt(
+                        focusIdx - gvHomeChannelList.firstVisiblePosition
+                    )
+                    child?.requestFocus()
+                }
             }
         }
     }
@@ -2645,13 +2769,23 @@ class MainActivity : AppCompatActivity() {
         channelListPanel.visibility = View.GONE
         gvChannelListPanel.adapter = null
         channelListProgramTitles = emptyMap()
+        channelListSearchQuery = ""
+        if (::etChannelListSearch.isInitialized) {
+            etChannelListSearch.setText("")
+        }
         setPlayerOverlayScrimVisible(false)
         hideUI()
         resumePlaybackStallWatchdogIfNeeded()
     }
 
     private fun bindChannelListPanelAdapter() {
-        gvChannelListPanel.adapter = object : ArrayAdapter<Channel>(this@MainActivity, 0, channels) {
+        val q = channelListSearchQuery.trim()
+        val visibleChannels = if (q.isBlank()) {
+            channels.toList()
+        } else {
+            channels.filter { it.name.contains(q, ignoreCase = true) }
+        }
+        gvChannelListPanel.adapter = object : ArrayAdapter<Channel>(this@MainActivity, 0, visibleChannels) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val holder: ChannelGridItemViewHolder
                 val itemView: View
@@ -2670,8 +2804,11 @@ class MainActivity : AppCompatActivity() {
                     holder = convertView.tag as ChannelGridItemViewHolder
                 }
 
-                val channel = channels[position]
-                holder.tvNumber.text = (position + 1).toString()
+                val channel = visibleChannels[position]
+                val realIndex = channels.indexOfFirst {
+                    it.url == channel.url && it.name == channel.name
+                }.takeIf { it >= 0 } ?: position
+                holder.tvNumber.text = (realIndex + 1).toString()
                 holder.tvName.text = channel.name
                 holder.tvName.isSelected = true
                 golosTypeface?.let { holder.tvName.typeface = Typeface.create(it, 500, false) }
@@ -2681,11 +2818,11 @@ class MainActivity : AppCompatActivity() {
                 )
 
                 itemView.setBackgroundResource(
-                    if (position == currentChannelIndex) R.drawable.channel_grid_tile_bg_current
+                    if (realIndex == currentChannelIndex) R.drawable.channel_grid_tile_bg_current
                     else R.drawable.channel_grid_tile_bg
                 )
 
-                holder.tvCurrentProgram.text = channelListProgramTitles[position].orEmpty()
+                holder.tvCurrentProgram.text = channelListProgramTitles[realIndex].orEmpty()
                 holder.tvCurrentProgram.visibility = View.VISIBLE
                 holder.archiveBadge.visibility =
                     if (channel.catchupDays > 0 && !channel.catchupSource.isNullOrBlank()) {
@@ -2696,7 +2833,7 @@ class MainActivity : AppCompatActivity() {
 
                 itemView.setOnClickListener {
                     logDebug("NAV", "channel_grid_click name=${channel.name}")
-                    currentChannelIndex = position
+                    currentChannelIndex = realIndex
                     playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
                     hideChannelListPanel()
                 }
@@ -2709,8 +2846,14 @@ class MainActivity : AppCompatActivity() {
                 view.performClick()
             }
         syncChannelListPanelBounds()
-        gvChannelListPanel.setSelection(currentChannelIndex)
-        gvChannelListPanel.requestFocus()
+        val focusIdx = visibleChannels.indexOfFirst { ch ->
+            val realIndex = channels.indexOfFirst { it.url == ch.url && it.name == ch.name }
+            realIndex == currentChannelIndex
+        }.takeIf { it >= 0 } ?: 0
+        if (visibleChannels.isNotEmpty()) {
+            gvChannelListPanel.setSelection(focusIdx.coerceAtMost(visibleChannels.lastIndex))
+            gvChannelListPanel.requestFocus()
+        }
     }
 
     private fun showChannelListPanel() {
@@ -2719,8 +2862,12 @@ class MainActivity : AppCompatActivity() {
             hideEpgPanel(restorePlayerUi = false)
         }
         tvChannelListTitle.text = "Список каналов: ${getSelectedPlaylistName()}"
+        channelListSearchQuery = ""
+        if (::etChannelListSearch.isInitialized) {
+            etChannelListSearch.setText("")
+        }
         setPlayerOverlayScrimVisible(true)
-        topInfoPanel.visibility = View.GONE
+        topInfoBag.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         handler.removeCallbacks(hideUiRunnable)
@@ -3814,7 +3961,7 @@ class MainActivity : AppCompatActivity() {
         var intervalIndex = intervals.indexOf(prefs.getInt(PREF_EPG_REFRESH_INTERVAL_DAYS, 1)).takeIf { it >= 0 } ?: 0
         var pendingApply: Runnable? = null
 
-        val playlistOwnSources = extractEpgSourcesFromPlaylist(currentPlaylistText)
+        val playlistOwnSources = resolveBuiltinPlaylistEpgSources()
         val customSources = getCustomEpgSources()
         val savedMode = prefs.getString(PREF_EPG_SOURCE_MODE, null)
         val modeCustom = when (savedMode) {
@@ -3890,9 +4037,10 @@ class MainActivity : AppCompatActivity() {
                 toggle.isFocusable = manual
                 toggle.isClickable = manual
             }
+            val builtin = resolveBuiltinPlaylistEpgSources()
             tvSourceHint.text = when {
                 manual -> "Ссылки указаны вручную и не зависят от плейлиста."
-                playlistOwnSources.isNotEmpty() -> "Ссылка берётся из самого плейлиста: ${playlistOwnSources.first()}"
+                builtin.isNotEmpty() -> "Ссылка берётся из самого плейлиста: ${builtin.first()}"
                 else -> "У этого плейлиста нет своей ссылки на EPG. Переключите на \"Свои источники\", чтобы добавить свою."
             }
         }
@@ -3910,7 +4058,7 @@ class MainActivity : AppCompatActivity() {
             if (isChecked) {
                 fillUrlFields(getCustomEpgSources().take(3).ifEmpty { emptyList() })
             } else {
-                fillUrlFields(playlistOwnSources.take(3))
+                fillUrlFields(resolveBuiltinPlaylistEpgSources().take(3))
             }
         }
 
@@ -3944,7 +4092,7 @@ class MainActivity : AppCompatActivity() {
                     et.text.toString().trim().takeIf { it.isNotBlank() && states[i] }
                 }.distinct()
             } else {
-                playlistOwnSources
+                resolveBuiltinPlaylistEpgSources()
             }
             if (links.isEmpty()) {
                 showAppToast(
@@ -4046,7 +4194,16 @@ class MainActivity : AppCompatActivity() {
             }&login=${Uri.encode(login)}"
             fun applyServicesJson(json: JSONObject, fromCache: Boolean) {
                 if (!json.optBoolean("success", false)) {
-                    if (!fromCache) logDebug("PLAYLIST_FLOW", "SERVICES_SYNC_FAILED message=${json.optString("message")}")
+                    if (!fromCache) {
+                        logDebug("PLAYLIST_FLOW", "SERVICES_SYNC_FAILED message=${json.optString("message")}")
+                        val msg = json.optString("message").trim()
+                        handler.post {
+                            showAppToast(
+                                if (msg.isNotBlank()) "Сервис недоступен: $msg" else "Сервис временно недоступен",
+                                3500L
+                            )
+                        }
+                    }
                     return
                 }
                 val servicesArray = json.optJSONArray("services")
@@ -4096,6 +4253,13 @@ class MainActivity : AppCompatActivity() {
                     if (!cached.isNullOrBlank()) {
                         runCatching { JSONObject(cached) }
                             .onSuccess { applyServicesJson(it, fromCache = true) }
+                        handler.post {
+                            showAppToast("Сервис недоступен, показаны сохранённые данные", 3500L)
+                        }
+                    } else {
+                        handler.post {
+                            showAppToast("Сервис временно недоступен", 3500L)
+                        }
                     }
                 }
         }
@@ -4860,9 +5024,10 @@ class MainActivity : AppCompatActivity() {
                 handler.post {
                     hideAppLoadingSpinner()
                     if (showErrors) {
+                        showAppToast("Сервис временно недоступен", 3500L)
                         AlertDialog.Builder(this)
-                            .setTitle("Ошибка загрузки")
-                            .setMessage("Не удалось загрузить плейлист по умолчанию. Проверьте токен или ссылку в настройках.")
+                            .setTitle("Сервис недоступен")
+                            .setMessage("Не удалось загрузить плейлист. Проверьте токен, ссылку или доступность сервиса.")
                             .setPositiveButton("Открыть настройки") { _, _ ->
                                 showSettingsDialog()
                                 openPlaylistSettingsScreen()
@@ -4956,9 +5121,11 @@ class MainActivity : AppCompatActivity() {
             }
 
             // Sequential per-source download/unpack/parse.
-            urls.forEach { sourceUrl ->
-                if (fetchGen != epgFetchGeneration) return@forEach
-                applyEpgStatus(sourceUrl, "Загрузка файла: 0%")
+            val totalSources = urls.size
+            urls.forEachIndexed { index, sourceUrl ->
+                if (fetchGen != epgFetchGeneration) return@forEachIndexed
+                val n = index + 1
+                applyEpgStatus(sourceUrl, "Загрузка $n/$totalSources (0%)")
                 var parsed = false
                 var lastError = "Неизвестная ошибка"
                 val epgUrlVariants = buildEpgUrlCandidates(sourceUrl)
@@ -4969,9 +5136,15 @@ class MainActivity : AppCompatActivity() {
                     try {
                         parseEpgUrlStreaming(
                             candidateUrl,
-                            onDownload = { p -> applyEpgStatus(sourceUrl, "Загрузка файла: $p%") },
-                            onUnpack = { p -> applyEpgStatus(sourceUrl, "Распаковка файла: $p%") },
-                            onParse = { p -> applyEpgStatus(sourceUrl, "Чтение файла: $p%") }
+                            onDownload = { p ->
+                                applyEpgStatus(sourceUrl, "Загрузка $n/$totalSources ($p%)")
+                            },
+                            onUnpack = { p ->
+                                applyEpgStatus(sourceUrl, "Распаковка $n/$totalSources ($p%)")
+                            },
+                            onParse = { p ->
+                                applyEpgStatus(sourceUrl, "Чтение $n/$totalSources ($p%)")
+                            }
                         )
                         applyEpgStatus(sourceUrl, "Готово")
                         parsed = true
@@ -5230,6 +5403,7 @@ class MainActivity : AppCompatActivity() {
         var programmeZeroDate = 0
         val channelIdsSeen = LinkedHashSet<String>()
         val programmeChannelIdsSeen = LinkedHashSet<String>()
+        val xmlChannelDisplayNames = HashMap<String, MutableSet<String>>()
 
         ProgressInputStream(inputStream, totalBytes.toLong(), onProgress).use { stream ->
             val parser = Xml.newPullParser()
@@ -5251,6 +5425,26 @@ class MainActivity : AppCompatActivity() {
                 "channelLookupByKey keys sample=${channelLookupByKey.keys.take(10)} totalKeys=${channelLookupByKey.size}"
             )
 
+            fun storeKeysForXmlChannel(xmlChannelId: String): Set<String> {
+                val idKey = xmlChannelId.lowercase().trim()
+                if (idKey.isEmpty()) return emptySet()
+                val aliasKeys = linkedSetOf(idKey)
+                xmlChannelDisplayNames[idKey]?.let { aliasKeys.addAll(it) }
+                val matchedChannels = linkedSetOf<Channel>()
+                aliasKeys.forEach { alias ->
+                    channelLookupByKey[alias]?.let { matchedChannels.addAll(it) }
+                }
+                if (matchedChannels.isEmpty()) return emptySet()
+                val storeKeys = linkedSetOf<String>()
+                storeKeys.addAll(aliasKeys)
+                matchedChannels.forEach { ch ->
+                    ch.tvgId?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { storeKeys += it }
+                    ch.tvgName?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { storeKeys += it }
+                    ch.name.lowercase().trim().takeIf { it.isNotEmpty() }?.let { storeKeys += it }
+                }
+                return storeKeys
+            }
+
             while (eventType != XmlPullParser.END_DOCUMENT) {
                 if (eventType == XmlPullParser.START_TAG) {
                     when (parser.name) {
@@ -5262,10 +5456,23 @@ class MainActivity : AppCompatActivity() {
                                 loggedChannelSamples++
                             }
                         }
+                        "display-name" -> {
+                            val dn = runCatching { parser.nextText() }.getOrNull()
+                                ?.lowercase()?.trim().orEmpty()
+                            val idKey = tempId.lowercase().trim()
+                            if (idKey.isNotBlank() && dn.isNotBlank()) {
+                                xmlChannelDisplayNames.getOrPut(idKey) { mutableSetOf() }.add(dn)
+                            }
+                        }
                         "icon" -> {
                             val src = parser.getAttributeValue(null, "src")
-                            channelLookupByKey[tempId.lowercase().trim()]?.forEach {
-                                it.logoFromEpg = src
+                            val idKey = tempId.lowercase().trim()
+                            val keys = buildList {
+                                if (idKey.isNotBlank()) add(idKey)
+                                xmlChannelDisplayNames[idKey]?.let { addAll(it) }
+                            }
+                            keys.forEach { key ->
+                                channelLookupByKey[key]?.forEach { it.logoFromEpg = src }
                             }
                         }
 
@@ -5297,12 +5504,19 @@ class MainActivity : AppCompatActivity() {
                                 loggedProgrammeSamples++
                             }
 
-                            if (chId.isNotEmpty() && channelLookupByKey.containsKey(chId)) {
+                            val storeKeys = storeKeysForXmlChannel(chId)
+                            if (chId.isNotEmpty() && storeKeys.isNotEmpty()) {
                                 val trimmedDesc = desc.take(300)
+                                val program = Program(title, start, stop, trimmedDesc)
                                 synchronized(epgDataLock) {
-                                    val bucket = epgData.getOrPut(chId) { mutableListOf() }
-                                    if (bucket.size < MAX_PROGRAMS_PER_CHANNEL) {
-                                        bucket.add(Program(title, start, stop, trimmedDesc))
+                                    val primary = epgData.getOrPut(chId) { mutableListOf() }
+                                    if (primary.size < MAX_PROGRAMS_PER_CHANNEL) {
+                                        primary.add(program)
+                                    }
+                                    storeKeys.forEach { key ->
+                                        if (key != chId) {
+                                            epgData[key] = primary
+                                        }
                                     }
                                 }
                             } else {
@@ -5554,6 +5768,15 @@ class MainActivity : AppCompatActivity() {
                 logDebug("PLAYLIST_FLOW", "OPEN_PLAYER_WITHOUT_CHANNEL blocked currentChannelIndex=$currentChannelIndex channelsCount=${channels.size}")
                 showPlaylistPageOnHome()
                 return@runCatching
+            }
+            // Channel switch / Live must dismiss a stuck recovery plate and cancel retries.
+            if (reason == PlayerOpenReason.CHANNEL_CLICK || reason == PlayerOpenReason.LIVE_RETRY) {
+                resetPlaybackRecoveryState()
+                if (::tvReloadingStatus.isInitialized && tvReloadingStatus.visibility == View.VISIBLE) {
+                    stopReloadingPlateSpinner()
+                    tvReloadingStatus.visibility = View.GONE
+                }
+                hidePlayerLoadingUi()
             }
             logDebug("NAV", "open_player")
             dismissHomeForPlayback()
@@ -6022,7 +6245,11 @@ class MainActivity : AppCompatActivity() {
                 val active = epgSourceStatus.entries.firstOrNull { (_, v) ->
                     v.contains("Загрузка") || v.contains("Распаковка") || v.contains("Чтение")
                 }?.value
-                active ?: "EPG: обновление..."
+                when {
+                    active.isNullOrBlank() -> "EPG: обновление..."
+                    active.startsWith("EPG:") -> active
+                    else -> "EPG: $active"
+                }
             }
             epgSourceStatus.isNotEmpty() -> {
                 val ok = epgSourceStatus.count {
@@ -8458,17 +8685,51 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun extractEpgSourcesFromPlaylist(content: String): List<String> {
-        val tagName = when {
-            content.contains("x-tvg-url=\"") -> "x-tvg-url=\""
-            content.contains("url-tvg=\"") -> "url-tvg=\""
-            else -> return emptyList()
+        if (content.isBlank()) return emptyList()
+        val regex = Regex(
+            """(?i)(?:x-tvg-url|url-tvg)\s*=\s*["“”']([^"“”']+)["“”']"""
+        )
+        val match = regex.find(content) ?: run {
+            // Legacy fallback for unquoted / odd headers.
+            val tagName = when {
+                content.contains("x-tvg-url=\"", ignoreCase = true) -> "x-tvg-url=\""
+                content.contains("url-tvg=\"", ignoreCase = true) -> "url-tvg=\""
+                else -> return emptyList()
+            }
+            val idx = content.indexOf(tagName, ignoreCase = true)
+            if (idx < 0) return emptyList()
+            return content.substring(idx + tagName.length)
+                .substringBefore("\"")
+                .split(",")
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .take(3)
         }
-        return content.substringAfter(tagName, "")
-            .substringBefore("\"")
+        return match.groupValues[1]
             .split(",")
             .map { it.trim() }
             .filter { it.isNotBlank() }
             .distinct()
+            .take(3)
+    }
+
+    /** Builtin EPG URLs from the active/selected playlist (memory or m3u content cache). */
+    private fun resolveBuiltinPlaylistEpgSources(): List<String> {
+        val fromMemory = extractEpgSourcesFromPlaylist(currentPlaylistText)
+        if (fromMemory.isNotEmpty()) return fromMemory
+        if (availableEpgSources.isNotEmpty()) return availableEpgSources.take(3)
+        val url = resolveCurrentPlaylistUrl()
+        val cached = getCachedPlaylistContent(url).orEmpty()
+        if (cached.isNotBlank()) {
+            if (currentPlaylistText.isBlank()) currentPlaylistText = cached
+            val fromCache = extractEpgSourcesFromPlaylist(cached)
+            if (fromCache.isNotEmpty()) {
+                availableEpgSources = fromCache
+                return fromCache
+            }
+        }
+        return emptyList()
     }
 
     private fun buildEpgUrlCandidates(url: String): List<String> {
