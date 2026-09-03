@@ -161,11 +161,14 @@ class MainActivity : AppCompatActivity() {
     private var preferGpuDecoding = true
     private var lastPlaybackPositionMs = -1L
     private var lastProgressWallClockMs = 0L
+    private var stuckPositionSinceMs = 0L
+    private var consecutiveForwardProgressTicks = 0
     private var bufferingSinceMs = 0L
     /** Ignore auto-recovery until this time — prevents reload loops after start/recover. */
     private var stallWatchdogGraceUntilMs = 0L
     private var playbackRecoveryActive = false
     private var playbackRecoveryStartedAtMs = 0L
+    private var lastRecoveryAttemptAtMs = 0L
     private var playbackRecoveryAttemptCount = 0
     private var lastPlaybackStallReason = ""
     private val playbackRecoveryRetryRunnable = Runnable { attemptPlaybackRecoveryStep() }
@@ -431,31 +434,65 @@ class MainActivity : AppCompatActivity() {
         }
         val pos = player.currentPosition
         when {
-            // Forward progress — healthy playback (or recovery succeeded).
-            lastPlaybackPositionMs >= 0L && pos > lastPlaybackPositionMs + 250L -> {
-                lastPlaybackPositionMs = pos
-                lastProgressWallClockMs = now
-                onPlaybackRecoverySucceeded()
-            }
-            // Seed baseline once after a reset without counting it as recovery success.
             lastPlaybackPositionMs < 0L -> {
                 lastPlaybackPositionMs = pos
                 lastProgressWallClockMs = now
+                stuckPositionSinceMs = 0L
+                consecutiveForwardProgressTicks = 0
             }
-            // Live window / timeline can slide backwards (often into negative posMs).
-            // Update the baseline but do NOT refresh the wall-clock — otherwise a frozen
-            // picture with a drifting live timeline never trips the stall watchdog.
-            pos < lastPlaybackPositionMs - 1_000L -> {
+            pos > lastPlaybackPositionMs + PLAYBACK_PROGRESS_MIN_DELTA_MS -> {
                 lastPlaybackPositionMs = pos
-            }
-            !inGrace &&
-                lastProgressWallClockMs > 0L &&
-                now - lastProgressWallClockMs > PLAYBACK_STALL_PROGRESS_MS -> {
-                logDebug("PLAYER_STATE", "watchdog progress stall detected")
                 lastProgressWallClockMs = now
-                // Immediate first recovery: frozen video with drifting live pos must reload now,
-                // not wait another PLAYBACK_RECOVERY_RETRY_MS before the first attempt.
-                notifyPlaybackStall("Поток завис (нет прогресса)", immediate = true)
+                stuckPositionSinceMs = 0L
+                consecutiveForwardProgressTicks++
+                // First frame plus one live-window jump is not proof the picture is moving.
+                // Require two forward ticks before hiding the recovery plate / starting grace.
+                if (consecutiveForwardProgressTicks >= 2) {
+                    onPlaybackRecoverySucceeded()
+                }
+            }
+            kotlin.math.abs(pos - lastPlaybackPositionMs) <= PLAYBACK_STUCK_POS_EPSILON_MS -> {
+                consecutiveForwardProgressTicks = 0
+                if (stuckPositionSinceMs == 0L) {
+                    stuckPositionSinceMs =
+                        if (lastProgressWallClockMs > 0L) lastProgressWallClockMs else now
+                }
+            }
+            pos < lastPlaybackPositionMs - 1_000L -> {
+                consecutiveForwardProgressTicks = 0
+                lastPlaybackPositionMs = pos
+                stuckPositionSinceMs = 0L
+                // Live window can slide backwards while playback is healthy. Keep the
+                // last-forward wall-clock so a frozen picture that only drifts still stalls.
+            }
+            else -> {
+                consecutiveForwardProgressTicks = 0
+            }
+        }
+
+        val noForwardFor = if (lastProgressWallClockMs > 0L) now - lastProgressWallClockMs else 0L
+        val stuckFor = if (stuckPositionSinceMs > 0L) now - stuckPositionSinceMs else 0L
+        val frozenNegative = pos < 0L
+        val stuckNow = stuckFor >= PLAYBACK_STALL_STUCK_POS_MS
+        val slidingTooLong = noForwardFor > PLAYBACK_STALL_PROGRESS_MS
+        val progressStallReason = when {
+            frozenNegative && noForwardFor >= PLAYBACK_STALL_STUCK_POS_MS ->
+                "Поток завис (отрицательная позиция)"
+            stuckNow -> "Поток завис (нет прогресса)"
+            slidingTooLong -> "Поток завис (нет прогресса)"
+            else -> null
+        }
+        if (progressStallReason != null) {
+            val bypassGrace = frozenNegative || stuckNow
+            if (bypassGrace || !inGrace) {
+                logDebug(
+                    "PLAYER_STATE",
+                    "watchdog progress stall detected reason=$progressStallReason posMs=$pos " +
+                        "stuckFor=$stuckFor noForwardFor=$noForwardFor inGrace=$inGrace"
+                )
+                lastProgressWallClockMs = now
+                stuckPositionSinceMs = 0L
+                notifyPlaybackStall(progressStallReason, immediate = true)
             }
         }
         handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
@@ -476,7 +513,10 @@ class MainActivity : AppCompatActivity() {
             playbackRecoveryAttemptCount = 0
             schedulePlaybackRecoveryRetry(immediate = immediate)
         } else {
-            schedulePlaybackRecoveryRetry(immediate = false)
+            val sinceLastAttempt =
+                if (lastRecoveryAttemptAtMs > 0L) now - lastRecoveryAttemptAtMs else Long.MAX_VALUE
+            val retryNow = immediate && sinceLastAttempt >= PLAYBACK_RECOVERY_RETRY_IF_STILL_FROZEN_MS
+            schedulePlaybackRecoveryRetry(immediate = retryNow)
         }
     }
 
@@ -500,6 +540,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         playbackRecoveryAttemptCount++
+        lastRecoveryAttemptAtMs = System.currentTimeMillis()
         val remainingSec = ((PLAYBACK_RECOVERY_WINDOW_MS - elapsed) / 1000L).coerceAtLeast(1L)
         val networkIssue = !isNetworkConnected() ||
             lastPlaybackStallReason.contains("интернет", ignoreCase = true)
@@ -519,8 +560,7 @@ class MainActivity : AppCompatActivity() {
         if (!playbackRecoveryActive) return
         resetPlaybackRecoveryState()
         stallWatchdogGraceUntilMs =
-            System.currentTimeMillis() + PLAYBACK_STALL_GRACE_AFTER_START_MS
-        resetPlaybackProgressBaseline()
+            System.currentTimeMillis() + PLAYBACK_STALL_GRACE_AFTER_RECOVERY_MS
         if (tvReloadingStatus.visibility == View.VISIBLE) {
             stopReloadingPlateSpinner()
             tvReloadingStatus.visibility = View.GONE
@@ -531,6 +571,7 @@ class MainActivity : AppCompatActivity() {
     private fun resetPlaybackRecoveryState() {
         playbackRecoveryActive = false
         playbackRecoveryStartedAtMs = 0L
+        lastRecoveryAttemptAtMs = 0L
         playbackRecoveryAttemptCount = 0
         handler.removeCallbacks(playbackRecoveryRetryRunnable)
     }
@@ -579,13 +620,21 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_SELECTED_PLAYLIST = "selected_playlist"
         private const val PREF_SELECTED_EPG = "selected_epg"
         private const val PLAYBACK_RECOVERY_WINDOW_MS = 30_000L
-        private const val PLAYBACK_RECOVERY_RETRY_MS = 10_000L
+        private const val PLAYBACK_RECOVERY_RETRY_MS = 5_000L
+        private const val PLAYBACK_RECOVERY_RETRY_IF_STILL_FROZEN_MS = 4_000L
         // Live IPTV often rebuffers for several seconds; 5s caused constant reload loops.
         private const val PLAYBACK_STALL_BUFFERING_MS = 20_000L
+        // Fallback: no forward progress (includes a frozen picture whose live timeline only slides).
+        // Keep this above one live-window wrap so healthy HLS wrapping does not reload.
         private const val PLAYBACK_STALL_PROGRESS_MS = 15_000L
+        // Same reported position while isPlaying — the picture is frozen. Fire on the next tick.
+        private const val PLAYBACK_STALL_STUCK_POS_MS = 2_000L
+        private const val PLAYBACK_PROGRESS_MIN_DELTA_MS = 400L
+        private const val PLAYBACK_STUCK_POS_EPSILON_MS = 300L
         // Fast hard-stop for ENDED/IDLE: stream died, we need recovery quickly.
         private const val PLAYBACK_STALL_HARD_STOP_MS = 5_000L
-        private const val PLAYBACK_STALL_GRACE_AFTER_START_MS = 25_000L
+        private const val PLAYBACK_STALL_GRACE_AFTER_START_MS = 8_000L
+        private const val PLAYBACK_STALL_GRACE_AFTER_RECOVERY_MS = 4_000L
         private const val PREF_EPG_CACHE = "epg_cache"
         private const val PREF_EPG_STATUS = "epg_status"
         private const val PREF_EPG_LAST_REFRESH = "epg_last_refresh"
@@ -2542,6 +2591,8 @@ class MainActivity : AppCompatActivity() {
         val player = mediaPlayer
         lastPlaybackPositionMs = player?.currentPosition ?: lastPlaybackPositionMs
         lastProgressWallClockMs = System.currentTimeMillis()
+        stuckPositionSinceMs = 0L
+        consecutiveForwardProgressTicks = 0
         bufferingSinceMs = 0L
         if (extendGrace) {
             stallWatchdogGraceUntilMs =
@@ -6754,12 +6805,12 @@ class MainActivity : AppCompatActivity() {
                     override fun onRenderedFirstFrame() {
                         firstFrameRendered = true
                         startupPlaybackUrlLock = null
-                        lastPlaybackPositionMs = player.currentPosition
-                        lastProgressWallClockMs = System.currentTimeMillis()
-                        onPlaybackRecoverySucceeded()
                         handler.removeCallbacks(startupSlowStreamRunnable)
-                        resetPlaybackProgressBaseline(extendGrace = true)
-                        armPlaybackFreezeWatchdog(4000L, withStartGrace = true)
+                        // Seed the stall baseline only. A first frame is not recovery success:
+                        // ExoPlayer can paint one frame while currentPosition then freezes or
+                        // slides backwards on a live window.
+                        resetPlaybackProgressBaseline(extendGrace = false)
+                        armPlaybackFreezeWatchdog(2000L, withStartGrace = false)
                         hideSeekSpinnerIfReady(0L)
                         hidePlayerLoadingUi()
                         if (homePanel.visibility != View.VISIBLE && !isPlayerOverlayOpen()) {
@@ -8114,6 +8165,8 @@ class MainActivity : AppCompatActivity() {
         bufferingSinceMs = 0L
         lastPlaybackPositionMs = -1L
         lastProgressWallClockMs = 0L
+        stuckPositionSinceMs = 0L
+        consecutiveForwardProgressTicks = 0
         videoOnlyMinimalFirstFrameRendered = false
         videoOnlyMinimalTriedSoftwareDecoder = false
         audioTrackForcedDisabled = false
