@@ -4051,6 +4051,14 @@ class MainActivity : AppCompatActivity() {
             fillUrlFields(customSources.take(3))
         } else {
             fillUrlFields(playlistOwnSources.take(3))
+            if (playlistOwnSources.isEmpty()) {
+                ensureBuiltinPlaylistEpgSourcesAsync { sources ->
+                    if (!tbSourceMode.isChecked) {
+                        fillUrlFields(sources.take(3))
+                        applyEpgSourceModeLock(manual = false)
+                    }
+                }
+            }
         }
 
         tbSourceMode.setOnCheckedChangeListener { _, isChecked ->
@@ -4058,7 +4066,16 @@ class MainActivity : AppCompatActivity() {
             if (isChecked) {
                 fillUrlFields(getCustomEpgSources().take(3).ifEmpty { emptyList() })
             } else {
-                fillUrlFields(resolveBuiltinPlaylistEpgSources().take(3))
+                val builtin = resolveBuiltinPlaylistEpgSources()
+                fillUrlFields(builtin.take(3))
+                if (builtin.isEmpty()) {
+                    ensureBuiltinPlaylistEpgSourcesAsync { sources ->
+                        if (!tbSourceMode.isChecked) {
+                            fillUrlFields(sources.take(3))
+                            applyEpgSourceModeLock(manual = false)
+                        }
+                    }
+                }
             }
         }
 
@@ -8716,20 +8733,50 @@ class MainActivity : AppCompatActivity() {
 
     /** Builtin EPG URLs from the active/selected playlist (memory or m3u content cache). */
     private fun resolveBuiltinPlaylistEpgSources(): List<String> {
-        val fromMemory = extractEpgSourcesFromPlaylist(currentPlaylistText)
-        if (fromMemory.isNotEmpty()) return fromMemory
-        if (availableEpgSources.isNotEmpty()) return availableEpgSources.take(3)
         val url = resolveCurrentPlaylistUrl()
         val cached = getCachedPlaylistContent(url).orEmpty()
-        if (cached.isNotBlank()) {
-            if (currentPlaylistText.isBlank()) currentPlaylistText = cached
-            val fromCache = extractEpgSourcesFromPlaylist(cached)
-            if (fromCache.isNotEmpty()) {
-                availableEpgSources = fromCache
-                return fromCache
+        // Prefer selected-playlist cache when memory still holds another playlist's body.
+        val candidates = listOf(cached, currentPlaylistText).filter { it.isNotBlank() }
+        for (content in candidates) {
+            val parsed = extractEpgSourcesFromPlaylist(content)
+            if (parsed.isNotEmpty()) {
+                if (currentPlaylistText.isBlank() && content === cached) {
+                    currentPlaylistText = cached
+                }
+                availableEpgSources = parsed
+                return parsed
             }
         }
+        if (availableEpgSources.isNotEmpty()) return availableEpgSources.take(3)
         return emptyList()
+    }
+
+    /**
+     * If builtin x-tvg-url is not in memory/cache yet (e.g. after services refresh),
+     * fetch the selected playlist header once and fill EPG URL forms.
+     */
+    private fun ensureBuiltinPlaylistEpgSourcesAsync(onResolved: (List<String>) -> Unit) {
+        val existing = resolveBuiltinPlaylistEpgSources()
+        if (existing.isNotEmpty()) {
+            onResolved(existing)
+            return
+        }
+        val playlistUrl = resolveCurrentPlaylistUrl()
+        if (playlistUrl.isBlank()) {
+            onResolved(emptyList())
+            return
+        }
+        thread(name = "epg-builtin-sources") {
+            val content = runCatching {
+                URL(playlistUrl).readText().also { saveCachedPlaylistContent(playlistUrl, it) }
+            }.getOrNull().orEmpty()
+            if (content.isNotBlank()) {
+                currentPlaylistText = content
+                availableEpgSources = extractEpgSourcesFromPlaylist(content)
+            }
+            val sources = resolveBuiltinPlaylistEpgSources()
+            handler.post { onResolved(sources) }
+        }
     }
 
     private fun buildEpgUrlCandidates(url: String): List<String> {
