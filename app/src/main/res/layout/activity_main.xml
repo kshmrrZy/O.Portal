@@ -730,6 +730,22 @@
             android:textSize="16sp"
             tools:text="Список каналов: Wink" />
 
+        <EditText
+            android:id="@+id/etChannelListSearch"
+            style="@style/AppGolosText"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_epg_url_field"
+            android:hint="Поиск канала"
+            android:imeOptions="actionSearch"
+            android:inputType="text|textNoSuggestions"
+            android:maxLines="1"
+            android:paddingHorizontal="12dp"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#80FFFFFF"
+            android:textSize="14sp" />
+
         <GridView
             android:id="@+id/gvChannelListPanel"
             android:layout_width="match_parent"
@@ -1138,6 +1154,33 @@
             android:layout_marginStart="@dimen/home_edge_margin"
             android:layout_marginEnd="@dimen/home_edge_margin" />
 
+        <EditText
+            android:id="@+id/etHomeListSearch"
+            style="@style/AppGolosText"
+            android:layout_width="0dp"
+            android:layout_height="@dimen/settings_sub_panel_field_height"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_epg_url_field"
+            android:hint="Поиск"
+            android:imeOptions="actionSearch"
+            android:inputType="text|textNoSuggestions"
+            android:maxLines="1"
+            android:paddingHorizontal="12dp"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#80FFFFFF"
+            android:textSize="14sp"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="@id/ivHomePower"
+            app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
+            app:layout_constraintTop_toBottomOf="@id/tvPlaylistPageSubtitle" />
+
+        <androidx.constraintlayout.widget.Barrier
+            android:id="@+id/homeContentTopBarrier"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:barrierDirection="bottom"
+            app:constraint_referenced_ids="tvPlaylistPageSubtitle,etHomeListSearch" />
+
         <ScrollView
             android:id="@+id/homePlaylistTilesPanel"
             android:layout_width="0dp"
@@ -1149,7 +1192,7 @@
             app:layout_constraintEnd_toEndOf="parent"
             android:layout_marginStart="@dimen/home_edge_margin"
             android:layout_marginEnd="@dimen/home_edge_margin"
-            app:layout_constraintTop_toBottomOf="@id/tvPlaylistPageSubtitle"
+            app:layout_constraintTop_toBottomOf="@id/homeContentTopBarrier"
             app:layout_constraintBottom_toBottomOf="parent"
             android:layout_marginTop="@dimen/home_grid_margin_top"
             android:layout_marginBottom="@dimen/home_bottom_margin"
@@ -1226,7 +1269,7 @@
             android:drawSelectorOnTop="true"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
             app:layout_constraintEnd_toEndOf="@id/ivHomePower"
-            app:layout_constraintTop_toBottomOf="@id/tvHomeWelcome"
+            app:layout_constraintTop_toBottomOf="@id/homeContentTopBarrier"
             app:layout_constraintBottom_toBottomOf="parent" />
 
         <LinearLayout
