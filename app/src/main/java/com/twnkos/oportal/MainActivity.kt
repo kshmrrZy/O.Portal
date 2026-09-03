@@ -2867,7 +2867,7 @@ class MainActivity : AppCompatActivity() {
             etChannelListSearch.setText("")
         }
         setPlayerOverlayScrimVisible(true)
-        topInfoBar.visibility = View.GONE
+        topInfoBox.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         handler.removeCallbacks(hideUiRunnable)
