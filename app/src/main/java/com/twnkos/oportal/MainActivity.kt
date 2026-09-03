@@ -522,8 +522,7 @@ class MainActivity : AppCompatActivity() {
             System.currentTimeMillis() + PLAYBACK_STALL_GRACE_AFTER_START_MS
         resetPlaybackProgressBaseline()
         if (tvReloadingStatus.visibility == View.VISIBLE) {
-            stopSpinnerOnView(ivReloadingIcon)
-            findViewById<ImageView>(R.id.ivReloadingRing)?.let { stopSpinnerOnView(it) }
+            stopReloadingPlateSpinner()
             tvReloadingStatus.visibility = View.GONE
         }
         hidePlayerLoadingUi()
@@ -5699,7 +5698,6 @@ class MainActivity : AppCompatActivity() {
     private var seekSpinnerStartedAtMs = 0L
 
     private fun showReloadingStatus(title: String, subtitle: String, isError: Boolean = false) {
-        // Keep fullscreen player spinner available under/near the plate for non-error recovery.
         if (!isError) {
             hideSeekSpinnerRunnable?.let { handler.removeCallbacks(it) }
             hideSeekSpinnerRunnable = null
@@ -5715,25 +5713,22 @@ class MainActivity : AppCompatActivity() {
         } else {
             dismissCenterSpinnersForStatusPlate()
         }
-        val ring = findViewById<ImageView>(R.id.ivReloadingRing)
-        val iconHost = ivReloadingIcon.parent as? View
+        val spinnerHost = findViewById<View>(R.id.reloadingSpinnerHost)
+        val cssSpinner = findViewById<View>(R.id.reloadingCssSpinner)
+        spinnerHost?.visibility = View.VISIBLE
         if (isError) {
-            ring?.visibility = View.GONE
+            stopCompositeSpinner(cssSpinner)
+            cssSpinner?.visibility = View.GONE
             stopSpinnerOnView(ivReloadingIcon)
             ivReloadingIcon.setBackground(null)
             ivReloadingIcon.rotation = 0f
             ivReloadingIcon.setImageResource(R.drawable.alert)
             ivReloadingIcon.visibility = View.VISIBLE
-            iconHost?.visibility = View.VISIBLE
         } else {
-            // Recovery plate: show spinner next to the status text.
-            iconHost?.visibility = View.VISIBLE
-            ring?.visibility = View.VISIBLE
-            ivReloadingIcon.visibility = View.VISIBLE
-            ivReloadingIcon.setImageResource(R.drawable.load1)
-            ring?.setImageResource(R.drawable.load2)
-            startSpinnerOnView(ivReloadingIcon, durationMs = 900L)
-            ring?.let { startSpinnerOnView(it, durationMs = 1400L) }
+            ivReloadingIcon.visibility = View.GONE
+            stopSpinnerOnView(ivReloadingIcon)
+            cssSpinner?.visibility = View.VISIBLE
+            startCompositeSpinner(cssSpinner)
         }
         tvReloadingTitle.text = title
         tvReloadingSubtitle.text = subtitle
@@ -5741,6 +5736,13 @@ class MainActivity : AppCompatActivity() {
         tvReloadingStatus.visibility = View.VISIBLE
         tvReloadingStatus.bringToFront()
         tvReloadingStatus.parent?.let { (it as? View)?.requestLayout() }
+    }
+
+    private fun stopReloadingPlateSpinner() {
+        stopCompositeSpinner(findViewById(R.id.reloadingCssSpinner))
+        stopSpinnerOnView(ivReloadingIcon)
+        ivReloadingIcon.rotation = 0f
+        findViewById<View>(R.id.reloadingCssSpinner)?.visibility = View.GONE
     }
 
     /** Hides full-screen/center loading spinners so they do not overlap status plates. */
