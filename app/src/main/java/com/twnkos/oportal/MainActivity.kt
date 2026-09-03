@@ -160,6 +160,8 @@ class MainActivity : AppCompatActivity() {
     private var lastPlaybackPositionMs = -1L
     private var lastProgressWallClockMs = 0L
     private var bufferingSinceMs = 0L
+    /** Ignore auto-recovery until this time — prevents reload loops after start/recover. */
+    private var stallWatchdogGraceUntilMs = 0L
     private var playbackRecoveryActive = false
     private var playbackRecoveryStartedAtMs = 0L
     private var playbackRecoveryAttemptCount = 0
@@ -380,27 +382,28 @@ class MainActivity : AppCompatActivity() {
             return@Runnable
         }
         val now = System.currentTimeMillis()
+        val inGrace = now < stallWatchdogGraceUntilMs
         if (!player.isPlaying) {
             if (player.playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
                 if (bufferingSinceMs == 0L) bufferingSinceMs = now
-                if (now - bufferingSinceMs > PLAYBACK_STALL_DETECT_MS) {
+                // Brief IPTV rebuffers are normal — only escalate after a long continuous buffer.
+                if (!inGrace && now - bufferingSinceMs > PLAYBACK_STALL_BUFFERING_MS) {
                     logDebug("PLAYER_STATE", "watchdog buffering stall detected")
                     notifyPlaybackStall("Буферизация потока")
                 }
             } else if (player.playWhenReady &&
                 (player.playbackState == androidx.media3.common.Player.STATE_IDLE ||
-                    player.playbackState == androidx.media3.common.Player.STATE_ENDED ||
-                    player.playbackState == androidx.media3.common.Player.STATE_READY)
+                    player.playbackState == androidx.media3.common.Player.STATE_ENDED)
             ) {
-                // READY + playWhenReady + !isPlaying is a common "frozen frame" state.
-                if (lastProgressWallClockMs > 0L && now - lastProgressWallClockMs > PLAYBACK_STALL_DETECT_MS) {
-                    logDebug(
-                        "PLAYER_STATE",
-                        "watchdog frozen idle/ready stall state=${player.playbackState}"
-                    )
+                if (!inGrace &&
+                    lastProgressWallClockMs > 0L &&
+                    now - lastProgressWallClockMs > PLAYBACK_STALL_HARD_STOP_MS
+                ) {
+                    logDebug("PLAYER_STATE", "watchdog hard-stop stall state=${player.playbackState}")
                     notifyPlaybackStall("Воспроизведение остановилось")
                 }
             } else {
+                // READY + !isPlaying is common during short gaps — do not auto-reload.
                 bufferingSinceMs = 0L
             }
             handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
@@ -411,14 +414,24 @@ class MainActivity : AppCompatActivity() {
             tvReloadingStatus.visibility = View.GONE
         }
         val pos = player.currentPosition
-        if (pos > lastPlaybackPositionMs + 250L) {
-            lastPlaybackPositionMs = pos
-            lastProgressWallClockMs = now
-            onPlaybackRecoverySucceeded()
-        } else if (lastProgressWallClockMs > 0L && now - lastProgressWallClockMs > PLAYBACK_STALL_DETECT_MS) {
-            logDebug("PLAYER_STATE", "watchdog progress stall detected")
-            lastProgressWallClockMs = now
-            notifyPlaybackStall("Поток завис (нет прогресса)")
+        when {
+            pos > lastPlaybackPositionMs + 250L -> {
+                lastPlaybackPositionMs = pos
+                lastProgressWallClockMs = now
+                onPlaybackRecoverySucceeded()
+            }
+            // Live window can jump backwards — reset baseline, never treat as freeze.
+            lastPlaybackPositionMs >= 0L && pos < lastPlaybackPositionMs - 1_000L -> {
+                lastPlaybackPositionMs = pos
+                lastProgressWallClockMs = now
+            }
+            !inGrace &&
+                lastProgressWallClockMs > 0L &&
+                now - lastProgressWallClockMs > PLAYBACK_STALL_PROGRESS_MS -> {
+                logDebug("PLAYER_STATE", "watchdog progress stall detected")
+                lastProgressWallClockMs = now
+                notifyPlaybackStall("Поток завис (нет прогресса)")
+            }
         }
         handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
     }
@@ -427,13 +440,19 @@ class MainActivity : AppCompatActivity() {
         if (isSettingsModalVisible || homePanel.visibility == View.VISIBLE) return
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) return
         if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) return
+        val now = System.currentTimeMillis()
+        if (now < stallWatchdogGraceUntilMs) return
+        if (now < suppressReloadOverlayUntilMs) return
         lastPlaybackStallReason = reason
         if (!playbackRecoveryActive) {
             playbackRecoveryActive = true
-            playbackRecoveryStartedAtMs = System.currentTimeMillis()
+            playbackRecoveryStartedAtMs = now
             playbackRecoveryAttemptCount = 0
+            // First attempt after a short delay — give the stream a chance to self-heal.
+            schedulePlaybackRecoveryRetry(immediate = false)
+        } else {
+            schedulePlaybackRecoveryRetry(immediate = false)
         }
-        schedulePlaybackRecoveryRetry(immediate = playbackRecoveryAttemptCount == 0)
     }
 
     private fun schedulePlaybackRecoveryRetry(immediate: Boolean) {
@@ -469,6 +488,9 @@ class MainActivity : AppCompatActivity() {
     private fun onPlaybackRecoverySucceeded() {
         if (!playbackRecoveryActive) return
         resetPlaybackRecoveryState()
+        stallWatchdogGraceUntilMs =
+            System.currentTimeMillis() + PLAYBACK_STALL_GRACE_AFTER_START_MS
+        resetPlaybackProgressBaseline()
         if (tvReloadingStatus.visibility == View.VISIBLE) {
             tvReloadingStatus.visibility = View.GONE
         }
@@ -525,8 +547,12 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_SELECTED_PLAYLIST = "selected_playlist"
         private const val PREF_SELECTED_EPG = "selected_epg"
         private const val PLAYBACK_RECOVERY_WINDOW_MS = 30_000L
-        private const val PLAYBACK_RECOVERY_RETRY_MS = 5_000L
-        private const val PLAYBACK_STALL_DETECT_MS = 5_000L
+        private const val PLAYBACK_RECOVERY_RETRY_MS = 10_000L
+        // Live IPTV often rebuffers for several seconds; 5s caused constant reload loops.
+        private const val PLAYBACK_STALL_BUFFERING_MS = 20_000L
+        private const val PLAYBACK_STALL_PROGRESS_MS = 15_000L
+        private const val PLAYBACK_STALL_HARD_STOP_MS = 12_000L
+        private const val PLAYBACK_STALL_GRACE_AFTER_START_MS = 25_000L
         private const val PREF_EPG_CACHE = "epg_cache"
         private const val PREF_EPG_STATUS = "epg_status"
         private const val PREF_EPG_LAST_REFRESH = "epg_last_refresh"
@@ -2494,14 +2520,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun resetPlaybackProgressBaseline() {
+    private fun resetPlaybackProgressBaseline(extendGrace: Boolean = false) {
         val player = mediaPlayer
         lastPlaybackPositionMs = player?.currentPosition ?: lastPlaybackPositionMs
         lastProgressWallClockMs = System.currentTimeMillis()
         bufferingSinceMs = 0L
+        if (extendGrace) {
+            stallWatchdogGraceUntilMs =
+                System.currentTimeMillis() + PLAYBACK_STALL_GRACE_AFTER_START_MS
+        }
     }
 
-    private fun armPlaybackFreezeWatchdog(delayMs: Long = 4000L) {
+    private fun armPlaybackFreezeWatchdog(delayMs: Long = 4000L, withStartGrace: Boolean = false) {
+        if (withStartGrace) {
+            stallWatchdogGraceUntilMs =
+                System.currentTimeMillis() + PLAYBACK_STALL_GRACE_AFTER_START_MS
+        }
         handler.removeCallbacks(playbackFreezeWatchdogRunnable)
         handler.postDelayed(playbackFreezeWatchdogRunnable, delayMs)
     }
@@ -5134,8 +5168,8 @@ class MainActivity : AppCompatActivity() {
             handler.postDelayed(startupSlowStreamRunnable, 45_000L)
             lastPlaybackPositionMs = -1L
             lastProgressWallClockMs = System.currentTimeMillis()
-            resetPlaybackProgressBaseline()
-            armPlaybackFreezeWatchdog(4000L)
+            resetPlaybackProgressBaseline(extendGrace = true)
+            armPlaybackFreezeWatchdog(4000L, withStartGrace = true)
             isPlaybackPaused = false
             liveTimelineAnchorMs = 0L
             isArchivePlayback = true
@@ -5318,8 +5352,8 @@ class MainActivity : AppCompatActivity() {
             dumpDebugTsSegments(lastRequestedPlaybackUrl, "problem")
             firstFrameRendered = false
             handler.removeCallbacks(startupSlowStreamRunnable)
-            resetPlaybackProgressBaseline()
-            armPlaybackFreezeWatchdog(4000L)
+            resetPlaybackProgressBaseline(extendGrace = true)
+            armPlaybackFreezeWatchdog(4000L, withStartGrace = true)
             retriedWithoutAudio = false
             videoOnlyMinimalMode = false
             runtimeRecoveryAttempted = false
@@ -6476,8 +6510,8 @@ class MainActivity : AppCompatActivity() {
                         lastProgressWallClockMs = System.currentTimeMillis()
                         onPlaybackRecoverySucceeded()
                         handler.removeCallbacks(startupSlowStreamRunnable)
-                        resetPlaybackProgressBaseline()
-                        armPlaybackFreezeWatchdog(4000L)
+                        resetPlaybackProgressBaseline(extendGrace = true)
+                        armPlaybackFreezeWatchdog(4000L, withStartGrace = true)
                         hideSeekSpinnerIfReady(0L)
                         hidePlayerLoadingUi()
                         if (homePanel.visibility != View.VISIBLE && !isPlayerOverlayOpen()) {
@@ -7094,8 +7128,8 @@ class MainActivity : AppCompatActivity() {
         firstFrameRendered = false
         handler.removeCallbacks(startupSlowStreamRunnable)
         handler.postDelayed(startupSlowStreamRunnable, 45_000L)
-        resetPlaybackProgressBaseline()
-        armPlaybackFreezeWatchdog(4000L)
+        resetPlaybackProgressBaseline(extendGrace = true)
+        armPlaybackFreezeWatchdog(4000L, withStartGrace = true)
         if (homePanel.visibility != View.VISIBLE) {
             showPlayerLoadingUi()
         }
