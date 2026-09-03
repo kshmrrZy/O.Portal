@@ -395,12 +395,13 @@ class MainActivity : AppCompatActivity() {
                 (player.playbackState == androidx.media3.common.Player.STATE_IDLE ||
                     player.playbackState == androidx.media3.common.Player.STATE_ENDED)
             ) {
-                if (!inGrace &&
-                    lastProgressWallClockMs > 0L &&
+                // Backup hard-stop: if the onPlaybackStateChanged handler didn't fire recovery
+                // (e.g. grace blocked it), the watchdog catches up after HARD_STOP ms.
+                if (lastProgressWallClockMs > 0L &&
                     now - lastProgressWallClockMs > PLAYBACK_STALL_HARD_STOP_MS
                 ) {
                     logDebug("PLAYER_STATE", "watchdog hard-stop stall state=${player.playbackState}")
-                    notifyPlaybackStall("Воспроизведение остановилось")
+                    notifyPlaybackStall("Воспроизведение остановилось", immediate = true)
                 }
             } else {
                 // READY + !isPlaying is common during short gaps — do not auto-reload.
@@ -436,20 +437,20 @@ class MainActivity : AppCompatActivity() {
         handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
     }
 
-    private fun notifyPlaybackStall(reason: String) {
+    private fun notifyPlaybackStall(reason: String, immediate: Boolean = false) {
         if (isSettingsModalVisible || homePanel.visibility == View.VISIBLE) return
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) return
         if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) return
         val now = System.currentTimeMillis()
-        if (now < stallWatchdogGraceUntilMs) return
+        // Grace only blocks slow stalls (buffering/progress); immediate == true bypasses it.
+        if (!immediate && now < stallWatchdogGraceUntilMs) return
         if (now < suppressReloadOverlayUntilMs) return
         lastPlaybackStallReason = reason
         if (!playbackRecoveryActive) {
             playbackRecoveryActive = true
             playbackRecoveryStartedAtMs = now
             playbackRecoveryAttemptCount = 0
-            // First attempt after a short delay — give the stream a chance to self-heal.
-            schedulePlaybackRecoveryRetry(immediate = false)
+            schedulePlaybackRecoveryRetry(immediate = immediate)
         } else {
             schedulePlaybackRecoveryRetry(immediate = false)
         }
@@ -551,7 +552,8 @@ class MainActivity : AppCompatActivity() {
         // Live IPTV often rebuffers for several seconds; 5s caused constant reload loops.
         private const val PLAYBACK_STALL_BUFFERING_MS = 20_000L
         private const val PLAYBACK_STALL_PROGRESS_MS = 15_000L
-        private const val PLAYBACK_STALL_HARD_STOP_MS = 12_000L
+        // Fast hard-stop for ENDED/IDLE: stream died, we need recovery quickly.
+        private const val PLAYBACK_STALL_HARD_STOP_MS = 5_000L
         private const val PLAYBACK_STALL_GRACE_AFTER_START_MS = 25_000L
         private const val PREF_EPG_CACHE = "epg_cache"
         private const val PREF_EPG_STATUS = "epg_status"
@@ -6566,6 +6568,21 @@ class MainActivity : AppCompatActivity() {
                             playbackState == androidx.media3.common.Player.STATE_IDLE
                         ) {
                             hideSeekSpinnerIfReady()
+                        }
+                        // Live stream ended unexpectedly — trigger immediate recovery without
+                        // waiting for the watchdog's slow HARD_STOP timer.
+                        if (playbackState == androidx.media3.common.Player.STATE_ENDED &&
+                            player.playWhenReady &&
+                            firstFrameRendered &&
+                            !isPlaybackPaused &&
+                            !isArchivePlayback
+                        ) {
+                            handler.post {
+                                if (!isHomeOrSettingsForeground() && !isPlayerOverlayOpen()) {
+                                    logDebug("PLAYER_STATE", "live stream ENDED — scheduling immediate recovery")
+                                    notifyPlaybackStall("Трансляция завершилась", immediate = true)
+                                }
+                            }
                         }
                     }
 
