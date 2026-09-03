@@ -4990,7 +4990,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openEpgHttpConnection(url: String): HttpURLConnection {
         var current = url.trim()
-        repeat(8) { hop ->
+        for (hop in 0 until 8) {
             val conn = (URL(current).openConnection() as HttpURLConnection).apply {
                 instanceFollowRedirects = false
                 connectTimeout = 20_000
