@@ -53,20 +53,24 @@
         android:visibility="gone">
 
         <FrameLayout
-            android:layout_width="46dp"
-            android:layout_height="46dp">
-            <ImageView
-                android:id="@+id/ivReloadingRing"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:scaleType="fitCenter"
-                android:src="@drawable/load2" />
+            android:id="@+id/reloadingSpinnerHost"
+            android:layout_width="@dimen/portal_spinner_size"
+            android:layout_height="@dimen/portal_spinner_size">
+
+            <include
+                android:id="@+id/reloadingCssSpinner"
+                layout="@layout/view_loading_spinner"
+                android:layout_width="@dimen/portal_spinner_size"
+                android:layout_height="@dimen/portal_spinner_size"
+                android:layout_gravity="center" />
+
             <ImageView
                 android:id="@+id/ivReloadingIcon"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:scaleType="fitCenter"
-                android:src="@drawable/load1" />
+                android:src="@drawable/alert"
+                android:visibility="gone" />
         </FrameLayout>
 
         <LinearLayout
