@@ -416,22 +416,31 @@ class MainActivity : AppCompatActivity() {
         }
         val pos = player.currentPosition
         when {
-            pos > lastPlaybackPositionMs + 250L -> {
+            // Forward progress — healthy playback (or recovery succeeded).
+            lastPlaybackPositionMs >= 0L && pos > lastPlaybackPositionMs + 250L -> {
                 lastPlaybackPositionMs = pos
                 lastProgressWallClockMs = now
                 onPlaybackRecoverySucceeded()
             }
-            // Live window can jump backwards — reset baseline, never treat as freeze.
-            lastPlaybackPositionMs >= 0L && pos < lastPlaybackPositionMs - 1_000L -> {
+            // Seed baseline once after a reset without counting it as recovery success.
+            lastPlaybackPositionMs < 0L -> {
                 lastPlaybackPositionMs = pos
                 lastProgressWallClockMs = now
+            }
+            // Live window / timeline can slide backwards (often into negative posMs).
+            // Update the baseline but do NOT refresh the wall-clock — otherwise a frozen
+            // picture with a drifting live timeline never trips the stall watchdog.
+            pos < lastPlaybackPositionMs - 1_000L -> {
+                lastPlaybackPositionMs = pos
             }
             !inGrace &&
                 lastProgressWallClockMs > 0L &&
                 now - lastProgressWallClockMs > PLAYBACK_STALL_PROGRESS_MS -> {
                 logDebug("PLAYER_STATE", "watchdog progress stall detected")
                 lastProgressWallClockMs = now
-                notifyPlaybackStall("Поток завис (нет прогресса)")
+                // Immediate first recovery: frozen video with drifting live pos must reload now,
+                // not wait another PLAYBACK_RECOVERY_RETRY_MS before the first attempt.
+                notifyPlaybackStall("Поток завис (нет прогресса)", immediate = true)
             }
         }
         handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
@@ -1158,7 +1167,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val bottomTileHeight = scalePx(66f, scale)
+        val bottomTileHeight = resources.getDimensionPixelSize(R.dimen.home_tile_min_height)
         findViewById<View>(R.id.btnOwnPlaylistsTile).layoutParams.height = bottomTileHeight
         findViewById<View>(R.id.btnFavoritesTile).layoutParams.height = bottomTileHeight
         setupHomeBottomActionTiles(scale, HOME_BOTTOM_TILE_TEXT_SP)
@@ -1299,14 +1308,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnAspectRatio.setOnClickListener { cycleAspectRatioMode() }
-        btnAspectRatio.setOnLongClickListener {
-            val next = !prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
-            prefs.edit().putBoolean(PREF_HLS_ALLOW_NON_IDR, next).apply()
-            logDebug("PLAYER_HLS", "runtime toggle allowNonIdr=$next")
-            showCenterError("HLS allowNonIdr=${if (next) "ON" else "OFF"}", 1500L)
-            restartCurrentStream(recreatePlayer = false)
-            true
-        }
+        btnAspectRatio.setOnLongClickListener { true }
         btnSleepTimer.setOnClickListener { showTimerDialog() }
 
         btnPlayPause.setOnClickListener {
@@ -4627,21 +4629,12 @@ class MainActivity : AppCompatActivity() {
                     channels.clear()
                     channels.addAll(parsedChannels)
                     applyCachedLogosToChannels()
+                    // Keep playlist-embedded EPG URLs for the settings UI only.
+                    // Active EPG sources come strictly from settings — never auto-select
+                    // url-tvg / x-tvg-url from the playlist when settings selection is empty.
                     availableEpgSources = parsedEpgUrls
-
                     val savedSelection = getSelectedEpgSources()
-                    selectedEpgSources = if (availableEpgSources.isEmpty()) {
-                        // У плейлиста нет собственной ссылки на EPG (x-tvg-url) — применяем
-                        // сохранённые в настройках источники как есть, без пересечения с пустым списком.
-                        savedSelection.toMutableSet()
-                    } else {
-                        val intersected = savedSelection.intersect(availableEpgSources.toSet())
-                        if (intersected.isNotEmpty()) {
-                            intersected.toMutableSet()
-                        } else {
-                            availableEpgSources.toMutableSet()
-                        }
-                    }
+                    selectedEpgSources = savedSelection.toMutableSet()
                     logDebug(
                         "EPG_DEBUG",
                         "EPG_SOURCE_SELECTION playlist=$selectedPlaylist availableEpgSources=$availableEpgSources savedSelection=$savedSelection selectedEpgSources=$selectedEpgSources"

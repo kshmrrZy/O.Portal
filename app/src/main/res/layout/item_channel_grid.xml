@@ -4,13 +4,13 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:padding="12dp"
+    android:padding="9dp"
     android:background="@drawable/channel_grid_tile_bg"
     android:clickable="true">
 
     <FrameLayout
-        android:layout_width="52dp"
-        android:layout_height="52dp"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
         android:background="@drawable/channel_grid_logo_bg">
 
         <ImageView
@@ -28,7 +28,7 @@
             android:gravity="center"
             android:fontFamily="@font/golostext_extrabold"
             android:textColor="#FFFFFF"
-            android:textSize="20sp"
+            android:textSize="16sp"
             android:shadowColor="#CC000000"
             android:shadowDx="0"
             android:shadowDy="0"
@@ -39,7 +39,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:layout_marginStart="12dp"
+        android:layout_marginStart="9dp"
         android:orientation="vertical">
 
         <TextView
@@ -48,7 +48,7 @@
             android:layout_height="wrap_content"
             android:fontFamily="@font/golos_text"
             android:textColor="#FFFFFF"
-            android:textSize="15sp"
+            android:textSize="16sp"
             android:textFontWeight="500"
             android:singleLine="true"
             android:ellipsize="end" />
@@ -57,12 +57,12 @@
             android:id="@+id/itemCurrentProgram"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
+            android:layout_marginTop="2dp"
             android:fontFamily="@font/golos_text"
-            android:textColor="#99FFFFFF"
-            android:textSize="12sp"
+            android:textColor="#B3FFFFFF"
+            android:textSize="10sp"
             android:textFontWeight="400"
-            android:maxLines="2"
+            android:maxLines="1"
             android:ellipsize="end"
             android:visibility="gone" />
     </LinearLayout>
