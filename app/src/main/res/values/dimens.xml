@@ -51,8 +51,8 @@
     <dimen name="profile_token_value_size">18sp</dimen>
     <dimen name="settings_profile_to_grid_gap">0dp</dimen>
     <dimen name="settings_content_padding_v">12dp</dimen>
-    <dimen name="home_page_title_size">22sp</dimen>
-    <dimen name="home_page_subtitle_size">13sp</dimen>
+    <dimen name="home_page_title_size">18sp</dimen>
+    <dimen name="home_page_subtitle_size">11sp</dimen>
     <dimen name="home_page_title_margin_top">28dp</dimen>
     <dimen name="home_page_subtitle_margin_top">6dp</dimen>
     <dimen name="home_grid_margin_top">20dp</dimen>
@@ -84,8 +84,8 @@
     <dimen name="settings_start_mode_row_height">56dp</dimen>
     <dimen name="settings_start_mode_margin_top">16dp</dimen>
     <dimen name="settings_start_mode_margin_bottom">@dimen/home_tile_spacing</dimen>
-    <dimen name="settings_sub_panel_title_size">22sp</dimen>
-    <dimen name="settings_sub_panel_subtitle_size">13sp</dimen>
+    <dimen name="settings_sub_panel_title_size">18sp</dimen>
+    <dimen name="settings_sub_panel_subtitle_size">11sp</dimen>
     <dimen name="settings_sub_panel_field_height">52dp</dimen>
     <dimen name="settings_sub_panel_field_text_size">@dimen/settings_auth_field_text_size</dimen>
     <dimen name="settings_sub_panel_playlist_action_text_size">@dimen/settings_auth_button_text_size</dimen>
