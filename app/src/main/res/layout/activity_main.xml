@@ -1229,6 +1229,7 @@
             android:layout_height="wrap_content"
             android:gravity="center_horizontal"
             android:orientation="vertical"
+            android:visibility="gone"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHorizontal_bias="0.5"
@@ -1247,7 +1248,8 @@
                 android:text="Для начала работы приложения"
                 android:textColor="#FFFFFF"
                 android:textFontWeight="500"
-                android:textSize="@dimen/home_start_title_size" />
+                android:textSize="@dimen/home_start_title_size"
+                android:visibility="gone" />
 
             <TextView
                 android:id="@+id/tvHomeStartSubtitle"
@@ -1260,7 +1262,8 @@
                 android:text="авторизуйтесь или добавьте свои плейлисты в настройках"
                 android:textColor="#B3FFFFFF"
                 android:textFontWeight="400"
-                android:textSize="@dimen/home_start_subtitle_size" />
+                android:textSize="@dimen/home_start_subtitle_size"
+                android:visibility="gone" />
         </LinearLayout>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
