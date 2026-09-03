@@ -368,6 +368,17 @@ class MainActivity : AppCompatActivity() {
             handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
             return@Runnable
         }
+        // User intentionally paused — do not treat as a stall.
+        if (isPlaybackPaused) {
+            lastProgressWallClockMs = System.currentTimeMillis()
+            bufferingSinceMs = 0L
+            handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
+            return@Runnable
+        }
+        if (isPlayerOverlayOpen() || isHomeOrSettingsForeground()) {
+            handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
+            return@Runnable
+        }
         val now = System.currentTimeMillis()
         if (!player.isPlaying) {
             if (player.playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
@@ -378,9 +389,17 @@ class MainActivity : AppCompatActivity() {
                 }
             } else if (player.playWhenReady &&
                 (player.playbackState == androidx.media3.common.Player.STATE_IDLE ||
-                    player.playbackState == androidx.media3.common.Player.STATE_ENDED)
+                    player.playbackState == androidx.media3.common.Player.STATE_ENDED ||
+                    player.playbackState == androidx.media3.common.Player.STATE_READY)
             ) {
-                notifyPlaybackStall("Воспроизведение остановилось")
+                // READY + playWhenReady + !isPlaying is a common "frozen frame" state.
+                if (lastProgressWallClockMs > 0L && now - lastProgressWallClockMs > PLAYBACK_STALL_DETECT_MS) {
+                    logDebug(
+                        "PLAYER_STATE",
+                        "watchdog frozen idle/ready stall state=${player.playbackState}"
+                    )
+                    notifyPlaybackStall("Воспроизведение остановилось")
+                }
             } else {
                 bufferingSinceMs = 0L
             }
@@ -2468,8 +2487,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun resumePlaybackStallWatchdogIfNeeded() {
         if (mediaPlayer != null && homePanel.visibility != View.VISIBLE && !isPlayerOverlayOpen()) {
+            // Closing EPG/channel list must not look like a multi-second progress stall.
+            resetPlaybackProgressBaseline()
+            handler.removeCallbacks(playbackFreezeWatchdogRunnable)
             handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
         }
+    }
+
+    private fun resetPlaybackProgressBaseline() {
+        val player = mediaPlayer
+        lastPlaybackPositionMs = player?.currentPosition ?: lastPlaybackPositionMs
+        lastProgressWallClockMs = System.currentTimeMillis()
+        bufferingSinceMs = 0L
+    }
+
+    private fun armPlaybackFreezeWatchdog(delayMs: Long = 4000L) {
+        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+        handler.postDelayed(playbackFreezeWatchdogRunnable, delayMs)
     }
 
     private fun setupStartModeRemoteToggle(tbStartMode: ToggleButton, itemStartModeRow: View) {
@@ -2614,7 +2648,12 @@ class MainActivity : AppCompatActivity() {
         epgDatePickedByUser = false
         if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.GONE
         lvEpgPrograms.adapter = null
-        if (restorePlayerUi) showUI()
+        // Reset stall baseline BEFORE arming watchdog — otherwise closing EPG looks like a freeze.
+        resetPlaybackProgressBaseline()
+        if (restorePlayerUi) {
+            // Same as channel-list dismiss: return to clean watching chrome, not a forced reload UI.
+            hideUI()
+        }
         resumePlaybackStallWatchdogIfNeeded()
     }
 
@@ -5095,8 +5134,8 @@ class MainActivity : AppCompatActivity() {
             handler.postDelayed(startupSlowStreamRunnable, 45_000L)
             lastPlaybackPositionMs = -1L
             lastProgressWallClockMs = System.currentTimeMillis()
-            handler.removeCallbacks(playbackFreezeWatchdogRunnable)
-            handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
+            resetPlaybackProgressBaseline()
+            armPlaybackFreezeWatchdog(4000L)
             isPlaybackPaused = false
             liveTimelineAnchorMs = 0L
             isArchivePlayback = true
@@ -5279,7 +5318,8 @@ class MainActivity : AppCompatActivity() {
             dumpDebugTsSegments(lastRequestedPlaybackUrl, "problem")
             firstFrameRendered = false
             handler.removeCallbacks(startupSlowStreamRunnable)
-            handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+            resetPlaybackProgressBaseline()
+            armPlaybackFreezeWatchdog(4000L)
             retriedWithoutAudio = false
             videoOnlyMinimalMode = false
             runtimeRecoveryAttempted = false
@@ -6436,7 +6476,8 @@ class MainActivity : AppCompatActivity() {
                         lastProgressWallClockMs = System.currentTimeMillis()
                         onPlaybackRecoverySucceeded()
                         handler.removeCallbacks(startupSlowStreamRunnable)
-                        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
+                        resetPlaybackProgressBaseline()
+                        armPlaybackFreezeWatchdog(4000L)
                         hideSeekSpinnerIfReady(0L)
                         hidePlayerLoadingUi()
                         if (homePanel.visibility != View.VISIBLE && !isPlayerOverlayOpen()) {
@@ -7052,11 +7093,9 @@ class MainActivity : AppCompatActivity() {
         handler.post(memoryLogRunnable)
         firstFrameRendered = false
         handler.removeCallbacks(startupSlowStreamRunnable)
-        handler.removeCallbacks(playbackFreezeWatchdogRunnable)
         handler.postDelayed(startupSlowStreamRunnable, 45_000L)
-        lastPlaybackPositionMs = -1L
-        lastProgressWallClockMs = System.currentTimeMillis()
-        handler.postDelayed(playbackFreezeWatchdogRunnable, 4000L)
+        resetPlaybackProgressBaseline()
+        armPlaybackFreezeWatchdog(4000L)
         if (homePanel.visibility != View.VISIBLE) {
             showPlayerLoadingUi()
         }
@@ -7348,16 +7387,18 @@ class MainActivity : AppCompatActivity() {
 
         if (controlsPanel.visibility == View.VISIBLE) {
             if (handleWatchingHotkeys(keyCode)) return true
-            // Keep CENTER/ENTER for control buttons; L/R open side panels (channels/EPG)
-            // unless the timeline is seeking in archive mode.
-            if (isFocusInPlayerControlsRow()) {
-                when (keyCode) {
-                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
-                    KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                        handler.removeCallbacks(hideUiRunnable)
-                        handler.postDelayed(hideUiRunnable, 5000)
-                        return super.onKeyDown(keyCode, event)
+            // Active player chrome: L/R move between control buttons (seek / lock / EPG / …).
+            // Side panels open only when chrome is hidden.
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    if (!isFocusInPlayerControlsRow()) {
+                        findViewById<View>(R.id.btnPlayPause)?.requestFocus()
                     }
+                    handler.removeCallbacks(hideUiRunnable)
+                    handler.postDelayed(hideUiRunnable, 5000)
+                    return super.onKeyDown(keyCode, event)
                 }
             }
         } else if (handleWatchingHotkeys(keyCode)) {
@@ -7405,23 +7446,11 @@ class MainActivity : AppCompatActivity() {
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                if (controlsPanel.visibility == View.VISIBLE && isArchivePlayback && sbTimeline.isEnabled &&
-                    (currentFocus === sbTimeline || currentFocus === timelineArea)
-                ) {
-                    sbTimeline.progress = (sbTimeline.progress + 20).coerceAtMost(1000)
-                    return true
-                }
                 toggleEpgPanel()
                 return true
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_LEFT -> {
-                if (controlsPanel.visibility == View.VISIBLE && isArchivePlayback && sbTimeline.isEnabled &&
-                    (currentFocus === sbTimeline || currentFocus === timelineArea)
-                ) {
-                    sbTimeline.progress = (sbTimeline.progress - 20).coerceAtLeast(0)
-                    return true
-                }
                 showChannelListPanel()
                 return true
             }
