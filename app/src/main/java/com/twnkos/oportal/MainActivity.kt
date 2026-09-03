@@ -5239,7 +5239,7 @@ class MainActivity : AppCompatActivity() {
                 return@runCatching
             }
             logDebug("NAV", "open_player")
-            homePanel.visibility = View.GONE
+            dismissHomeForPlayback()
             ensurePlayerControlsInteractive()
             setPlayerVideoVisible(true)
             applyAspectRatioMode()
@@ -6073,7 +6073,7 @@ class MainActivity : AppCompatActivity() {
                 isSelected = selected
                 setTextColor(Color.WHITE)
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
-                typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+                typeface = Typeface.create(golosTypeface ?: Typeface.SANS_SERIF, Typeface.NORMAL)
                 text = label
                 minWidth = dpToPx(112)
                 setPadding(dpToPx(14), 0, dpToPx(14), 0)
@@ -7249,7 +7249,8 @@ class MainActivity : AppCompatActivity() {
 
         // Самый первый экран приложения (ещё нет ни одного плейлиста) — тут нет списка, который можно
         // было бы обойти обычным фокусом, поэтому свой мини-переключатель между шестерёнкой и питанием.
-        if (tvHomeStartTitle.visibility == View.VISIBLE) {
+        // Важно: проверяем homePanel — у дочерних View visibility может остаться VISIBLE при parent=GONE.
+        if (homePanel.visibility == View.VISIBLE && tvHomeStartTitle.visibility == View.VISIBLE) {
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> return true
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
@@ -8189,6 +8190,22 @@ class MainActivity : AppCompatActivity() {
         return if (savedIndex in channels.indices) savedIndex else -1
     }
 
+    private fun dismissHomeForPlayback() {
+        resetSettingsOverlayState()
+        homePanel.visibility = View.GONE
+        homeStartCenterBlock.visibility = View.GONE
+        tvHomeStartTitle.visibility = View.GONE
+        tvHomeStartSubtitle.visibility = View.GONE
+        // Prevent stale start-screen key routing / accidental Power OK.
+        homeActionIndex = 0
+        listOf(ivHomeProfile, ivHomeSettings, ivHomePower).forEach { icon ->
+            icon.isFocusable = false
+            icon.alpha = 1f
+            icon.scaleX = 1f
+            icon.scaleY = 1f
+        }
+    }
+
     private fun restoreLastChannelAndPlay(): Boolean {
         val index = resolveLastChannelIndex()
         if (index < 0) return false
@@ -8196,8 +8213,7 @@ class MainActivity : AppCompatActivity() {
         logDebug("NAV", "startup_restore_last_channel index=$index name=${channels[index].name}")
         // Keep chrome hidden so D-pad L/R open channel list / EPG instead of focusing controls.
         suppressAutoPlayerUiOnce = true
-        homePanel.visibility = View.GONE
-        resetSettingsOverlayState()
+        dismissHomeForPlayback()
         ensurePlayerControlsInteractive()
         playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
         return true
