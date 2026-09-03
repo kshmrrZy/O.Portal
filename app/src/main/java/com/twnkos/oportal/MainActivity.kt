@@ -10,6 +10,8 @@ import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.content.ContentValues
 import android.os.Build
 import android.os.Environment
@@ -386,10 +388,23 @@ class MainActivity : AppCompatActivity() {
         if (!player.isPlaying) {
             if (player.playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
                 if (bufferingSinceMs == 0L) bufferingSinceMs = now
+                val bufferingFor = now - bufferingSinceMs
+                // Show spinner early so network freezes aren't a silent frozen frame.
+                if (!inGrace && bufferingFor > 2_000L &&
+                    tvReloadingStatus.visibility != View.VISIBLE &&
+                    homePanel.visibility != View.VISIBLE
+                ) {
+                    showPlayerLoadingUi()
+                }
                 // Brief IPTV rebuffers are normal — only escalate after a long continuous buffer.
-                if (!inGrace && now - bufferingSinceMs > PLAYBACK_STALL_BUFFERING_MS) {
-                    logDebug("PLAYER_STATE", "watchdog buffering stall detected")
-                    notifyPlaybackStall("Буферизация потока")
+                if (!inGrace && bufferingFor > PLAYBACK_STALL_BUFFERING_MS) {
+                    val reason = if (!isNetworkConnected()) {
+                        "Проблемы с интернетом"
+                    } else {
+                        "Буферизация потока"
+                    }
+                    logDebug("PLAYER_STATE", "watchdog buffering stall detected reason=$reason")
+                    notifyPlaybackStall(reason, immediate = true)
                 }
             } else if (player.playWhenReady &&
                 (player.playbackState == androidx.media3.common.Player.STATE_IDLE ||
@@ -486,10 +501,15 @@ class MainActivity : AppCompatActivity() {
         }
         playbackRecoveryAttemptCount++
         val remainingSec = ((PLAYBACK_RECOVERY_WINDOW_MS - elapsed) / 1000L).coerceAtLeast(1L)
-        showReloadingStatus(
-            "Обновление трансляции",
+        val networkIssue = !isNetworkConnected() ||
+            lastPlaybackStallReason.contains("интернет", ignoreCase = true)
+        val title = if (networkIssue) "Проблемы с интернетом" else "Обновление трансляции"
+        val subtitle = if (networkIssue) {
+            "Проверьте подключение. Попытка $playbackRecoveryAttemptCount, осталось ~${remainingSec}с"
+        } else {
             "Попытка $playbackRecoveryAttemptCount, осталось ~${remainingSec}с"
-        )
+        }
+        showReloadingStatus(title, subtitle)
         showUI(preferFocus = btnLiveReload)
         playChannel(forcePlay = true, reason = PlayerOpenReason.RECOVERY)
         schedulePlaybackRecoveryRetry(immediate = false)
@@ -502,8 +522,11 @@ class MainActivity : AppCompatActivity() {
             System.currentTimeMillis() + PLAYBACK_STALL_GRACE_AFTER_START_MS
         resetPlaybackProgressBaseline()
         if (tvReloadingStatus.visibility == View.VISIBLE) {
+            stopSpinnerOnView(ivReloadingIcon)
+            findViewById<ImageView>(R.id.ivReloadingRing)?.let { stopSpinnerOnView(it) }
             tvReloadingStatus.visibility = View.GONE
         }
+        hidePlayerLoadingUi()
     }
 
     private fun resetPlaybackRecoveryState() {
@@ -568,6 +591,9 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_EPG_STATUS = "epg_status"
         private const val PREF_EPG_LAST_REFRESH = "epg_last_refresh"
         private const val PREF_CUSTOM_EPG_SOURCES = "custom_epg_sources"
+        private const val PREF_EPG_SOURCE_MODE = "pref_epg_source_mode"
+        private const val EPG_MODE_BUILTIN = "builtin"
+        private const val EPG_MODE_CUSTOM = "custom"
         private const val PREF_LOGO_CACHE = "logo_cache"
         private const val PREF_PLAYLIST_CONTENT_CACHE = "playlist_content_cache"
         private const val PREF_START_LAST_CHANNEL = "pref_start_last_channel"
@@ -2136,20 +2162,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.homeBottomTilesRow).visibility = View.GONE
         gvHomeChannelList.visibility = View.VISIBLE
 
-        if (selectedEpgSources.isNotEmpty() && !epgFetchInProgress) {
-            val hasCoverage = synchronized(epgDataLock) {
-                channelsForCategory.any { ch ->
-                    listOfNotNull(ch.tvgId, ch.tvgName, ch.name).any { key ->
-                        epgData.containsKey(key.lowercase().trim())
-                    }
-                }
-            }
-            if (!hasCoverage) {
-                logDebug("EPG_DEBUG", "showHomeChannelList: no EPG coverage for category=$category, forcing fetch")
-                fetchEpgSources(selectedEpgSources.toList())
-            } else {
-                ensureEpgLoadedLazy()
-            }
+        // EPG download starts only from settings Save — here we only use already-cached data.
+        if (selectedEpgSources.isNotEmpty()) {
+            ensureEpgLoadedLazy()
         }
 
         gvHomeChannelList.adapter = object : ArrayAdapter<Channel>(this, 0, channelsForCategory) {
@@ -3202,7 +3217,63 @@ class MainActivity : AppCompatActivity() {
             tvTokenValue.isLongClickable = false
         }
         findViewById<View>(R.id.btnProfileChangeToken).setOnClickListener {
-            openProfileAuthScreen()
+            refreshPortalTokenAndLogout()
+        }
+    }
+
+    private fun refreshPortalTokenAndLogout() {
+        val login = (prefs.getString(PREF_USER_LOGIN, "") ?: "").trim()
+        val token = (prefs.getString(PREF_USER_TOKEN, "") ?: "").trim()
+        if (login.isBlank() || token.isBlank()) {
+            showAppToast("Нет сохранённого логина или токена")
+            return
+        }
+        val btn = findViewById<View>(R.id.btnProfileChangeToken)
+        btn.isEnabled = false
+        btn.isClickable = false
+        showAppToast("Обновление токена…")
+        thread {
+            val result = runCatching {
+                val url =
+                    "https://o.avff.pw/api.php?module=app&action=token&login=${Uri.encode(login)}&token=${
+                        Uri.encode(token)
+                    }"
+                JSONObject(URL(url).readText())
+            }
+            handler.post {
+                btn.isEnabled = true
+                btn.isClickable = true
+                result.onSuccess { json ->
+                    val error = json.optString("error")
+                    if (error.isNotBlank() && json.optString("valid") != "OK") {
+                        val message = json.optString("message").ifBlank { "Не удалось обновить токен" }
+                        showAppToast(message, 3500L)
+                        // Invalid/expired token — still sign the user out.
+                        if (error == "validation_failed" ||
+                            message.contains("login", ignoreCase = true) ||
+                            message.contains("token", ignoreCase = true)
+                        ) {
+                            performLogout()
+                        }
+                        return@onSuccess
+                    }
+                    showAppToast("Токен обновлён. Войдите заново с новым токеном", 3500L)
+                    performLogout()
+                }.onFailure { e ->
+                    val isNetworkError = e is UnknownHostException ||
+                        e is SocketTimeoutException ||
+                        e.message?.contains("Unable to resolve host", ignoreCase = true) == true ||
+                        e.message?.contains("timeout", ignoreCase = true) == true
+                    showAppToast(
+                        if (isNetworkError) {
+                            "Ошибка сети. Проверьте подключение и повторите"
+                        } else {
+                            "Не удалось обновить токен"
+                        },
+                        3500L
+                    )
+                }
+            }
         }
     }
 
@@ -3681,6 +3752,11 @@ class MainActivity : AppCompatActivity() {
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "настройки", settingsTitle2 = "настройки EPG")
 
         val urls = listOf<EditText>(findViewById(R.id.etEpgUrl1), findViewById(R.id.etEpgUrl2), findViewById(R.id.etEpgUrl3))
+        val statusViews = listOf<TextView>(
+            findViewById(R.id.tvEpgUrlStatus1),
+            findViewById(R.id.tvEpgUrlStatus2),
+            findViewById(R.id.tvEpgUrlStatus3)
+        )
         val toggles = listOf<ImageView>(findViewById(R.id.ivEpgToggle1), findViewById(R.id.ivEpgToggle2), findViewById(R.id.ivEpgToggle3))
         val states = MutableList(3) { false }
         val tbInterval = findViewById<ToggleButton>(R.id.tbEpgRefreshInterval)
@@ -3688,16 +3764,40 @@ class MainActivity : AppCompatActivity() {
         var intervalIndex = intervals.indexOf(prefs.getInt(PREF_EPG_REFRESH_INTERVAL_DAYS, 1)).takeIf { it >= 0 } ?: 0
         var pendingApply: Runnable? = null
 
-        val current = getCustomEpgSources()
-            .ifEmpty { getSelectedEpgSources().toList() }
-            .ifEmpty { extractEpgSourcesFromPlaylist(currentPlaylistText) }
-            .take(3)
-        val selected = getSelectedEpgSources()
-        urls.forEachIndexed { i, et ->
-            val value = current.getOrNull(i) ?: ""
-            et.setText(value)
-            states[i] = value.isNotBlank() && (selected.isEmpty() || selected.contains(value))
+        val playlistOwnSources = extractEpgSourcesFromPlaylist(currentPlaylistText)
+        val customSources = getCustomEpgSources()
+        val savedMode = prefs.getString(PREF_EPG_SOURCE_MODE, null)
+        val modeCustom = when (savedMode) {
+            EPG_MODE_CUSTOM -> true
+            EPG_MODE_BUILTIN -> false
+            else -> customSources.isNotEmpty()
         }
+
+        fun bindUrlStatuses(sources: List<String>) {
+            urls.forEachIndexed { i, _ ->
+                val source = sources.getOrNull(i).orEmpty()
+                val status = if (source.isNotBlank()) epgSourceStatus[source].orEmpty() else ""
+                val tv = statusViews[i]
+                if (status.isNotBlank()) {
+                    tv.visibility = View.VISIBLE
+                    tv.text = status
+                } else {
+                    tv.visibility = View.GONE
+                    tv.text = ""
+                }
+            }
+        }
+
+        fun fillUrlFields(sources: List<String>) {
+            urls.forEachIndexed { i, et ->
+                val value = sources.getOrNull(i).orEmpty()
+                et.setText(value)
+                states[i] = value.isNotBlank()
+                toggles[i].setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft)
+            }
+            bindUrlStatuses(sources)
+        }
+
         toggles.forEachIndexed { i, v ->
             v.setOnClickListener {
                 if (!v.isEnabled) return@setOnClickListener
@@ -3720,8 +3820,6 @@ class MainActivity : AppCompatActivity() {
 
         val tbSourceMode = findViewById<ToggleButton>(R.id.tbEpgSourceMode)
         val tvSourceHint = findViewById<TextView>(R.id.tvEpgSourceHint)
-        val playlistOwnSources = extractEpgSourcesFromPlaylist(currentPlaylistText)
-        val hasManualSaved = getCustomEpgSources().isNotEmpty()
 
         fun applyEpgSourceModeLock(manual: Boolean) {
             urls.forEach { et ->
@@ -3745,29 +3843,24 @@ class MainActivity : AppCompatActivity() {
             tvSourceHint.text = when {
                 manual -> "Ссылки указаны вручную и не зависят от плейлиста."
                 playlistOwnSources.isNotEmpty() -> "Ссылка берётся из самого плейлиста: ${playlistOwnSources.first()}"
-                else -> "У этого плейлиста нет своей ссылки на EPG. Переключите на \"Указать вручную\", чтобы добавить свою."
+                else -> "У этого плейлиста нет своей ссылки на EPG. Переключите на \"Свои источники\", чтобы добавить свою."
             }
         }
 
-        fun fillFromPlaylistOwnSources() {
-            urls.forEachIndexed { i, et -> et.setText(playlistOwnSources.getOrNull(i) ?: "") }
-            toggles.forEachIndexed { i, v ->
-                states[i] = playlistOwnSources.getOrNull(i)?.isNotBlank() == true
-                v.setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft)
-            }
+        tbSourceMode.isChecked = modeCustom
+        applyEpgSourceModeLock(modeCustom)
+        if (modeCustom) {
+            fillUrlFields(customSources.take(3))
+        } else {
+            fillUrlFields(playlistOwnSources.take(3))
         }
-
-        tbSourceMode.isChecked = hasManualSaved
-        applyEpgSourceModeLock(hasManualSaved)
-        if (!hasManualSaved) fillFromPlaylistOwnSources()
 
         tbSourceMode.setOnCheckedChangeListener { _, isChecked ->
             applyEpgSourceModeLock(isChecked)
-            if (!isChecked) {
-                fillFromPlaylistOwnSources()
-                clearCustomEpgSources()
-                selectedEpgSources = playlistOwnSources.toMutableSet()
-                saveSelectedEpgSources(selectedEpgSources)
+            if (isChecked) {
+                fillUrlFields(getCustomEpgSources().take(3).ifEmpty { emptyList() })
+            } else {
+                fillUrlFields(playlistOwnSources.take(3))
             }
         }
 
@@ -3795,21 +3888,66 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<View>(R.id.btnSaveEpgSettings).setOnClickListener {
-            val links = urls.mapIndexedNotNull { i, et -> et.text.toString().trim().takeIf { it.isNotBlank() && states[i] } }.distinct()
-            if (links.isNotEmpty()) {
-                saveCustomEpgSources(links)
-                selectedEpgSources = links.toMutableSet()
-                saveSelectedEpgSources(selectedEpgSources)
-            }
-            if (selectedEpgSources.isNotEmpty()) {
-                synchronized(epgDataLock) { epgData.clear() }
-                fetchEpgSources(selectedEpgSources.toList(), mutableMapOf())
-                showAppToast("Настройки сохранены, обновление EPG запущено")
+            val manual = tbSourceMode.isChecked
+            val links = if (manual) {
+                urls.mapIndexedNotNull { i, et ->
+                    et.text.toString().trim().takeIf { it.isNotBlank() && states[i] }
+                }.distinct()
             } else {
+                playlistOwnSources
+            }
+            if (links.isEmpty()) {
                 showAppToast(
-                    "Нет выбранных источников EPG — включите переключатель у нужной ссылки",
+                    if (manual) {
+                        "Нет выбранных источников EPG — укажите ссылку"
+                    } else {
+                        "У плейлиста нет встроенных ссылок EPG (x-tvg-url)"
+                    },
                     3500L
                 )
+                return@setOnClickListener
+            }
+
+            prefs.edit()
+                .putString(PREF_EPG_SOURCE_MODE, if (manual) EPG_MODE_CUSTOM else EPG_MODE_BUILTIN)
+                .apply()
+            if (manual) {
+                saveCustomEpgSources(links)
+            } else {
+                clearCustomEpgSources()
+            }
+            selectedEpgSources = links.toMutableSet()
+            saveSelectedEpgSources(selectedEpgSources)
+
+            val fingerprint = buildEpgSourceFingerprint(links)
+            val sameSources = fingerprint.isNotBlank() && fingerprint == getEpgSourceFingerprint()
+            val epgActive = !isEpgDataEmpty()
+            when {
+                epgFetchInProgress && sameSources -> {
+                    showAppToast("EPG уже обновляется")
+                    bindUrlStatuses(links)
+                    updateEpgLoadStatusUi()
+                }
+                sameSources && epgActive -> {
+                    showAppToast("EPG уже активен")
+                    links.forEach { src ->
+                        if (epgSourceStatus[src].isNullOrBlank() ||
+                            epgSourceStatus[src]?.contains("Ошибка", true) == true
+                        ) {
+                            epgSourceStatus[src] = "Готово"
+                        }
+                    }
+                    saveEpgStatusCache()
+                    bindUrlStatuses(links)
+                    updateEpgLoadStatusUi()
+                }
+                else -> {
+                    val statusMap = links.mapIndexedNotNull { index, url ->
+                        statusViews.getOrNull(index)?.let { url to it }
+                    }.toMap()
+                    fetchEpgSources(links, statusMap, force = true)
+                    showAppToast("Настройки сохранены, обновление EPG запущено")
+                }
             }
         }
         findViewById<View>(R.id.btnRefreshEpgSettings).setOnClickListener {
@@ -3818,9 +3956,15 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnResetEpgCache).setOnClickListener {
             cancelAndClearEpgCache()
             showAppToast("Кэш EPG очищен, загрузка отменена")
+            val shown = urls.map { it.text.toString().trim() }.filter { it.isNotBlank() }
+            bindUrlStatuses(shown)
             updateEpgLoadStatusUi()
         }
         updateEpgLoadStatusUi()
+        bindUrlStatuses(
+            urls.map { it.text.toString().trim() }.filter { it.isNotBlank() }
+                .ifEmpty { selectedEpgSources.toList() }
+        )
 
         tbSourceMode.post { tbSourceMode.requestFocus() }
         configureBackButtonsForSettings("openEpgSettingsScreen")
@@ -4706,9 +4850,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun fetchEpgSources(
         urls: List<String>,
-        statusViews: Map<String, TextView> = emptyMap()
+        statusViews: Map<String, TextView> = emptyMap(),
+        force: Boolean = false
     ) {
-        if (epgFetchInProgress || urls.isEmpty()) return
+        if (urls.isEmpty()) return
+        if (epgFetchInProgress && !force) return
+        if (epgFetchInProgress && force) {
+            // Cancel the in-flight generation, then start a fresh sequential download.
+            epgFetchGeneration += 1
+        }
         val fetchGen = epgFetchGeneration
         epgFetchInProgress = true
         updateEpgDisplay()
@@ -4728,6 +4878,9 @@ class MainActivity : AppCompatActivity() {
                         ignoreCase = true
                     ) == true -> "Превышено время ожидания сети"
 
+                    t.message?.contains("HTTP ", ignoreCase = true) == true ->
+                        t.message?.take(120) ?: "Ошибка HTTP"
+
                     t.message?.contains("too large", ignoreCase = true) == true ||
                             t.message?.contains(
                                 "safe limit",
@@ -4744,11 +4897,15 @@ class MainActivity : AppCompatActivity() {
                 saveEpgStatusCache()
                 handler.post {
                     if (fetchGen != epgFetchGeneration) return@post
-                    statusViews[source]?.text = status
+                    statusViews[source]?.let { tv ->
+                        tv.visibility = View.VISIBLE
+                        tv.text = status
+                    }
                     updateEpgLoadStatusUi()
                 }
             }
 
+            // Sequential per-source download/unpack/parse.
             urls.forEach { sourceUrl ->
                 if (fetchGen != epgFetchGeneration) return@forEach
                 applyEpgStatus(sourceUrl, "Загрузка файла: 0%")
@@ -4766,7 +4923,7 @@ class MainActivity : AppCompatActivity() {
                             onUnpack = { p -> applyEpgStatus(sourceUrl, "Распаковка файла: $p%") },
                             onParse = { p -> applyEpgStatus(sourceUrl, "Чтение файла: $p%") }
                         )
-                        applyEpgStatus(sourceUrl, "Чтение файла: 100%")
+                        applyEpgStatus(sourceUrl, "Готово")
                         parsed = true
                         break
                     } catch (t: Throwable) {
@@ -4805,8 +4962,7 @@ class MainActivity : AppCompatActivity() {
             }
             handler.post {
                 if (fetchGen != epgFetchGeneration) {
-                    epgFetchInProgress = false
-                    updateEpgLoadStatusUi()
+                    // A newer Save superseded this run — leave the new fetch's flag alone.
                     return@post
                 }
                 prefs.edit().putLong(PREF_EPG_LAST_REFRESH, System.currentTimeMillis()).apply()
@@ -4821,19 +4977,54 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun ensureEpgLoadedLazy() {
-        if (selectedEpgSources.isEmpty() || epgFetchInProgress) return
-        val epgEmpty = isEpgDataEmpty()
-        val refreshDue = shouldRefreshEpgNow()
+        // Downloads start only after Save in EPG settings. Keep using in-memory/prefs cache here.
+        if (selectedEpgSources.isEmpty()) return
         logDebug(
             "EPG_DEBUG",
-            "ensureEpgLoadedLazy epgEmpty=$epgEmpty refreshDue=$refreshDue " +
+            "ensureEpgLoadedLazy epgEmpty=${isEpgDataEmpty()} refreshDue=${shouldRefreshEpgNow()} " +
                 "savedFingerprint=${getEpgSourceFingerprint()} " +
                 "currentFingerprint=${buildEpgSourceFingerprint(selectedEpgSources.toList())} " +
-                "selectedEpgSources=$selectedEpgSources"
+                "selectedEpgSources=$selectedEpgSources fetchInProgress=$epgFetchInProgress"
         )
-        if (epgEmpty || refreshDue) {
-            fetchEpgSources(selectedEpgSources.toList())
+    }
+
+    private fun openEpgHttpConnection(url: String): HttpURLConnection {
+        var current = url.trim()
+        repeat(8) { hop ->
+            val conn = (URL(current).openConnection() as HttpURLConnection).apply {
+                instanceFollowRedirects = false
+                connectTimeout = 20_000
+                readTimeout = 180_000
+                setRequestProperty("User-Agent", userAgent)
+                setRequestProperty("Accept", "*/*")
+                setRequestProperty("Accept-Encoding", "identity")
+            }
+            val code = try {
+                conn.responseCode
+            } catch (t: Throwable) {
+                conn.disconnect()
+                throw t
+            }
+            if (code in 300..399) {
+                val location = conn.getHeaderField("Location")
+                conn.disconnect()
+                if (location.isNullOrBlank()) {
+                    throw IOException("HTTP $code redirect without Location")
+                }
+                current = URL(URL(current), location.trim()).toExternalForm()
+                logDebug("EPG_DEBUG", "redirect hop=$hop -> $current")
+                continue
+            }
+            if (code !in 200..299) {
+                val errBody = runCatching {
+                    (conn.errorStream ?: conn.inputStream)?.bufferedReader()?.readText()?.take(160)
+                }.getOrNull()
+                conn.disconnect()
+                throw IOException("HTTP $code${errBody?.let { ": $it" } ?: ""}")
+            }
+            return conn
         }
+        throw IOException("Too many redirects for $url")
     }
 
     private fun parseEpgUrlStreaming(
@@ -4842,38 +5033,46 @@ class MainActivity : AppCompatActivity() {
         onUnpack: (Int) -> Unit,
         onParse: (Int) -> Unit
     ) {
-        val conn = URL(url).openConnection() as HttpURLConnection
-        conn.setRequestProperty("User-Agent", userAgent)
-        conn.instanceFollowRedirects = true
-        conn.connectTimeout = 12_000
-        conn.readTimeout = 25_000
+        val conn = openEpgHttpConnection(url)
+        try {
+            val compressedTotal = conn.contentLengthLong.coerceAtLeast(0L)
+            onDownload(0)
+            conn.inputStream.use { raw ->
+                val compressedLimited = SizeLimitedInputStream(raw, MAX_EPG_COMPRESSED_BYTES)
+                val progressCompressed =
+                    ProgressInputStream(compressedLimited, compressedTotal) { p ->
+                        onDownload(p)
+                        if (p >= 100) onDownload(100)
+                    }
+                val buffered = BufferedInputStream(progressCompressed, 64 * 1024)
+                val pushback = PushbackInputStream(buffered, 2)
 
-        val compressedTotal = conn.contentLengthLong.coerceAtLeast(0L)
+                val b1 = pushback.read()
+                val b2 = pushback.read()
+                if (b2 != -1) pushback.unread(b2)
+                if (b1 != -1) pushback.unread(b1)
+                val isGzip = (b1 and 0xFF == 0x1F) && (b2 and 0xFF == 0x8B)
+                val looksLikeXml = b1 == '<'.code || (b1 == 0xEF && b2 == 0xBB)
 
-        conn.inputStream.use { raw ->
-            val compressedLimited = SizeLimitedInputStream(raw, MAX_EPG_COMPRESSED_BYTES)
-            val progressCompressed =
-                ProgressInputStream(compressedLimited, compressedTotal, onDownload)
-            val buffered = BufferedInputStream(progressCompressed)
-            val pushback = PushbackInputStream(buffered, 2)
+                if (!isGzip && !looksLikeXml) {
+                    throw IOException("Ответ не похож на EPG XML/GZIP")
+                }
 
-            val b1 = pushback.read()
-            val b2 = pushback.read()
-            if (b2 != -1) pushback.unread(b2)
-            if (b1 != -1) pushback.unread(b1)
-            val isGzip = (b1 and 0xFF == 0x1F) && (b2 and 0xFF == 0x8B)
+                val xmlStream: InputStream = if (isGzip) {
+                    onUnpack(0)
+                    SizeLimitedInputStream(GZIPInputStream(pushback), MAX_EPG_UNPACKED_BYTES)
+                } else {
+                    SizeLimitedInputStream(pushback, MAX_EPG_UNPACKED_BYTES)
+                }
 
-            val xmlStream: InputStream = if (isGzip) {
-                onUnpack(0)
-                SizeLimitedInputStream(GZIPInputStream(pushback), MAX_EPG_UNPACKED_BYTES)
-            } else {
-                SizeLimitedInputStream(pushback, MAX_EPG_UNPACKED_BYTES)
+                xmlStream.use { stream ->
+                    parseEpgXml(stream, -1, onParse)
+                }
+                if (compressedTotal <= 0L) onDownload(100)
+                if (isGzip) onUnpack(100)
             }
-
-            xmlStream.use { stream ->
-                parseEpgXml(stream, -1, onParse)
-            }
-            if (isGzip) onUnpack(100)
+        } finally {
+            conn.disconnect()
         }
     }
 
@@ -5500,23 +5699,41 @@ class MainActivity : AppCompatActivity() {
     private var seekSpinnerStartedAtMs = 0L
 
     private fun showReloadingStatus(title: String, subtitle: String, isError: Boolean = false) {
-        // Center / seek / player spinners must not sit under the reload/error plate.
-        dismissCenterSpinnersForStatusPlate()
+        // Keep fullscreen player spinner available under/near the plate for non-error recovery.
+        if (!isError) {
+            hideSeekSpinnerRunnable?.let { handler.removeCallbacks(it) }
+            hideSeekSpinnerRunnable = null
+            if (seekSpinnerActive) {
+                seekSpinnerActive = false
+                findViewById<View>(R.id.loadingPanel)?.apply {
+                    isClickable = true
+                    isFocusable = true
+                    setBackgroundColor(Color.parseColor("#99000000"))
+                }
+            }
+            hideAppLoadingSpinner()
+        } else {
+            dismissCenterSpinnersForStatusPlate()
+        }
         val ring = findViewById<ImageView>(R.id.ivReloadingRing)
-        ring?.visibility = View.GONE
-        stopSpinnerOnView(ivReloadingIcon)
-        ivReloadingIcon.setBackground(null)
-        ivReloadingIcon.rotation = 0f
+        val iconHost = ivReloadingIcon.parent as? View
         if (isError) {
-            // Error plate: alert icon only, never a spinner.
+            ring?.visibility = View.GONE
+            stopSpinnerOnView(ivReloadingIcon)
+            ivReloadingIcon.setBackground(null)
+            ivReloadingIcon.rotation = 0f
             ivReloadingIcon.setImageResource(R.drawable.alert)
             ivReloadingIcon.visibility = View.VISIBLE
-            (ivReloadingIcon.parent as? View)?.visibility = View.VISIBLE
+            iconHost?.visibility = View.VISIBLE
         } else {
-            // Reload plate: text only — no spinner beside or under the title.
-            ivReloadingIcon.setImageDrawable(null)
-            ivReloadingIcon.visibility = View.GONE
-            (ivReloadingIcon.parent as? View)?.visibility = View.GONE
+            // Recovery plate: show spinner next to the status text.
+            iconHost?.visibility = View.VISIBLE
+            ring?.visibility = View.VISIBLE
+            ivReloadingIcon.visibility = View.VISIBLE
+            ivReloadingIcon.setImageResource(R.drawable.load1)
+            ring?.setImageResource(R.drawable.load2)
+            startSpinnerOnView(ivReloadingIcon, durationMs = 900L)
+            ring?.let { startSpinnerOnView(it, durationMs = 1400L) }
         }
         tvReloadingTitle.text = title
         tvReloadingSubtitle.text = subtitle
@@ -5723,6 +5940,23 @@ class MainActivity : AppCompatActivity() {
         logDebug("PLAYER_STATE", "playback failure shown; waiting for user LIVE/channel action url=$url")
     }
 
+    private fun isNetworkConnected(): Boolean {
+        return try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                ?: return true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val network = cm.activeNetwork ?: return false
+                val caps = cm.getNetworkCapabilities(network) ?: return false
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            } else {
+                @Suppress("DEPRECATION")
+                cm.activeNetworkInfo?.isConnected == true
+            }
+        } catch (_: Exception) {
+            true
+        }
+    }
+
     private fun epgUnavailableMessage(): String =
         if (epgFetchInProgress) "Выполняется обновление программы передач"
         else "Программа передач недоступна"
@@ -5738,7 +5972,11 @@ class MainActivity : AppCompatActivity() {
                 active ?: "EPG: обновление..."
             }
             epgSourceStatus.isNotEmpty() -> {
-                val ok = epgSourceStatus.count { it.value.contains("100%") || it.value.contains("готово", true) }
+                val ok = epgSourceStatus.count {
+                    it.value.contains("Готово", true) ||
+                        it.value.contains("100%") ||
+                        it.value.contains("активен", true)
+                }
                 val err = epgSourceStatus.count { it.value.contains("Ошибка", true) }
                 when {
                     err > 0 && ok == 0 -> "EPG: ошибка загрузки"
@@ -5753,15 +5991,28 @@ class MainActivity : AppCompatActivity() {
         statusView.text = text
     }
 
+    private fun epgCacheDir(): File = File(filesDir, "epg_cache").also { if (!it.exists()) it.mkdirs() }
+
+    private fun clearEpgCacheFiles() {
+        runCatching {
+            val dir = epgCacheDir()
+            dir.listFiles()?.forEach { child ->
+                if (child.isDirectory) child.deleteRecursively() else child.delete()
+            }
+        }
+    }
+
     private fun cancelAndClearEpgCache() {
         epgFetchGeneration += 1
         epgFetchInProgress = false
         synchronized(epgDataLock) { epgData.clear() }
         epgSourceStatus.clear()
+        clearEpgCacheFiles()
         prefs.edit()
             .remove(PREF_EPG_CACHE)
             .remove(PREF_EPG_STATUS)
             .remove(PREF_EPG_LAST_REFRESH)
+            .remove(PREF_EPG_SOURCES_FINGERPRINT)
             .apply()
         updateEpgLoadStatusUi()
     }
