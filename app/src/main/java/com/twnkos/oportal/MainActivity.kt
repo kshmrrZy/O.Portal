@@ -8089,7 +8089,7 @@ class MainActivity : AppCompatActivity() {
             shouldReloadStreamOnStart = false
         }
         val hasIncompleteEpgProgress = epgSourceStatus.values.any {
-            it.contains("Загрузка файла") || it.contains("Распаковка файла") || it.contains("Чтение файла")
+            it.contains("Загрузка") || it.contains("Распаковка") || it.contains("Чтение")
         }
         if (versionChanged || hasIncompleteEpgProgress) ensureEpgLoadedLazy()
         if (mediaPlayer != null && isPlaybackPaused) {
