@@ -9083,11 +9083,23 @@ class MainActivity : AppCompatActivity() {
             if (code !in 200..299) {
                 throw IOException("HTTP $code for playlist header")
             }
-            // First ~8 KiB is enough for #EXTM3U x-tvg-url="a,b".
-            val buf = ByteArray(8 * 1024)
-            val n = conn.inputStream.use { it.read(buf) }
-            if (n <= 0) return ""
-            return String(buf, 0, n, Charsets.UTF_8)
+            // Read first lines until we have x-tvg-url (or a small header budget).
+            conn.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                val sb = StringBuilder()
+                while (sb.length < 16 * 1024) {
+                    val line = reader.readLine() ?: break
+                    sb.append(line).append('\n')
+                    if (sb.contains("x-tvg-url", ignoreCase = true) ||
+                        sb.contains("url-tvg", ignoreCase = true) ||
+                        sb.contains("tvg-url", ignoreCase = true)
+                    ) {
+                        break
+                    }
+                    // Stop after a handful of lines if header has no EPG attrs.
+                    if (sb.lineSequence().count() >= 8) break
+                }
+                return sb.toString()
+            }
         } finally {
             conn.disconnect()
         }
