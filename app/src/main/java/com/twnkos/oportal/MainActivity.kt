@@ -1063,6 +1063,12 @@ class MainActivity : AppCompatActivity() {
         etHomeListSearch = findViewById(R.id.etHomeListSearch)
         etChannelListSearch = findViewById(R.id.etChannelListSearch)
         rvHomeTiles = findViewById(R.id.rvHomeTiles)
+        // Keep D-pad focus on the GridView itself so AbsListView can scroll past on-screen rows.
+        listOf(gvHomeChannelList, gvChannelListPanel).forEach { grid ->
+            grid.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+            grid.isFocusable = true
+            grid.isFocusableInTouchMode = true
+        }
         setupHomeAndChannelSearch()
         tvHomeCategoryBack = findViewById(R.id.tvHomeCategoryBack)
         liveStatusBadge = findViewById(R.id.liveStatusBadge)
@@ -1710,7 +1716,14 @@ class MainActivity : AppCompatActivity() {
             val spanSize = lookup?.getSpanSize(position) ?: 1
             outRect.left = 0
             outRect.right = if (spanIndex + spanSize >= spanCount) 0 else spacingPx
-            outRect.bottom = spacingPx
+            val itemCount = parent.adapter?.itemCount ?: 0
+            val lastRowStart = when {
+                itemCount <= 0 || columns <= 0 -> 0
+                itemCount % columns == 0 -> itemCount - columns
+                else -> itemCount - (itemCount % columns)
+            }
+            // No bottom gap on the last row — otherwise a fitting grid still scrolls a few dp.
+            outRect.bottom = if (position >= lastRowStart) 0 else spacingPx
         }
     }
 
@@ -1860,7 +1873,16 @@ class MainActivity : AppCompatActivity() {
             homePlaylistTilesPanel.layoutParams = lp
         }
 
-        (rvHomeTiles.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
+        (rvHomeTiles.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            lp.height = 0
+            lp.weight = 1f
+            lp.leftMargin = 0
+            lp.rightMargin = 0
+            lp.marginStart = 0
+            lp.marginEnd = 0
+            rvHomeTiles.layoutParams = lp
+        } ?: (rvHomeTiles.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
             lp.width = ViewGroup.LayoutParams.MATCH_PARENT
             lp.leftMargin = 0
             lp.rightMargin = 0
@@ -2062,9 +2084,7 @@ class MainActivity : AppCompatActivity() {
         if (::gvHomeChannelList.isInitialized && gvHomeChannelList.visibility == View.VISIBLE) {
             gvHomeChannelList.setSelection(0)
             gvHomeChannelList.smoothScrollToPosition(0)
-            gvHomeChannelList.post {
-                gvHomeChannelList.getChildAt(0)?.requestFocus()
-            }
+            gvHomeChannelList.post { gvHomeChannelList.requestFocus() }
             return
         }
         onBreadcrumbClick()
@@ -2149,8 +2169,51 @@ class MainActivity : AppCompatActivity() {
         }
         etHomeListSearch.hint = hint
         etHomeListSearch.visibility = View.VISIBLE
+        etHomeListSearch.nextFocusDownId = when (mode) {
+            HomeSearchMode.CHANNELS -> R.id.gvHomeChannelList
+            else -> R.id.rvHomeTiles
+        }
+        rvHomeTiles.nextFocusUpId = R.id.etHomeListSearch
+        gvHomeChannelList.nextFocusUpId = R.id.etHomeListSearch
         if (etHomeListSearch.text?.isNotEmpty() == true) {
             etHomeListSearch.setText("")
+        }
+    }
+
+    /** True when D-pad UP should leave the home list toward search/header (first row). */
+    private fun isHomeListAtTopRow(grid: View, focused: View?): Boolean {
+        when (grid) {
+            is GridView -> {
+                val pos = grid.selectedItemPosition
+                if (pos == AdapterView.INVALID_POSITION || pos <= 0) return true
+                val cols = grid.numColumns.coerceAtLeast(1)
+                return pos < cols
+            }
+            is RecyclerView -> {
+                val focusedChild = when {
+                    focused != null && grid.indexOfChild(focused) >= 0 -> focused
+                    focused != null -> {
+                        var p: View? = focused
+                        while (p != null && p.parent !== grid) {
+                            p = p.parent as? View
+                        }
+                        p
+                    }
+                    else -> grid.focusedChild
+                } ?: return true
+                val pos = grid.getChildAdapterPosition(focusedChild)
+                if (pos == RecyclerView.NO_POSITION || pos <= 0) return true
+                val columns = computeHomeTileColumns().coerceAtLeast(1)
+                return pos < columns
+            }
+            else -> {
+                if (focused == null) return true
+                val focusedLoc = IntArray(2)
+                val gridLoc = IntArray(2)
+                focused.getLocationOnScreen(focusedLoc)
+                grid.getLocationOnScreen(gridLoc)
+                return focusedLoc[1] <= gridLoc[1] + dpToPx(8)
+            }
         }
     }
 
@@ -2445,6 +2508,9 @@ class MainActivity : AppCompatActivity() {
                     currentChannelIndex = if (realIndex >= 0) realIndex else position
                     playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
                 }
+                // Focus must stay on GridView so D-pad can scroll past the last visible row.
+                itemView.isFocusable = false
+                itemView.isFocusableInTouchMode = false
                 return itemView
             }
         }
@@ -2463,12 +2529,6 @@ class MainActivity : AppCompatActivity() {
                 if (channelsForCategory.isNotEmpty()) {
                     gvHomeChannelList.setSelection(focusIdx.coerceAtMost(channelsForCategory.lastIndex))
                     gvHomeChannelList.requestFocus()
-                    gvHomeChannelList.post {
-                        val child = gvHomeChannelList.getChildAt(
-                            focusIdx - gvHomeChannelList.firstVisiblePosition
-                        )
-                        child?.requestFocus()
-                    }
                 }
             }
         }
@@ -2910,6 +2970,9 @@ class MainActivity : AppCompatActivity() {
                     playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
                     hideChannelListPanel()
                 }
+                // Focus must stay on GridView so D-pad can scroll past the last visible row.
+                itemView.isFocusable = false
+                itemView.isFocusableInTouchMode = false
                 return itemView
             }
         }
@@ -8783,8 +8846,13 @@ class MainActivity : AppCompatActivity() {
                     }
                     KeyEvent.KEYCODE_DPAD_DOWN -> {
                         headerIcons.forEach { it.isFocusable = false }
-                        if (homePlaylistTilesPanel.visibility == View.VISIBLE) rvHomeTiles.requestFocus()
-                        else if (gvHomeChannelList.visibility == View.VISIBLE) gvHomeChannelList.requestFocus()
+                        if (etHomeListSearch.visibility == View.VISIBLE) {
+                            etHomeListSearch.requestFocus()
+                        } else if (homePlaylistTilesPanel.visibility == View.VISIBLE) {
+                            rvHomeTiles.requestFocus()
+                        } else if (gvHomeChannelList.visibility == View.VISIBLE) {
+                            gvHomeChannelList.requestFocus()
+                        }
                         return true
                     }
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
@@ -8793,16 +8861,29 @@ class MainActivity : AppCompatActivity() {
                     }
                     KeyEvent.KEYCODE_DPAD_UP -> return true
                 }
+            } else if (focused == etHomeListSearch && etHomeListSearch.visibility == View.VISIBLE) {
+                when (keyCode) {
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        headerIcons.forEach { it.isFocusable = true }
+                        (if (ivHomeSettings.visibility == View.VISIBLE) ivHomeSettings else headerIcons.firstOrNull())
+                            ?.requestFocus()
+                        return true
+                    }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        if (homePlaylistTilesPanel.visibility == View.VISIBLE) rvHomeTiles.requestFocus()
+                        else if (gvHomeChannelList.visibility == View.VISIBLE) gvHomeChannelList.requestFocus()
+                        return true
+                    }
+                }
             } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP &&
                 (homePlaylistTilesPanel.visibility == View.VISIBLE || gvHomeChannelList.visibility == View.VISIBLE)
             ) {
                 val grid = if (homePlaylistTilesPanel.visibility == View.VISIBLE) rvHomeTiles else gvHomeChannelList
-                val focusedLoc = IntArray(2)
-                val gridLoc = IntArray(2)
-                focused?.getLocationOnScreen(focusedLoc)
-                grid.getLocationOnScreen(gridLoc)
-                val isTopRow = focused == null || focusedLoc[1] <= gridLoc[1] + dpToPx(8)
-                if (isTopRow) {
+                if (isHomeListAtTopRow(grid, focused)) {
+                    if (etHomeListSearch.visibility == View.VISIBLE) {
+                        etHomeListSearch.requestFocus()
+                        return true
+                    }
                     headerIcons.forEach { it.isFocusable = true }
                     (if (ivHomeSettings.visibility == View.VISIBLE) ivHomeSettings else headerIcons.firstOrNull())
                         ?.requestFocus()
