@@ -695,6 +695,9 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_EPG_REFRESH_INTERVAL_DAYS = "pref_epg_refresh_interval_days"
         private const val PREF_LOGO_CACHE = "logo_cache"
         private const val PREF_PLAYLIST_CONTENT_CACHE = "playlist_content_cache"
+        private const val PREF_PLAYLIST_HEADER_CACHE = "playlist_header_cache"
+        /** Soft cap for SharedPreferences playlist bodies — larger ones go to disk. */
+        private const val MAX_PREFS_PLAYLIST_CHARS = 200_000
         private const val PREF_START_LAST_CHANNEL = "pref_start_last_channel"
         private const val PREF_LAST_CHANNEL = "last_channel"
         private const val PREF_LAST_CHANNEL_URL = "last_channel_url"
@@ -5133,47 +5136,74 @@ class MainActivity : AppCompatActivity() {
         autoPlay: Boolean = true
     ) {
         handler.post { showAppLoadingSpinner() }
-        thread {
+        thread(name = "playlist-load") {
             try {
                 val playlistUrl = resolveCurrentPlaylistUrl()
                 if (playlistUrl.isBlank()) {
                     handler.post {
                         hideAppLoadingSpinner()
                         tvEpg.text = "Откройте настройки и задайте токен или плейлист"
+                        if (showErrors) {
+                            showAppToast("Плейлист не задан", 3000L)
+                            showPlaylistPageOnHome()
+                        }
                         showUI()
                     }
                     return@thread
                 }
 
-                val content = if (!forceReload) {
-                    getCachedPlaylistContent(playlistUrl)
-                        ?: URL(playlistUrl).readText().also { saveCachedPlaylistContent(playlistUrl, it) }
-                } else {
-                    URL(playlistUrl).readText().also { saveCachedPlaylistContent(playlistUrl, it) }
+                var content = if (!forceReload) getCachedPlaylistContent(playlistUrl) else null
+                if (!looksLikePlaylistBody(content)) {
+                    content = fetchPlaylistBodyText(playlistUrl).also { body ->
+                        if (looksLikePlaylistBody(body)) saveCachedPlaylistContent(playlistUrl, body)
+                    }
                 }
-                currentPlaylistText = content
+                // Stale header-only cache (saved by EPG settings) → force network once.
+                var parsedChannels = if (looksLikePlaylistBody(content)) {
+                    M3uParser.parse(content!!)
+                } else {
+                    emptyList()
+                }
+                if (parsedChannels.isEmpty()) {
+                    logDebug(
+                        "PLAYLIST_FLOW",
+                        "PLAYLIST_CACHE_MISS_OR_EMPTY urlHash=${playlistUrl.hashCode()} " +
+                            "cachedLen=${content?.length ?: 0} forceNetwork=true"
+                    )
+                    content = fetchPlaylistBodyText(playlistUrl)
+                    if (looksLikePlaylistBody(content)) {
+                        saveCachedPlaylistContent(playlistUrl, content!!)
+                        parsedChannels = M3uParser.parse(content!!)
+                    }
+                }
+
+                currentPlaylistText = content.orEmpty()
                 lastLoadedPlaylistUrl = playlistUrl
-                val parsedChannels = M3uParser.parse(content)
                 val groupedCategories = parsedChannels
                     .groupBy { ch -> ch.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
                     .filterKeys { key -> key != "{region_name}" }
-                val parsedEpgUrls = extractEpgSourcesFromPlaylist(content)
+                val parsedEpgUrls = extractEpgSourcesFromPlaylist(content.orEmpty())
+                // Keep a tiny header cache for Builtin EPG forms without clobbering the body.
+                extractEpgSourcesFromPlaylist(content.orEmpty()).firstOrNull()?.let {
+                    saveCachedPlaylistHeader(
+                        playlistUrl,
+                        content.orEmpty().lineSequence().take(5).joinToString("\n")
+                    )
+                }
                 val selectedPlaylist = getSelectedPlaylistName()
-                logDebug("PLAYLIST_FLOW", "PLAYLIST_CLICK selectedPlaylist=$selectedPlaylist forceReload=$forceReload")
-                logDebug("PLAYLIST_FLOW", "PLAYLIST_PARSED channelsCount=${parsedChannels.size}")
+                logDebug(
+                    "PLAYLIST_FLOW",
+                    "PLAYLIST_CLICK selectedPlaylist=$selectedPlaylist forceReload=$forceReload " +
+                        "channelsCount=${parsedChannels.size} bodyLen=${content?.length ?: 0}"
+                )
                 logDebug("NAV", "playlist_click name=$selectedPlaylist")
 
                 handler.post {
                     hideAppLoadingSpinner()
                     channels.clear()
                     channels.addAll(parsedChannels)
-                    currentPlaylistText = content
+                    currentPlaylistText = content.orEmpty()
                     lastLoadedPlaylistUrl = playlistUrl
-                    rebindEpgAliasesForCurrentPlaylist()
-                    applyCachedLogosToChannels()
-                    // Keep playlist-embedded EPG URLs for the settings UI only.
-                    // Active EPG sources come strictly from settings — never auto-select
-                    // url-tvg / x-tvg-url from the playlist when settings selection is empty.
                     availableEpgSources = parsedEpgUrls
                     val savedSelection = getSelectedEpgSources()
                     selectedEpgSources = savedSelection.toMutableSet()
@@ -5182,14 +5212,14 @@ class MainActivity : AppCompatActivity() {
                         "EPG_SOURCE_SELECTION playlist=$selectedPlaylist availableEpgSources=$availableEpgSources savedSelection=$savedSelection selectedEpgSources=$selectedEpgSources"
                     )
 
-                    // Never wipe EPG while a download/parse is in flight — that raced with
-                    // opening a service during unpack and left channels without programmes.
                     if (shouldRefreshEpgNow() && !epgFetchInProgress) {
                         clearEpgRuntimeData()
                     }
 
                     if (channels.isEmpty()) {
                         tvEpg.text = "Каналы не найдены в плейлисте"
+                        showAppToast("В плейлисте нет каналов", 3500L)
+                        showPlaylistPageOnHome()
                     } else if (shouldOpenLastChannelOnStart && autoPlay) {
                         if (!restoreLastChannelAndPlay()) {
                             logDebug("NAV", "startup_last_channel_not_found")
@@ -5204,6 +5234,15 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         logDebug("NAV", "startup_load_ready_without_autonavigation")
                     }
+
+                    // Heavy EPG alias/logo work after UI is already shown — avoids spinner hangs.
+                    thread(name = "playlist-epg-rebind") {
+                        runCatching {
+                            rebindEpgAliasesForCurrentPlaylist()
+                            applyCachedLogosToChannels()
+                        }
+                        handler.post { refreshOpenOverlayPanelsAfterEpgUpdate() }
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("M3U", "Ошибка загрузки плейлиста: ${redactThrowableChain(e)}")
@@ -5211,6 +5250,7 @@ class MainActivity : AppCompatActivity() {
                     hideAppLoadingSpinner()
                     if (showErrors) {
                         showAppToast("Сервис временно недоступен", 3500L)
+                        showPlaylistPageOnHome()
                         AlertDialog.Builder(this)
                             .setTitle("Сервис недоступен")
                             .setMessage("Не удалось загрузить плейлист. Проверьте токен, ссылку или доступность сервиса.")
@@ -5228,25 +5268,112 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** True when content has at least one channel entry (not a bare #EXTM3U header). */
+    private fun looksLikePlaylistBody(content: String?): Boolean {
+        if (content.isNullOrBlank()) return false
+        return content.contains("#EXTINF", ignoreCase = true)
+    }
+
+    private fun playlistCacheDir(): File =
+        File(filesDir, "playlist_cache").also { if (!it.exists()) it.mkdirs() }
+
+    private fun playlistCacheFile(url: String): File {
+        val key = Integer.toHexString(url.trim().lowercase().hashCode())
+        return File(playlistCacheDir(), "$key.m3u")
+    }
+
+    private fun fetchPlaylistBodyText(playlistUrl: String): String {
+        val conn = (URL(playlistUrl).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 12_000
+            readTimeout = 45_000
+            setRequestProperty("User-Agent", userAgent)
+            setRequestProperty("Accept", "*/*")
+            setRequestProperty("Accept-Encoding", "identity")
+            instanceFollowRedirects = true
+        }
+        try {
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                throw IOException("HTTP $code for playlist")
+            }
+            return conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     private fun getCachedPlaylistContent(url: String): String? {
         if (url.isBlank()) return null
+        // Disk first — avoids SharedPreferences bloat/hangs on large M3U.
+        runCatching {
+            val file = playlistCacheFile(url)
+            if (file.exists() && file.length() > 0L) {
+                val body = file.readText(Charsets.UTF_8)
+                if (looksLikePlaylistBody(body)) return body
+                // Drop header-only junk left from older builds.
+                file.delete()
+            }
+        }
         return runCatching {
             val root = JSONObject(prefs.getString(PREF_PLAYLIST_CONTENT_CACHE, "{}") ?: "{}")
-            root.optString(url, "").takeIf { it.isNotBlank() }
+            val body = root.optString(url, "")
+            if (looksLikePlaylistBody(body)) {
+                body
+            } else {
+                // Purge #EXTM3U-only stubs that previously broke Избранные.
+                if (body.isNotBlank()) {
+                    root.remove(url)
+                    prefs.edit().putString(PREF_PLAYLIST_CONTENT_CACHE, root.toString()).apply()
+                }
+                null
+            }
         }.getOrNull()
     }
 
     private fun saveCachedPlaylistContent(url: String, content: String) {
-        if (url.isBlank() || content.isBlank()) return
+        if (url.isBlank() || !looksLikePlaylistBody(content)) return
+        runCatching {
+            playlistCacheFile(url).writeText(content, Charsets.UTF_8)
+        }
+        // Keep prefs only for modest playlists; drop stale prefs entry for this URL otherwise.
         runCatching {
             val root = JSONObject(prefs.getString(PREF_PLAYLIST_CONTENT_CACHE, "{}") ?: "{}")
-            root.put(url, content)
+            if (content.length <= MAX_PREFS_PLAYLIST_CHARS) {
+                root.put(url, content)
+            } else {
+                root.remove(url)
+            }
             prefs.edit().putString(PREF_PLAYLIST_CONTENT_CACHE, root.toString()).apply()
         }
     }
 
     private fun clearPlaylistContentCache() {
-        prefs.edit().remove(PREF_PLAYLIST_CONTENT_CACHE).apply()
+        prefs.edit()
+            .remove(PREF_PLAYLIST_CONTENT_CACHE)
+            .remove(PREF_PLAYLIST_HEADER_CACHE)
+            .apply()
+        runCatching {
+            playlistCacheDir().listFiles()?.forEach { it.delete() }
+        }
+    }
+
+    private fun getCachedPlaylistHeader(url: String): String? {
+        if (url.isBlank()) return null
+        return runCatching {
+            val root = JSONObject(prefs.getString(PREF_PLAYLIST_HEADER_CACHE, "{}") ?: "{}")
+            root.optString(url, "").takeIf { it.isNotBlank() }
+        }.getOrNull()
+    }
+
+    private fun saveCachedPlaylistHeader(url: String, header: String) {
+        if (url.isBlank() || header.isBlank()) return
+        // Never write headers into the full playlist body cache — that broke Избранные
+        // (42-byte #EXTM3U-only cache → 0 channels → bounce to home).
+        runCatching {
+            val root = JSONObject(prefs.getString(PREF_PLAYLIST_HEADER_CACHE, "{}") ?: "{}")
+            root.put(url, header.take(16 * 1024))
+            prefs.edit().putString(PREF_PLAYLIST_HEADER_CACHE, root.toString()).apply()
+        }
     }
 
     private fun fetchEpgSources(
@@ -5687,8 +5814,8 @@ class MainActivity : AppCompatActivity() {
             val favUrl = resolveBuiltinPlaylistUrl()
             if (favUrl.isNotBlank()) {
                 runCatching {
-                    val body = URL(favUrl).readText()
-                    if (body.isNotBlank()) {
+                    val body = fetchPlaylistBodyText(favUrl)
+                    if (looksLikePlaylistBody(body)) {
                         saveCachedPlaylistContent(favUrl, body)
                         if (lastLoadedPlaylistUrl.isBlank() || lastLoadedPlaylistUrl == favUrl) {
                             currentPlaylistText = body
@@ -9287,9 +9414,10 @@ class MainActivity : AppCompatActivity() {
             logDebug("EPG_DEBUG", "BUILTIN_SOURCES empty: no favorites/selected playlist URL")
             return emptyList()
         }
+        val header = getCachedPlaylistHeader(url).orEmpty()
         val cached = getCachedPlaylistContent(url).orEmpty()
         val memory = if (lastLoadedPlaylistUrl == url) currentPlaylistText else ""
-        val candidates = listOf(cached, memory).filter { it.isNotBlank() }.distinct()
+        val candidates = listOf(header, cached, memory).filter { it.isNotBlank() }.distinct()
         for (content in candidates) {
             val parsed = extractEpgSourcesFromPlaylist(content)
             if (parsed.isNotEmpty()) {
@@ -9298,7 +9426,10 @@ class MainActivity : AppCompatActivity() {
                 return parsed
             }
         }
-        logDebug("EPG_DEBUG", "BUILTIN_SOURCES miss url=$url cachedLen=${cached.length} memoryLen=${memory.length}")
+        logDebug(
+            "EPG_DEBUG",
+            "BUILTIN_SOURCES miss url=$url headerLen=${header.length} cachedLen=${cached.length} memoryLen=${memory.length}"
+        )
         return emptyList()
     }
 
@@ -9386,28 +9517,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveCachedPlaylistHeader(url: String, header: String) {
-        if (url.isBlank() || header.isBlank()) return
-        // Store under the same cache map; header is small enough for prefs.
-        // If a full body is already cached for this URL, keep it (richer for parse).
-        val existing = getCachedPlaylistContent(url)
-        if (existing != null && existing.length > header.length &&
-            extractEpgSourcesFromPlaylist(existing).isNotEmpty()
-        ) {
-            return
-        }
-        // Prefer header that actually contains EPG urls when replacing a body without them.
-        if (existing != null &&
-            extractEpgSourcesFromPlaylist(existing).isEmpty() &&
-            extractEpgSourcesFromPlaylist(header).isEmpty()
-        ) {
-            return
-        }
-        if (extractEpgSourcesFromPlaylist(header).isNotEmpty() || existing.isNullOrBlank()) {
-            saveCachedPlaylistContent(url, header)
-        }
-    }
-
     private fun buildEpgUrlCandidates(url: String): List<String> {
         val clean = url.trim()
         if (clean.isBlank()) return emptyList()
@@ -9423,7 +9532,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun shouldDailyRefreshEpg(): Boolean {
         val last = prefs.getLong(PREF_EPG_LAST_REFRESH, 0L)
-        if (last == 0L) return selectedEpgSources.isNotEmpty()
+        if (last == 0L) return false
         val now = System.currentTimeMillis()
         return now >= computeNextEpgRefreshAt(fromMillis = last)
     }
