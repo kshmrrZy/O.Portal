@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Local Android SDK bootstrap (cloud agent)
+/android-sdk/

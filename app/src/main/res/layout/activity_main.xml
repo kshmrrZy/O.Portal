@@ -744,7 +744,8 @@
             android:paddingHorizontal="12dp"
             android:textColor="#FFFFFF"
             android:textColorHint="#80FFFFFF"
-            android:textSize="14sp" />
+            android:textSize="14sp"
+            android:nextFocusDown="@id/gvChannelListPanel" />
 
         <GridView
             android:id="@+id/gvChannelListPanel"
@@ -758,8 +759,12 @@
             android:verticalSpacing="12dp"
             android:stretchMode="columnWidth"
             android:gravity="start"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:descendantFocusability="blocksDescendants"
             android:listSelector="@drawable/grid_item_selector"
             android:drawSelectorOnTop="true"
+            android:nextFocusUp="@id/etChannelListSearch"
             android:scrollbars="none" />
 
         <TextView
@@ -1170,6 +1175,7 @@
             android:textColorHint="#80FFFFFF"
             android:textSize="14sp"
             android:visibility="gone"
+            android:nextFocusDown="@id/rvHomeTiles"
             app:layout_constraintEnd_toEndOf="@id/ivHomePower"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
             app:layout_constraintTop_toBottomOf="@id/tvPlaylistPageSubtitle" />
@@ -1181,13 +1187,13 @@
             app:barrierDirection="bottom"
             app:constraint_referenced_ids="tvPlaylistPageSubtitle,etHomeListSearch" />
 
-        <ScrollView
+        <!-- LinearLayout (not ScrollView): RV scrolls itself so D-pad focus stays in viewport. -->
+        <LinearLayout
             android:id="@+id/homePlaylistTilesPanel"
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:visibility="gone"
-            android:scrollbars="none"
-            android:overScrollMode="ifContentScrolls"
+            android:orientation="vertical"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             android:layout_marginStart="@dimen/home_edge_margin"
@@ -1195,56 +1201,51 @@
             app:layout_constraintTop_toBottomOf="@id/homeContentTopBarrier"
             app:layout_constraintBottom_toBottomOf="parent"
             android:layout_marginTop="@dimen/home_grid_margin_top"
-            android:layout_marginBottom="@dimen/home_bottom_margin"
-            android:paddingBottom="4dp">
+            android:layout_marginBottom="@dimen/home_bottom_margin">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvHomeTiles"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:clipToPadding="false"
+                android:overScrollMode="never"
+                android:scrollbars="none" />
+
             <LinearLayout
+                android:id="@+id/homeBottomTilesRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
+                android:layout_marginTop="@dimen/home_bottom_row_margin_top"
+                android:orientation="horizontal"
+                android:visibility="gone">
 
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/rvHomeTiles"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:clipToPadding="false"
-                    android:overScrollMode="never"
-                    android:scrollbars="none" />
+                <FrameLayout
+                    android:id="@+id/btnOwnPlaylistsTile"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/home_tile_min_height"
+                    android:background="@drawable/bg_playlist_tile"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:focusableInTouchMode="false">
 
-                <LinearLayout
-                    android:id="@+id/homeBottomTilesRow"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/home_bottom_row_margin_top"
-                    android:orientation="horizontal"
-                    android:visibility="gone">
+                    <include layout="@layout/item_home_bottom_action" />
+                </FrameLayout>
 
-                    <FrameLayout
-                        android:id="@+id/btnOwnPlaylistsTile"
-                        android:layout_width="wrap_content"
-                        android:layout_height="@dimen/home_tile_min_height"
-                        android:background="@drawable/bg_playlist_tile"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:focusableInTouchMode="false">
+                <FrameLayout
+                    android:id="@+id/btnFavoritesTile"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/home_tile_min_height"
+                    android:layout_marginStart="@dimen/home_tile_spacing"
+                    android:background="@drawable/bg_playlist_tile"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:focusableInTouchMode="false">
 
-                        <include layout="@layout/item_home_bottom_action" />
-                    </FrameLayout>
-
-                    <FrameLayout
-                        android:id="@+id/btnFavoritesTile"
-                        android:layout_width="wrap_content"
-                        android:layout_height="@dimen/home_tile_min_height"
-                        android:layout_marginStart="@dimen/home_tile_spacing"
-                        android:background="@drawable/bg_playlist_tile"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:focusableInTouchMode="false">
-
-                        <include layout="@layout/item_home_bottom_action" />
-                    </FrameLayout>
-                </LinearLayout>
+                    <include layout="@layout/item_home_bottom_action" />
+                </FrameLayout>
             </LinearLayout>
-        </ScrollView>
+        </LinearLayout>
 
         <GridView
             android:id="@+id/gvHomeChannelList"
@@ -1265,8 +1266,12 @@
             android:paddingBottom="8dp"
             android:overScrollMode="ifContentScrolls"
             android:scrollbars="none"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:descendantFocusability="blocksDescendants"
             android:listSelector="@drawable/grid_item_selector"
             android:drawSelectorOnTop="true"
+            android:nextFocusUp="@id/etHomeListSearch"
             app:layout_constraintStart_toStartOf="@id/tvHomeAppTitle"
             app:layout_constraintEnd_toEndOf="@id/ivHomePower"
             app:layout_constraintTop_toBottomOf="@id/homeContentTopBarrier"
