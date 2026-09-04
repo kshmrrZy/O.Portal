@@ -353,6 +353,11 @@ class MainActivity : AppCompatActivity() {
     private var shouldReloadStreamOnStart = false
     @Volatile
     private var epgFetchInProgress = false
+    /** 1-based index of the EPG source currently downloading/unpacking; 0 when idle. */
+    @Volatile
+    private var epgFetchActiveSourceIndex = 0
+    @Volatile
+    private var epgFetchActiveSourceTotal = 0
     @Volatile
     private var epgFetchGeneration: Int = 0
     private var archiveStreamStartMs: Long = 0L
@@ -449,7 +454,16 @@ class MainActivity : AppCompatActivity() {
         }
         bufferingSinceMs = 0L
         if (tvReloadingStatus.visibility == View.VISIBLE && !playbackRecoveryActive) {
+            stopReloadingPlateSpinner()
             tvReloadingStatus.visibility = View.GONE
+        }
+        // Stream resumed after a stall/buffer — drop the loading spinner and top chrome.
+        val loadingSpinner = findViewById<View>(R.id.playerLoadingSpinner)
+        if (loadingSpinner?.visibility == View.VISIBLE && !playbackRecoveryActive) {
+            hidePlayerLoadingUi()
+            if (controlsPanel.visibility != View.VISIBLE) {
+                hideUI()
+            }
         }
         val pos = player.currentPosition
         when {
@@ -603,6 +617,8 @@ class MainActivity : AppCompatActivity() {
             tvReloadingStatus.visibility = View.GONE
         }
         hidePlayerLoadingUi()
+        // Recovery used showUI() for the reload plate — clear spinner and top/controls overlay.
+        hideUI()
     }
 
     private fun resetPlaybackRecoveryState() {
@@ -4051,9 +4067,56 @@ class MainActivity : AppCompatActivity() {
             dots[i].visibility = if (states[i]) View.VISIBLE else View.GONE
         }
 
+        fun syncToggleSizeToUrlField() {
+            urls.forEachIndexed { i, et ->
+                et.post {
+                    val h = et.height.takeIf { it > 0 }
+                        ?: resources.getDimensionPixelSize(R.dimen.settings_sub_panel_field_height)
+                    val lp = toggles[i].layoutParams
+                    if (lp.width != h || lp.height != h) {
+                        lp.width = h
+                        lp.height = h
+                        toggles[i].layoutParams = lp
+                    }
+                }
+            }
+        }
+
+        fun statusNeedsRetry(source: String): Boolean {
+            val st = statusForSource(source)
+            if (st.contains("Ошибка", ignoreCase = true)) return true
+            if (st.isBlank()) return !hasLocalEpgDownload(source)
+            if (st.contains("Готово", ignoreCase = true) ||
+                st.contains("100%", ignoreCase = true) ||
+                st.contains("активен", ignoreCase = true)
+            ) {
+                return false
+            }
+            // In-progress / unknown leftovers after a failed run — allow another Save.
+            return true
+        }
+
+        fun statusMapForUrls(selectedUrls: List<String>): Map<String, TextView> {
+            val map = linkedMapOf<String, TextView>()
+            urls.forEachIndexed { fieldIndex, et ->
+                val fieldUrl = et.text.toString().trim()
+                if (fieldUrl.isBlank()) return@forEachIndexed
+                val match = selectedUrls.firstOrNull { sel ->
+                    sel == fieldUrl || normalizeEpgUrl(sel) == normalizeEpgUrl(fieldUrl)
+                } ?: return@forEachIndexed
+                // Bind by form row, not by order inside the selected-only list.
+                map[match] = statusViews[fieldIndex]
+            }
+            return map
+        }
+
         fun bindUrlStatuses(sources: List<String>) {
-            urls.forEachIndexed { i, _ ->
-                val source = sources.getOrNull(i).orEmpty()
+            urls.forEachIndexed { i, et ->
+                val fieldUrl = et.text.toString().trim()
+                val source = when {
+                    fieldUrl.isNotBlank() -> fieldUrl
+                    else -> sources.getOrNull(i).orEmpty()
+                }
                 val status = statusForSource(source)
                 val tv = statusViews[i]
                 if (status.isNotBlank()) {
@@ -4079,6 +4142,7 @@ class MainActivity : AppCompatActivity() {
                 updateDot(i)
             }
             bindUrlStatuses(sources)
+            syncToggleSizeToUrlField()
         }
 
         toggles.forEachIndexed { i, v ->
@@ -4284,43 +4348,75 @@ class MainActivity : AppCompatActivity() {
             val fingerprint = buildEpgSourceFingerprint(links)
             val sameSources = fingerprint.isNotBlank() && fingerprint == getEpgSourceFingerprint()
             val epgActive = !isEpgDataEmpty()
+            val failedOrPending = links.filter { statusNeedsRetry(it) }
             when {
-                epgFetchInProgress && sameSources -> {
+                epgFetchInProgress && sameSources && failedOrPending.isEmpty() -> {
                     showAppToast("EPG уже обновляется")
-                    bindUrlStatuses(links)
+                    bindUrlStatuses(urls.map { it.text.toString().trim() }.filter { it.isNotBlank() })
                     updateEpgLoadStatusUi()
                 }
-                sameSources && epgActive -> {
+                sameSources && epgActive && failedOrPending.isEmpty() -> {
                     showAppToast("EPG уже активен для выбранных источников")
-                    links.forEach { src ->
-                        if (epgSourceStatus[src].isNullOrBlank() ||
-                            epgSourceStatus[src]?.contains("Ошибка", true) == true
-                        ) {
-                            epgSourceStatus[src] = "Готово"
-                        }
-                    }
-                    saveEpgStatusCache()
-                    bindUrlStatuses(links)
+                    bindUrlStatuses(urls.map { it.text.toString().trim() }.filter { it.isNotBlank() })
                     updateEpgLoadStatusUi()
                 }
                 else -> {
-                    // Keep only the toggled sources in memory.
-                    clearEpgRuntimeData()
-                    val reuseLocal = links.all { hasLocalEpgDownload(it) }
-                    val statusMap = links.mapIndexedNotNull { index, url ->
-                        statusViews.getOrNull(index)?.let { url to it }
-                    }.toMap()
+                    // Keep only the toggled sources in memory when starting a full refresh.
+                    val toFetch = when {
+                        // Retry only sources that failed / never finished; keep good ones in cache.
+                        sameSources && epgActive && failedOrPending.isNotEmpty() -> failedOrPending
+                        else -> {
+                            clearEpgRuntimeData()
+                            links
+                        }
+                    }
+                    val reuseLocal = toFetch.all { hasLocalEpgDownload(it) } &&
+                        failedOrPending.none { statusForSource(it).contains("Ошибка", true) }
+                    val statusMap = statusMapForUrls(toFetch)
+                    val sourceSlots = linkedMapOf<String, Int>()
+                    urls.forEachIndexed { fieldIndex, et ->
+                        val fieldUrl = et.text.toString().trim()
+                        if (fieldUrl.isBlank()) return@forEachIndexed
+                        val match = toFetch.firstOrNull { sel ->
+                            sel == fieldUrl || normalizeEpgUrl(sel) == normalizeEpgUrl(fieldUrl)
+                        } ?: return@forEachIndexed
+                        sourceSlots[match] = fieldIndex + 1
+                    }
+                    val slotTotal = urls.count { !it.text.isNullOrBlank() }.coerceAtLeast(toFetch.size)
+                    // Clear stale status lines under forms that are not being fetched now.
+                    urls.forEachIndexed { i, et ->
+                        val fieldUrl = et.text.toString().trim()
+                        if (fieldUrl.isBlank()) {
+                            statusViews[i].visibility = View.GONE
+                            statusViews[i].text = ""
+                        } else if (toFetch.none {
+                                it == fieldUrl || normalizeEpgUrl(it) == normalizeEpgUrl(fieldUrl)
+                            }
+                        ) {
+                            // Leave successful statuses under inactive-for-this-run rows.
+                            val st = statusForSource(fieldUrl)
+                            if (st.isNotBlank()) {
+                                statusViews[i].visibility = View.VISIBLE
+                                statusViews[i].text = st
+                            }
+                        }
+                    }
                     fetchEpgSources(
-                        links,
+                        toFetch,
                         statusMap,
                         force = true,
-                        forceDownload = !reuseLocal
+                        forceDownload = !reuseLocal,
+                        sourceSlots = sourceSlots,
+                        sourceSlotTotal = slotTotal
                     )
                     showAppToast(
-                        if (reuseLocal) {
-                            "Читаем сохранённые файлы выбранных источников"
-                        } else {
-                            "Настройки сохранены, обновление EPG запущено"
+                        when {
+                            failedOrPending.isNotEmpty() && toFetch == failedOrPending ->
+                                "Повторная загрузка источников с ошибкой"
+                            reuseLocal ->
+                                "Читаем сохранённые файлы выбранных источников"
+                            else ->
+                                "Настройки сохранены, обновление EPG запущено"
                         }
                     )
                 }
@@ -4341,6 +4437,7 @@ class MainActivity : AppCompatActivity() {
             urls.map { it.text.toString().trim() }.filter { it.isNotBlank() }
                 .ifEmpty { selectedEpgSources.toList() }
         )
+        syncToggleSizeToUrlField()
 
         tbSourceMode.post { tbSourceMode.requestFocus() }
         configureBackButtonsForSettings("openEpgSettingsScreen")
@@ -5375,7 +5472,9 @@ class MainActivity : AppCompatActivity() {
         urls: List<String>,
         statusViews: Map<String, TextView> = emptyMap(),
         force: Boolean = false,
-        forceDownload: Boolean = true
+        forceDownload: Boolean = true,
+        sourceSlots: Map<String, Int> = emptyMap(),
+        sourceSlotTotal: Int = 0
     ) {
         if (urls.isEmpty()) return
         if (epgFetchInProgress && !force) return
@@ -5385,6 +5484,8 @@ class MainActivity : AppCompatActivity() {
         }
         val fetchGen = epgFetchGeneration
         epgFetchInProgress = true
+        epgFetchActiveSourceIndex = 0
+        epgFetchActiveSourceTotal = sourceSlotTotal.takeIf { it > 0 } ?: urls.size
         updateEpgDisplay()
         updateEpgLoadStatusUi()
         refreshOpenOverlayPanelsAfterEpgUpdate()
@@ -5418,13 +5519,30 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+            fun statusViewFor(source: String): TextView? {
+                statusViews[source]?.let { return it }
+                val norm = source.trim().trimEnd('/')
+                return statusViews.entries.firstOrNull {
+                    it.key.trim().trimEnd('/') == norm
+                }?.value
+            }
+
+            fun slotFor(source: String, fallbackIndex: Int): Int {
+                sourceSlots[source]?.takeIf { it > 0 }?.let { return it }
+                val norm = source.trim().trimEnd('/')
+                sourceSlots.entries.firstOrNull {
+                    it.key.trim().trimEnd('/') == norm && it.value > 0
+                }?.value?.let { return it }
+                return fallbackIndex
+            }
+
             fun applyEpgStatus(source: String, status: String) {
                 if (fetchGen != epgFetchGeneration) return
                 epgSourceStatus[source] = status
                 saveEpgStatusCache()
                 handler.post {
                     if (fetchGen != epgFetchGeneration) return@post
-                    statusViews[source]?.let { tv ->
+                    statusViewFor(source)?.let { tv ->
                         tv.visibility = View.VISIBLE
                         tv.text = status
                     }
@@ -5432,15 +5550,18 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // Sequential per-source download/unpack/parse.
+            // Sequential per-source download/unpack/parse. Failures do not skip later sources.
             val totalSources = urls.size
+            val slotTotal = sourceSlotTotal.takeIf { it > 0 } ?: totalSources
             urls.forEachIndexed { index, sourceUrl ->
                 if (fetchGen != epgFetchGeneration) return@forEachIndexed
-                val n = index + 1
+                val slot = slotFor(sourceUrl, index + 1)
+                epgFetchActiveSourceIndex = slot
+                epgFetchActiveSourceTotal = slotTotal
                 val reuseLocal = !forceDownload && hasLocalEpgDownload(sourceUrl)
                 applyEpgStatus(
                     sourceUrl,
-                    if (reuseLocal) "Чтение $n/$totalSources (0%)" else "Загрузка $n/$totalSources (0%)"
+                    if (reuseLocal) "Чтение (0%)" else "Загрузка (0%)"
                 )
                 var parsed = false
                 var lastError = "Неизвестная ошибка"
@@ -5462,13 +5583,13 @@ class MainActivity : AppCompatActivity() {
                         parseEpgUrlStreaming(
                             candidateUrl,
                             onDownload = { p ->
-                                applyEpgStatus(sourceUrl, "Загрузка $n/$totalSources ($p%)")
+                                applyEpgStatus(sourceUrl, "Загрузка ($p%)")
                             },
                             onUnpack = { p ->
-                                applyEpgStatus(sourceUrl, "Распаковка $n/$totalSources ($p%)")
+                                applyEpgStatus(sourceUrl, "Распаковка ($p%)")
                             },
                             onParse = { p ->
-                                applyEpgStatus(sourceUrl, "Чтение $n/$totalSources ($p%)")
+                                applyEpgStatus(sourceUrl, "Чтение ($p%)")
                             },
                             forceDownload = forceDownload
                         )
@@ -5519,6 +5640,8 @@ class MainActivity : AppCompatActivity() {
                 updateEpgDisplay()
                 refreshLogo()
                 epgFetchInProgress = false
+                epgFetchActiveSourceIndex = 0
+                epgFetchActiveSourceTotal = 0
                 updateEpgLoadStatusUi()
                 refreshOpenOverlayPanelsAfterEpgUpdate()
                 scheduleEpgRefreshAlarm()
@@ -6828,8 +6951,15 @@ class MainActivity : AppCompatActivity() {
             hidePlayerChromeFully()
             return
         }
-        findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
-        findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
+        // Loading chrome is back+time only; dismiss it fully when the stream is healthy again.
+        // Full player UI is restored later via showUI() when the user opens controls.
+        if (controlsPanel.visibility != View.VISIBLE) {
+            topInfoPanel.visibility = View.GONE
+            topGradientOverlay.visibility = View.GONE
+        } else {
+            findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
+            findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
+        }
     }
 
     private fun showCenterError(message: String, durationMs: Long = 3500L) {
@@ -6880,8 +7010,16 @@ class MainActivity : AppCompatActivity() {
                 val active = epgSourceStatus.entries.firstOrNull { (_, v) ->
                     v.contains("Загрузка") || v.contains("Распаковка") || v.contains("Чтение")
                 }?.value
+                val sourceLabel = if (epgFetchActiveSourceIndex > 0 && epgFetchActiveSourceTotal > 0) {
+                    "источник ${epgFetchActiveSourceIndex}/${epgFetchActiveSourceTotal}"
+                } else {
+                    null
+                }
                 when {
+                    active.isNullOrBlank() && sourceLabel != null ->
+                        "EPG: $sourceLabel — обновление..."
                     active.isNullOrBlank() -> "EPG: обновление..."
+                    sourceLabel != null -> "EPG: $sourceLabel — $active"
                     active.startsWith("EPG:") -> active
                     else -> "EPG: $active"
                 }
@@ -6927,6 +7065,8 @@ class MainActivity : AppCompatActivity() {
     private fun cancelAndClearEpgCache() {
         epgFetchGeneration += 1
         epgFetchInProgress = false
+        epgFetchActiveSourceIndex = 0
+        epgFetchActiveSourceTotal = 0
         clearEpgRuntimeData()
         epgSourceStatus.clear()
         clearEpgCacheFiles()
@@ -8400,6 +8540,8 @@ class MainActivity : AppCompatActivity() {
             showPlayerLoadingUi()
             return
         }
+        findViewById<View>(R.id.playerLoadingSpinner)?.visibility = View.GONE
+        stopCompositeSpinner(findViewById(R.id.playerLoadingSpinnerInner))
         topInfoPanel.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
