@@ -12,7 +12,8 @@
     <dimen name="player_control_icon_padding">9dp</dimen>
     <dimen name="player_top_icon_size">38dp</dimen>
     <dimen name="player_timeline_thumb_size">12dp</dimen>
-    <dimen name="player_timeline_time_gap">6dp</dimen>
+    <!-- Gap between time labels and the scrub track; raise to push the bar lower. -->
+    <dimen name="player_timeline_time_gap">8dp</dimen>
     <dimen name="player_controls_top_margin">6dp</dimen>
     <dimen name="player_live_badge_min_width">0dp</dimen>
     <dimen name="player_live_badge_pad_h">10dp</dimen>
@@ -58,7 +59,7 @@
     <dimen name="home_grid_margin_top">20dp</dimen>
     <dimen name="home_tile_text_size">18sp</dimen>
     <dimen name="home_tile_spacing">12dp</dimen>
-    <dimen name="home_tile_min_height">64dp</dimen>
+    <dimen name="home_tile_min_height">72dp</dimen>
     <dimen name="home_bottom_row_margin_top">12dp</dimen>
     <dimen name="home_bottom_action_icon_size">22dp</dimen>
     <dimen name="home_bottom_action_icon_gap">10dp</dimen>

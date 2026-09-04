@@ -1,7 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#9E0C1018" />
-    <!-- Same subtle stroke as playlist/settings cards (#1AFFFFFF), not a hard white outline. -->
-    <stroke android:width="0.5dp" android:color="#1AFFFFFF" />
-    <corners android:radius="10dp" />
-</shape>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#59FFFFFF" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#40FFFFFF" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#9E0C1018" />
+            <stroke android:width="0.5dp" android:color="#1AFFFFFF" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+</selector>

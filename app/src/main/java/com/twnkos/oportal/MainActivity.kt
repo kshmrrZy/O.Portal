@@ -21,6 +21,7 @@ import android.os.Handler
 import android.os.Looper
 import android.text.SpannableString
 import android.text.Spanned
+import android.text.TextUtils
 import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
@@ -1049,10 +1050,18 @@ class MainActivity : AppCompatActivity() {
         tvHomeBreadcrumbArrow2 = findViewById(R.id.tvHomeBreadcrumbArrow2)
         tvHomeBreadcrumbPill2 = findViewById(R.id.tvHomeBreadcrumbPill2)
         tvHomeBreadcrumbPill.isClickable = true
-        tvHomeBreadcrumbPill.isFocusable = false
+        tvHomeBreadcrumbPill.isFocusable = true
+        tvHomeBreadcrumbPill.isFocusableInTouchMode = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            tvHomeBreadcrumbPill.defaultFocusHighlightEnabled = false
+        }
         tvHomeBreadcrumbPill.setOnClickListener { onBreadcrumbClick() }
         tvHomeBreadcrumbPill2.isClickable = true
-        tvHomeBreadcrumbPill2.isFocusable = false
+        tvHomeBreadcrumbPill2.isFocusable = true
+        tvHomeBreadcrumbPill2.isFocusableInTouchMode = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            tvHomeBreadcrumbPill2.defaultFocusHighlightEnabled = false
+        }
         tvHomeBreadcrumbPill2.setOnClickListener { onCategoryBreadcrumbClick() }
         tvHomeAppTitle.text = SpannableString("O.Portal").apply {
             setSpan(StyleSpan(Typeface.BOLD), 2, length, 0)
@@ -1320,9 +1329,9 @@ class MainActivity : AppCompatActivity() {
 
         tvHomeAppTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(18f))
         tvHomeBreadcrumbArrow.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(12f))
-        tvHomeBreadcrumbPill.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(10f))
+        tvHomeBreadcrumbPill.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(8f))
         tvHomeBreadcrumbArrow2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(12f))
-        tvHomeBreadcrumbPill2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(10f))
+        tvHomeBreadcrumbPill2.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(8f))
         tvHomeSystemTime.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(14f))
         tvHomeWelcome.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(11f))
         tvHomeCategoryBack.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp(12f))
@@ -1777,6 +1786,9 @@ class MainActivity : AppCompatActivity() {
             root.isFocusableInTouchMode = false
             root.isClickable = true
             root.isEnabled = true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                root.defaultFocusHighlightEnabled = false
+            }
             root.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
             val tv = TextView(parent.context)
             tv.setTextColor(Color.WHITE)
@@ -1788,6 +1800,9 @@ class MainActivity : AppCompatActivity() {
             tv.isFocusableInTouchMode = false
             tv.isClickable = false
             tv.isEnabled = false
+            tv.includeFontPadding = false
+            tv.maxLines = 2
+            tv.ellipsize = TextUtils.TruncateAt.END
             tv.setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6))
             root.setBackgroundResource(R.drawable.bg_playlist_tile)
             root.addView(
@@ -2027,7 +2042,8 @@ class MainActivity : AppCompatActivity() {
         logDebug("NAV", "HOME_GRID_DECORATION_COUNT source=$source count=${rvHomeTiles.itemDecorationCount} spacing=$spacing")
 
         if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight || homeTilesTitleSizeApplied != titleSizeSp) {
-            rvHomeTiles.setHasFixedSize(true)
+            // false: panel height changes when search appears under the header (categories).
+            rvHomeTiles.setHasFixedSize(false)
             rvHomeTiles.itemAnimator = null
             homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, spacing, columns, titleSizeSp)
             homeTilesWidthApplied = tileWidth
@@ -3506,7 +3522,8 @@ class MainActivity : AppCompatActivity() {
         channels.clear()
         selectedEpgSources.clear()
         cachedCategoryGroups = emptyMap()
-        clearEpgRuntimeData()
+        // Same as «Сбросить кэш EPG»: wipe files + in-memory programme data.
+        cancelAndClearEpgCache()
         hideSettingsScreen()
         showStartPage()
     }
@@ -7203,6 +7220,11 @@ class MainActivity : AppCompatActivity() {
             hidePlayerChromeFully()
             return
         }
+        // After app resume on the EPG screen, do not resurrect top player chrome.
+        if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
+            hidePlayerChromeFully()
+            return
+        }
         if (tvReloadingStatus.visibility == View.VISIBLE) {
             // Status plate already on screen — do not stack a center spinner under it.
             hidePlayerLoadingUi()
@@ -8926,7 +8948,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
-            // Пока пользователь читает программу передач, автоскрытие интерфейса не должно её задевать.
+            // Keep EPG open; force player chrome off (e.g. after resume while EPG is shown).
+            hidePlayerChromeFully()
             return
         }
         if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
@@ -9299,6 +9322,10 @@ class MainActivity : AppCompatActivity() {
             isPlaybackPaused = false
             liveTimelineAnchorMs = 0L
             updatePlayPauseButton()
+        }
+        // Returning from background while EPG is open must not leave player chrome visible behind it.
+        if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
+            hidePlayerChromeFully()
         }
     }
 
