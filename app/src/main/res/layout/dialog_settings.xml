@@ -422,17 +422,78 @@
                 <TextView android:id="@+id/tvEpgScreenSubtitle" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:includeFontPadding="false" android:text="поддерживается не более 3 источников формата XML" android:textColor="#99FFFFFF" android:textSize="@dimen/settings_sub_panel_subtitle_size"/>
                 <TextView android:id="@+id/tvEpgSourceHint" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone"/>
 
-                <EditText android:id="@+id/etEpgUrl1" android:layout_width="match_parent" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_marginTop="12dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="@dimen/settings_sub_panel_field_text_size"/>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="center_vertical" android:orientation="horizontal">
+                    <EditText android:id="@+id/etEpgUrl1" android:layout_width="0dp" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_weight="1" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="@dimen/settings_sub_panel_field_text_size"/>
+                    <FrameLayout android:id="@+id/ivEpgToggle1" android:focusable="true" android:focusableInTouchMode="false" android:layout_width="@dimen/settings_sub_panel_field_height" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_marginStart="8dp" android:background="@drawable/bg_epg_url_field">
+                        <View android:id="@+id/dotEpgActive1" android:layout_width="10dp" android:layout_height="10dp" android:layout_gravity="center" android:background="@drawable/bg_playlist_active_dot" android:visibility="gone"/>
+                    </FrameLayout>
+                </LinearLayout>
                 <TextView android:id="@+id/tvEpgUrlStatus1" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:includeFontPadding="false" android:maxLines="2" android:ellipsize="end" android:textColor="#99FFFFFF" android:textSize="@dimen/settings_sub_panel_subtitle_size" android:visibility="gone"/>
-                <EditText android:id="@+id/etEpgUrl2" android:layout_width="match_parent" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_marginTop="12dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="@dimen/settings_sub_panel_field_text_size"/>
+
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="center_vertical" android:orientation="horizontal">
+                    <EditText android:id="@+id/etEpgUrl2" android:layout_width="0dp" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_weight="1" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="@dimen/settings_sub_panel_field_text_size"/>
+                    <FrameLayout android:id="@+id/ivEpgToggle2" android:focusable="true" android:focusableInTouchMode="false" android:layout_width="@dimen/settings_sub_panel_field_height" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_marginStart="8dp" android:background="@drawable/bg_epg_url_field">
+                        <View android:id="@+id/dotEpgActive2" android:layout_width="10dp" android:layout_height="10dp" android:layout_gravity="center" android:background="@drawable/bg_playlist_active_dot" android:visibility="gone"/>
+                    </FrameLayout>
+                </LinearLayout>
                 <TextView android:id="@+id/tvEpgUrlStatus2" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:includeFontPadding="false" android:maxLines="2" android:ellipsize="end" android:textColor="#99FFFFFF" android:textSize="@dimen/settings_sub_panel_subtitle_size" android:visibility="gone"/>
-                <EditText android:id="@+id/etEpgUrl3" android:layout_width="match_parent" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_marginTop="12dp" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="@dimen/settings_sub_panel_field_text_size"/>
+
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="center_vertical" android:orientation="horizontal">
+                    <EditText android:id="@+id/etEpgUrl3" android:layout_width="0dp" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_weight="1" android:background="@drawable/bg_epg_url_field" android:hint="введите URL" android:paddingHorizontal="12dp" android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF" android:textSize="@dimen/settings_sub_panel_field_text_size"/>
+                    <FrameLayout android:id="@+id/ivEpgToggle3" android:focusable="true" android:focusableInTouchMode="false" android:layout_width="@dimen/settings_sub_panel_field_height" android:layout_height="@dimen/settings_sub_panel_field_height" android:layout_marginStart="8dp" android:background="@drawable/bg_epg_url_field">
+                        <View android:id="@+id/dotEpgActive3" android:layout_width="10dp" android:layout_height="10dp" android:layout_gravity="center" android:background="@drawable/bg_playlist_active_dot" android:visibility="gone"/>
+                    </FrameLayout>
+                </LinearLayout>
                 <TextView android:id="@+id/tvEpgUrlStatus3" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:includeFontPadding="false" android:maxLines="2" android:ellipsize="end" android:textColor="#99FFFFFF" android:textSize="@dimen/settings_sub_panel_subtitle_size" android:visibility="gone"/>
 
-                <ImageView android:id="@+id/ivEpgToggle1" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:src="@drawable/toggleright"/>
-                <ImageView android:id="@+id/ivEpgToggle2" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:src="@drawable/toggleright"/>
-                <ImageView android:id="@+id/ivEpgToggle3" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:src="@drawable/toggleright"/>
-                <ToggleButton android:id="@+id/tbEpgRefreshInterval" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:textOff="1 день" android:textOn="1 день"/>
+                <LinearLayout
+                    android:id="@+id/itemEpgRefreshMode"
+                    android:focusable="true"
+                    android:focusableInTouchMode="false"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:background="@drawable/bg_playlist_tile"
+                    android:gravity="center_vertical"
+                    android:minHeight="@dimen/settings_start_mode_row_height"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="14dp"
+                    android:paddingVertical="8dp">
+                    <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/folder" android:tint="#FFFFFF"/>
+                    <TextView
+                        style="@style/AppGolosText"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="14dp"
+                        android:layout_weight="1"
+                        android:text="Период обновления EPG"
+                        android:textColor="#FFFFFF"
+                        android:textFontWeight="500"
+                        android:textSize="14sp"/>
+                    <ToggleButton
+                        android:id="@+id/tbEpgRefreshInterval"
+                        android:focusable="true"
+                        android:focusableInTouchMode="false"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:minWidth="190dp"
+                        android:background="@drawable/bg_settings_start_mode_toggle"
+                        android:textAllCaps="false"
+                        android:textColor="#FFFFFF"
+                        android:textOff="Каждую неделю"
+                        android:textOn="Каждую неделю"
+                        android:textSize="12sp"/>
+                </LinearLayout>
+                <TextView
+                    android:id="@+id/tvEpgRefreshHint"
+                    style="@style/AppGolosText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:includeFontPadding="false"
+                    android:text="По умолчанию: вторник в 03:00"
+                    android:textColor="#99FFFFFF"
+                    android:textSize="@dimen/settings_sub_panel_subtitle_size"/>
 
             </LinearLayout>
         </ScrollView>
