@@ -11,6 +11,7 @@ internal class ProgressInputStream(
 ) : FilterInputStream(input) {
     private var consumedBytes: Long = 0L
     private var lastProgress: Int = -1
+    private var lastEmitAtMs: Long = 0L
 
     override fun read(): Int {
         val value = super.read()
@@ -36,9 +37,13 @@ internal class ProgressInputStream(
             // Unknown length (streamed gzip): climb toward 95% by MiB read so UI leaves 0%.
             (1 + (consumedBytes / (512L * 1024L)).toInt()).coerceIn(1, 95)
         }
-        if (progress != lastProgress) {
+        val now = System.currentTimeMillis()
+        // Throttle UI churn on weak TV boxes (Tanix etc.) — still emit on every % change if spaced.
+        val due = progress != lastProgress && (progress == 100 || now - lastEmitAtMs >= 350L)
+        if (due) {
             onProgress(progress)
             lastProgress = progress
+            lastEmitAtMs = now
         }
     }
 }
