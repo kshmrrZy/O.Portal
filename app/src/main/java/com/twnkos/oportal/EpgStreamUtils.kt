@@ -34,12 +34,15 @@ internal class ProgressInputStream(
         val progress = if (totalBytes > 0L) {
             ((consumedBytes * 100L) / totalBytes).toInt().coerceIn(0, 100)
         } else {
-            // Unknown length (streamed gzip): climb toward 95% by MiB read so UI leaves 0%.
-            (1 + (consumedBytes / (512L * 1024L)).toInt()).coerceIn(1, 95)
+            // Unknown length (streamed gzip XML): climb toward 95% by ~256KiB so UI leaves 0%.
+            (1 + (consumedBytes / (256L * 1024L)).toInt()).coerceIn(1, 95)
         }
         val now = System.currentTimeMillis()
         // Throttle UI churn on weak TV boxes (Tanix etc.) — still emit on every % change if spaced.
-        val due = progress != lastProgress && (progress == 100 || now - lastEmitAtMs >= 350L)
+        // Also heartbeat every 2s so a slow catalog/parse never looks frozen at the same %.
+        val due = progress == 100 ||
+            (progress != lastProgress && now - lastEmitAtMs >= 350L) ||
+            (now - lastEmitAtMs >= 2000L)
         if (due) {
             onProgress(progress)
             lastProgress = progress

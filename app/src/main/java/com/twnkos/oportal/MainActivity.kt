@@ -5724,6 +5724,9 @@ class MainActivity : AppCompatActivity() {
                             onParse = { p ->
                                 applyEpgStatus(sourceUrl, "Чтение ($p%)")
                             },
+                            onParseMessage = { msg ->
+                                applyEpgStatus(sourceUrl, msg)
+                            },
                             forceDownload = forceDownload
                         )
                         applyEpgStatus(sourceUrl, "Готово")
@@ -5866,20 +5869,28 @@ class MainActivity : AppCompatActivity() {
         onDownload: (Int) -> Unit,
         onUnpack: (Int) -> Unit,
         onParse: (Int) -> Unit,
+        onParseMessage: ((String) -> Unit)? = null,
         forceDownload: Boolean = true
     ) {
         // App-private cache only (no external storage required for HTTP EPG):
         //   filesDir/epg_cache/<hash>.download — raw HTTP body (gzip or xml)
         // Weak TV boxes (e.g. Tanix W2): do NOT write a second full XML copy to slow eMMC —
-        // stream-parse GZIP→XML in one pass. Progress for «Чтение» tracks compressed bytes read.
+        // stream-parse GZIP→XML in one pass. «Чтение» is driven by XML parse phases, not by
+        // compressed-byte % (channel catalog is <<1% of a 76MB gz and looked «stuck at 0%»).
         val cacheKey = Integer.toHexString(url.trim().lowercase().hashCode())
         val dir = epgCacheDir()
         val downloadFile = File(dir, "$cacheKey.download")
         // Drop legacy full-XML copies that previously filled flash and stalled «Чтение».
-        File(dir, "$cacheKey.xml").takeIf { it.exists() }?.let { legacy ->
-            logDebug("EPG_DEBUG", "EPG_DELETE_LEGACY_XML ${legacy.absolutePath} (${legacy.length()} bytes)")
-            runCatching { legacy.delete() }
-        }
+        dir.listFiles()
+            ?.asSequence()
+            ?.filter { it.isFile && it.name.endsWith(".xml", ignoreCase = true) }
+            ?.forEach { legacy ->
+                logDebug(
+                    "EPG_DEBUG",
+                    "EPG_DELETE_LEGACY_XML ${legacy.absolutePath} (${legacy.length()} bytes)"
+                )
+                runCatching { legacy.delete() }
+            }
 
         val needDownload = forceDownload || !downloadFile.exists() || downloadFile.length() < 64L
         if (needDownload) {
@@ -5940,25 +5951,27 @@ class MainActivity : AppCompatActivity() {
         )
 
         onUnpack(if (isGzip) 0 else 100)
-        onParse(0)
+        onParseMessage?.invoke("Каталог каналов…") ?: onParse(0)
         try {
             downloadFile.inputStream().buffered(256 * 1024).use { raw ->
                 if (isGzip) {
-                    val progress = ProgressInputStream(raw, downloadFile.length()) { p ->
-                        onUnpack(p)
-                        // Compressed-byte progress is the reliable meter on slow boxes.
-                        onParse(p.coerceIn(0, 99))
-                    }
+                    // Unpack % = compressed bytes. Do NOT also drive «Чтение» from this —
+                    // catalog is tiny vs archive size and UI stayed at 0% for minutes.
+                    val progress = ProgressInputStream(raw, downloadFile.length(), onUnpack)
                     GZIPInputStream(progress, 64 * 1024).use { gzip ->
                         val limited = SizeLimitedInputStream(gzip, MAX_EPG_UNPACKED_BYTES)
-                        parseEpgXml(limited, -1, onParse)
+                        parseEpgXml(limited, -1, onParse, onParseMessage)
                     }
                     onUnpack(100)
                 } else {
                     onUnpack(100)
-                    val progress = ProgressInputStream(raw, downloadFile.length(), onParse)
-                    val limited = SizeLimitedInputStream(progress, MAX_EPG_UNPACKED_BYTES)
-                    parseEpgXml(limited, downloadFile.length().toInt().coerceAtLeast(1), onParse)
+                    val limited = SizeLimitedInputStream(raw, MAX_EPG_UNPACKED_BYTES)
+                    parseEpgXml(
+                        limited,
+                        downloadFile.length().toInt().coerceAtLeast(1),
+                        onParse,
+                        onParseMessage
+                    )
                 }
             }
             onParse(100)
@@ -6100,7 +6113,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun parseEpgXml(inputStream: InputStream, totalBytes: Int, onProgress: (Int) -> Unit) {
+    private fun parseEpgXml(
+        inputStream: InputStream,
+        totalBytes: Int,
+        onProgress: (Int) -> Unit,
+        onMessage: ((String) -> Unit)? = null
+    ) {
         var loggedChannelSamples = 0
         var loggedProgrammeSamples = 0
         var programmeTotal = 0
@@ -6119,7 +6137,7 @@ class MainActivity : AppCompatActivity() {
         val windowEnd = now + EPG_KEEP_FUTURE_DAYS * 24L * 60L * 60L * 1000L
 
         // Playlist keys we care about — huge XMLTVs (600MB+) must not be fully loaded.
-        onProgress(0)
+        onMessage?.invoke("Подготовка списка каналов…") ?: onProgress(0)
         val playlistChannels = playlistChannelsForEpgFilter().ifEmpty {
             // Ensure we can filter against favorites before ingesting a huge XMLTV.
             val favUrl = resolveBuiltinPlaylistUrl()
@@ -6146,10 +6164,29 @@ class MainActivity : AppCompatActivity() {
         }
         var wantedXmlIds: MutableSet<String>? = null
         var wantedResolved = false
+        var inProgrammePhase = false
+        var lastCatalogUiAtMs = 0L
+        var lastHeartbeatAtMs = System.currentTimeMillis()
+        val parseStartedAtMs = lastHeartbeatAtMs
+
+        fun emitCatalogProgress() {
+            val n = channelIdsSeen.size
+            val nowMs = System.currentTimeMillis()
+            if (nowMs - lastCatalogUiAtMs < 400L) return
+            lastCatalogUiAtMs = nowMs
+            // Byte-% stays ~0 while the catalog (tiny vs 600MB XML / 76MB gz) is scanned for minutes.
+            if (onMessage != null) {
+                onMessage.invoke("Каталог каналов: $n…")
+            } else {
+                // Synthetic 1–12% when only the % meter is available.
+                onProgress((1 + (n / 400)).coerceIn(1, 12))
+            }
+        }
 
         fun resolveWantedXmlIds() {
             if (wantedResolved) return
             wantedResolved = true
+            onMessage?.invoke("Сопоставление каналов…")
             wantedXmlIds = computeWantedXmlIds(
                 xmlIds = channelIdsSeen.map { it.lowercase().trim() }.filter { it.isNotEmpty() }.toSet(),
                 xmlDisplayNames = xmlChannelDisplayNames,
@@ -6158,11 +6195,32 @@ class MainActivity : AppCompatActivity() {
             logDebug(
                 "EPG_DEBUG",
                 "WANTED_XML_IDS count=${wantedXmlIds?.size ?: 0} playlistChannels=${playlistChannels.size} " +
-                    "sample=${wantedXmlIds?.take(8)}"
+                    "xmlChannels=${channelIdsSeen.size} sample=${wantedXmlIds?.take(8)}"
+            )
+            onMessage?.invoke("Чтение программ…")
+            onProgress(15)
+        }
+
+        fun maybeHeartbeat(phase: String) {
+            val nowMs = System.currentTimeMillis()
+            if (nowMs - lastHeartbeatAtMs < 10_000L) return
+            lastHeartbeatAtMs = nowMs
+            logDebug(
+                "EPG_DEBUG",
+                "PARSE_HEARTBEAT phase=$phase channels=${channelIdsSeen.size} " +
+                    "programmes=$programmeTotal kept=$programmeKept " +
+                    "elapsedMs=${nowMs - parseStartedAtMs}"
             )
         }
 
-        ProgressInputStream(inputStream, totalBytes.toLong(), onProgress).use { stream ->
+        // Bridge: ignore byte progress until programmes — catalog uses emitCatalogProgress.
+        val progressBridge: (Int) -> Unit = { p ->
+            if (inProgrammePhase) {
+                onProgress(p.coerceIn(15, 99))
+            }
+        }
+
+        ProgressInputStream(inputStream, totalBytes.toLong(), progressBridge).use { stream ->
             val parser = Xml.newPullParser()
             parser.setInput(stream, "UTF-8")
             var eventType = parser.eventType
@@ -6177,6 +6235,11 @@ class MainActivity : AppCompatActivity() {
                             if (loggedChannelSamples < 10) {
                                 logDebug("EPG_DEBUG", "raw <channel id=\"$tempId\">")
                                 loggedChannelSamples++
+                            }
+                            emitCatalogProgress()
+                            maybeHeartbeat("channels")
+                            if (channelIdsSeen.size % 500 == 0) {
+                                Thread.yield()
                             }
                         }
                         "display-name" -> {
@@ -6195,7 +6258,12 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                         "programme" -> {
+                            if (!inProgrammePhase) {
+                                inProgrammePhase = true
+                                emitCatalogProgress()
+                            }
                             resolveWantedXmlIds()
+                            maybeHeartbeat("programmes")
                             val rawChannel = parser.getAttributeValue(null, "channel") ?: ""
                             val rawStart = parser.getAttributeValue(null, "start")
                             val rawStop = parser.getAttributeValue(null, "stop")
@@ -7252,7 +7320,8 @@ class MainActivity : AppCompatActivity() {
         val text = when {
             epgFetchInProgress -> {
                 val active = epgSourceStatus.entries.firstOrNull { (_, v) ->
-                    v.contains("Загрузка") || v.contains("Распаковка") || v.contains("Чтение")
+                    v.contains("Загрузка") || v.contains("Распаковка") || v.contains("Чтение") ||
+                        v.contains("Каталог") || v.contains("Сопоставление") || v.contains("Подготовка")
                 }?.value
                 val sourceLabel = if (epgFetchActiveSourceIndex > 0 && epgFetchActiveSourceTotal > 0) {
                     "источник ${epgFetchActiveSourceIndex}/${epgFetchActiveSourceTotal}"
@@ -9220,7 +9289,8 @@ class MainActivity : AppCompatActivity() {
             shouldReloadStreamOnStart = false
         }
         val hasIncompleteEpgProgress = epgSourceStatus.values.any {
-            it.contains("Загрузка") || it.contains("Распаковка") || it.contains("Чтение")
+            it.contains("Загрузка") || it.contains("Распаковка") || it.contains("Чтение") ||
+                it.contains("Каталог") || it.contains("Сопоставление") || it.contains("Подготовка")
         }
         if (versionChanged || hasIncompleteEpgProgress) ensureEpgLoadedLazy()
         if (mediaPlayer != null && isPlaybackPaused) {
