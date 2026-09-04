@@ -4103,23 +4103,29 @@ class MainActivity : AppCompatActivity() {
             val builtin = resolveBuiltinPlaylistEpgSources()
             tvSourceHint.text = when {
                 manual -> "Ссылки указаны вручную и не зависят от плейлиста."
-                builtin.isNotEmpty() -> "Ссылка берётся из самого плейлиста: ${builtin.first()}"
-                else -> "У этого плейлиста нет своей ссылки на EPG. Переключите на \"Свои источники\", чтобы добавить свою."
+                builtin.isNotEmpty() ->
+                    "Ссылки берутся из избранного плейлиста (x-tvg-url): ${builtin.joinToString(", ")}"
+                else ->
+                    "В избранном плейлисте нет x-tvg-url. Переключите на \"Свои источники\", чтобы добавить свою."
             }
         }
 
         fun refreshBuiltinUrlFields() {
             showAppLoadingSpinner()
-            val builtin = resolveBuiltinPlaylistEpgSources()
-            fillUrlFields(builtin.take(3))
+            // Clear stale custom URLs while we load favorites x-tvg-url.
+            fillUrlFields(emptyList())
             applyEpgSourceModeLock(manual = false)
-            // Always re-read selected playlist header so Избранные x-tvg-url appears
-            // even after cache clear / cold start.
             ensureBuiltinPlaylistEpgSourcesAsync(forceNetwork = true) { sources ->
                 hideAppLoadingSpinner()
                 if (!tbSourceMode.isChecked) {
                     fillUrlFields(sources.take(3))
                     applyEpgSourceModeLock(manual = false)
+                    if (sources.isEmpty()) {
+                        showAppToast(
+                            "Не удалось прочитать x-tvg-url из избранного плейлиста",
+                            3500L
+                        )
+                    }
                 }
             }
         }
@@ -4180,7 +4186,7 @@ class MainActivity : AppCompatActivity() {
                     if (manual) {
                         "Нет выбранных источников EPG — укажите ссылку"
                     } else {
-                        "У плейлиста нет встроенных ссылок EPG (x-tvg-url)"
+                        "В избранном плейлисте нет встроенных ссылок EPG (x-tvg-url)"
                     },
                     3500L
                 )
@@ -8965,33 +8971,59 @@ class MainActivity : AppCompatActivity() {
             .distinct()
             .take(3)
 
-    /** Builtin EPG URLs from the active/selected playlist (memory or m3u content cache). */
+    /** Builtin EPG URLs always come from the portal favorites M3U (`/my/TOKEN.m3u`). */
+    private fun resolveFavoritesPlaylistUrl(): String {
+        val profiles = getPlaylistProfiles()
+        val fav = profiles.firstOrNull { it.name == "Избранные" && it.value.isNotBlank() }
+        if (fav != null) {
+            return when (fav.type) {
+                "token" -> {
+                    val token = fav.value.trim()
+                    if (token.isBlank()) "" else "$TOKEN_PREFIX$token$TOKEN_SUFFIX"
+                }
+                else -> fav.value.trim()
+            }
+        }
+        val token = (prefs.getString(PREF_USER_TOKEN, "") ?: "").trim()
+        if (token.isNotBlank()) return "$TOKEN_PREFIX$token$TOKEN_SUFFIX"
+        return ""
+    }
+
+    /**
+     * Playlist URL used for "Встроенные" EPG sources.
+     * Prefer Избранные (`https://o.avff.pw/my/TOKEN.m3u`), not the last opened service list.
+     */
+    private fun resolveBuiltinPlaylistUrl(): String {
+        val favorites = resolveFavoritesPlaylistUrl()
+        if (favorites.isNotBlank()) return favorites
+        return resolveCurrentPlaylistUrl()
+    }
+
+    /** Builtin EPG URLs from the favorites /my/TOKEN.m3u playlist (memory or content cache). */
     private fun resolveBuiltinPlaylistEpgSources(): List<String> {
-        val url = resolveCurrentPlaylistUrl()
-        if (url.isBlank()) return emptyList()
+        val url = resolveBuiltinPlaylistUrl()
+        if (url.isBlank()) {
+            logDebug("EPG_DEBUG", "BUILTIN_SOURCES empty: no favorites/selected playlist URL")
+            return emptyList()
+        }
         val cached = getCachedPlaylistContent(url).orEmpty()
         val memory = if (lastLoadedPlaylistUrl == url) currentPlaylistText else ""
-        // Only use body that belongs to the selected playlist URL — never a stale
-        // service playlist while Избранные (my/TOKEN.m3u) is selected.
         val candidates = listOf(cached, memory).filter { it.isNotBlank() }.distinct()
         for (content in candidates) {
             val parsed = extractEpgSourcesFromPlaylist(content)
             if (parsed.isNotEmpty()) {
-                if (memory.isBlank() && content === cached) {
-                    currentPlaylistText = cached
-                    lastLoadedPlaylistUrl = url
-                }
                 availableEpgSources = parsed
+                logDebug("EPG_DEBUG", "BUILTIN_SOURCES fromCache url=$url sources=$parsed")
                 return parsed
             }
         }
+        logDebug("EPG_DEBUG", "BUILTIN_SOURCES miss url=$url cachedLen=${cached.length} memoryLen=${memory.length}")
         return emptyList()
     }
 
     /**
-     * If builtin x-tvg-url is not in memory/cache yet (e.g. after services refresh),
-     * fetch the selected playlist header once and fill EPG URL forms.
-     * When [forceNetwork] is true, always re-fetch the selected playlist header.
+     * Fetch favorites playlist header and fill EPG URL forms for "Встроенные".
+     * When [forceNetwork] is true, always re-fetch the header.
      */
     private fun ensureBuiltinPlaylistEpgSourcesAsync(
         forceNetwork: Boolean = false,
@@ -9004,33 +9036,34 @@ class MainActivity : AppCompatActivity() {
                 return
             }
         }
-        val playlistUrl = resolveCurrentPlaylistUrl()
+        val playlistUrl = resolveBuiltinPlaylistUrl()
         if (playlistUrl.isBlank()) {
+            logDebug("EPG_DEBUG", "BUILTIN_FETCH skip: blank favorites URL")
             onResolved(emptyList())
             return
         }
         thread(name = "epg-builtin-sources") {
             val content = runCatching {
-                // Header is enough for x-tvg-url; avoid stuffing huge M3U into prefs.
                 fetchPlaylistHeaderText(playlistUrl).also { header ->
                     if (header.isNotBlank()) {
-                        // Keep a small header cache keyed by URL for builtin forms.
                         saveCachedPlaylistHeader(playlistUrl, header)
                     }
                 }
+            }.onFailure { t ->
+                logDebug("EPG_DEBUG", "BUILTIN_FETCH error url=$playlistUrl msg=${t.message}")
             }.getOrNull().orEmpty()
-            if (content.isNotBlank()) {
-                // Do not overwrite a full in-memory playlist body with header-only text
-                // unless this URL is the active one and body is empty/mismatched.
-                if (lastLoadedPlaylistUrl != playlistUrl || currentPlaylistText.isBlank()) {
-                    currentPlaylistText = content
-                    lastLoadedPlaylistUrl = playlistUrl
-                }
-                availableEpgSources = extractEpgSourcesFromPlaylist(content)
+
+            val sources = extractEpgSourcesFromPlaylist(content).ifEmpty {
+                resolveBuiltinPlaylistEpgSources()
             }
-            val sources = resolveBuiltinPlaylistEpgSources().ifEmpty {
-                extractEpgSourcesFromPlaylist(content)
+            if (sources.isNotEmpty()) {
+                availableEpgSources = sources
             }
+            logDebug(
+                "EPG_DEBUG",
+                "BUILTIN_FETCH done url=$playlistUrl headerLen=${content.length} " +
+                    "headerSample=${content.lineSequence().firstOrNull().orEmpty().take(160)} sources=$sources"
+            )
             handler.post { onResolved(sources) }
         }
     }
@@ -9041,6 +9074,7 @@ class MainActivity : AppCompatActivity() {
             connectTimeout = 12_000
             readTimeout = 20_000
             setRequestProperty("User-Agent", userAgent)
+            setRequestProperty("Accept", "*/*")
             setRequestProperty("Accept-Encoding", "identity")
             instanceFollowRedirects = true
         }
@@ -9049,31 +9083,11 @@ class MainActivity : AppCompatActivity() {
             if (code !in 200..299) {
                 throw IOException("HTTP $code for playlist header")
             }
-            conn.inputStream.bufferedReader().use { reader ->
-                val sb = StringBuilder()
-                var lineCount = 0
-                while (lineCount < 40) {
-                    val line = reader.readLine() ?: break
-                    sb.append(line).append('\n')
-                    lineCount++
-                    if (lineCount == 1 || line.contains("tvg-url", ignoreCase = true) ||
-                        line.contains("x-tvg-url", ignoreCase = true) ||
-                        line.contains("url-tvg", ignoreCase = true)
-                    ) {
-                        // Keep reading a few more lines in case attributes wrap.
-                        if (lineCount >= 5 &&
-                            (line.contains("tvg-url", ignoreCase = true) ||
-                                line.contains("x-tvg-url", ignoreCase = true) ||
-                                line.contains("url-tvg", ignoreCase = true) ||
-                                sb.contains("x-tvg-url") || sb.contains("url-tvg") || sb.contains("tvg-url"))
-                        ) {
-                            break
-                        }
-                    }
-                    if (sb.length > 64 * 1024) break
-                }
-                return sb.toString()
-            }
+            // First ~8 KiB is enough for #EXTM3U x-tvg-url="a,b".
+            val buf = ByteArray(8 * 1024)
+            val n = conn.inputStream.use { it.read(buf) }
+            if (n <= 0) return ""
+            return String(buf, 0, n, Charsets.UTF_8)
         } finally {
             conn.disconnect()
         }
