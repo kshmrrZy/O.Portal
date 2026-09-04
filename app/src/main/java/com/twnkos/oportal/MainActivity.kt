@@ -1224,13 +1224,25 @@ class MainActivity : AppCompatActivity() {
         height(R.id.btnFavoritesTile, 66f)
         setupHomeBottomActionTiles(scale, HOME_BOTTOM_TILE_TEXT_SP)
 
-        // Поля EPG/плейлистов
+        // Поля EPG/плейлистов и квадратные radio-кнопки одинакового размера
         listOf(R.id.etEpgUrl1, R.id.etEpgUrl2, R.id.etEpgUrl3, R.id.etPlaylistUrl1, R.id.etPlaylistUrl2, R.id.etPlaylistUrl3)
             .forEach { id ->
                 height(id, 52f)
                 textSize(id, 17f)
             }
-        listOf(R.id.ivPlaylistToggle1, R.id.ivPlaylistToggle2, R.id.ivPlaylistToggle3).forEach { height(it, 52f) }
+        val toggleSize = scalePx(52f, scale)
+        listOf(
+            R.id.ivPlaylistToggle1, R.id.ivPlaylistToggle2, R.id.ivPlaylistToggle3,
+            R.id.ivEpgToggle1, R.id.ivEpgToggle2, R.id.ivEpgToggle3
+        ).forEach { id ->
+            val v = findViewById<View>(id)
+            val lp = v.layoutParams ?: return@forEach
+            lp.width = toggleSize
+            lp.height = toggleSize
+            v.minimumWidth = 0
+            v.minimumHeight = 0
+            v.layoutParams = lp
+        }
 
         // Кнопки-действия подпанелей (EPG: 4 в ряд, плейлист: 2 в ряд)
         listOf(R.id.btnSavePlaylistSettings, R.id.btnRefreshPlaylistSettings).forEach { id ->
@@ -3922,6 +3934,23 @@ class MainActivity : AppCompatActivity() {
             dots[i].visibility = if (states[i]) View.VISIBLE else View.GONE
         }
 
+        fun syncToggleSizeToUrlField() {
+            urls.forEachIndexed { i, et ->
+                et.post {
+                    val h = et.height.takeIf { it > 0 }
+                        ?: resources.getDimensionPixelSize(R.dimen.settings_sub_panel_field_height)
+                    val lp = toggles[i].layoutParams
+                    if (lp.width != h || lp.height != h) {
+                        lp.width = h
+                        lp.height = h
+                        toggles[i].minimumWidth = 0
+                        toggles[i].minimumHeight = 0
+                        toggles[i].layoutParams = lp
+                    }
+                }
+            }
+        }
+
         fun bindData() {
             val profiles = getThirdPartyPlaylistProfiles()
             for (i in 0..2) {
@@ -3930,6 +3959,7 @@ class MainActivity : AppCompatActivity() {
                 states[i] = p?.enabled == true && !p.value.isNullOrBlank()
                 updateDot(i)
             }
+            syncToggleSizeToUrlField()
         }
         toggles.forEachIndexed { i, v ->
             v.setOnClickListener {
@@ -4085,16 +4115,17 @@ class MainActivity : AppCompatActivity() {
         fun statusNeedsRetry(source: String): Boolean {
             val st = statusForSource(source)
             if (st.contains("Ошибка", ignoreCase = true)) return true
-            if (st.isBlank()) return !hasLocalEpgDownload(source)
             if (st.contains("Готово", ignoreCase = true) ||
                 st.contains("100%", ignoreCase = true) ||
                 st.contains("активен", ignoreCase = true)
             ) {
                 return false
             }
-            // In-progress / unknown leftovers after a failed run — allow another Save.
+            // Blank / in-progress / unknown — needs download or at least parse.
             return true
         }
+
+        fun sourceAlreadyRead(source: String): Boolean = !statusNeedsRetry(source)
 
         fun statusMapForUrls(selectedUrls: List<String>): Map<String, TextView> {
             val map = linkedMapOf<String, TextView>()
@@ -4349,29 +4380,40 @@ class MainActivity : AppCompatActivity() {
             val sameSources = fingerprint.isNotBlank() && fingerprint == getEpgSourceFingerprint()
             val epgActive = !isEpgDataEmpty()
             val failedOrPending = links.filter { statusNeedsRetry(it) }
+            val allSelectedAlreadyRead = failedOrPending.isEmpty()
             when {
-                epgFetchInProgress && sameSources && failedOrPending.isEmpty() -> {
+                epgFetchInProgress && allSelectedAlreadyRead &&
+                    (sameSources || epgActive) -> {
                     showAppToast("EPG уже обновляется")
                     bindUrlStatuses(urls.map { it.text.toString().trim() }.filter { it.isNotBlank() })
                     updateEpgLoadStatusUi()
                 }
-                sameSources && epgActive && failedOrPending.isEmpty() -> {
-                    showAppToast("EPG уже активен для выбранных источников")
+                // Toggling among sources that were already downloaded and parsed — no re-read.
+                allSelectedAlreadyRead && epgActive -> {
+                    saveCurrentEpgSourceFingerprint()
+                    showAppToast("EPG уже готов для выбранных источников")
                     bindUrlStatuses(urls.map { it.text.toString().trim() }.filter { it.isNotBlank() })
                     updateEpgLoadStatusUi()
                 }
                 else -> {
-                    // Keep only the toggled sources in memory when starting a full refresh.
-                    val toFetch = when {
-                        // Retry only sources that failed / never finished; keep good ones in cache.
-                        sameSources && epgActive && failedOrPending.isNotEmpty() -> failedOrPending
-                        else -> {
-                            clearEpgRuntimeData()
-                            links
-                        }
+                    val toFetch = failedOrPending.ifEmpty {
+                        // Status says ready but memory is empty — re-read from local/network.
+                        if (!epgActive) links else emptyList()
+                    }
+                    if (toFetch.isEmpty()) {
+                        saveCurrentEpgSourceFingerprint()
+                        showAppToast("EPG уже готов для выбранных источников")
+                        bindUrlStatuses(urls.map { it.text.toString().trim() }.filter { it.isNotBlank() })
+                        updateEpgLoadStatusUi()
+                        return@setOnClickListener
+                    }
+                    // Keep programmes from sources that are already ready.
+                    val anyReadyKept = links.any { sourceAlreadyRead(it) } && epgActive
+                    if (!anyReadyKept) {
+                        clearEpgRuntimeData()
                     }
                     val reuseLocal = toFetch.all { hasLocalEpgDownload(it) } &&
-                        failedOrPending.none { statusForSource(it).contains("Ошибка", true) }
+                        toFetch.none { statusForSource(it).contains("Ошибка", true) }
                     val statusMap = statusMapForUrls(toFetch)
                     val sourceSlots = linkedMapOf<String, Int>()
                     urls.forEachIndexed { fieldIndex, et ->
@@ -4383,7 +4425,6 @@ class MainActivity : AppCompatActivity() {
                         sourceSlots[match] = fieldIndex + 1
                     }
                     val slotTotal = urls.count { !it.text.isNullOrBlank() }.coerceAtLeast(toFetch.size)
-                    // Clear stale status lines under forms that are not being fetched now.
                     urls.forEachIndexed { i, et ->
                         val fieldUrl = et.text.toString().trim()
                         if (fieldUrl.isBlank()) {
@@ -4393,7 +4434,6 @@ class MainActivity : AppCompatActivity() {
                                 it == fieldUrl || normalizeEpgUrl(it) == normalizeEpgUrl(fieldUrl)
                             }
                         ) {
-                            // Leave successful statuses under inactive-for-this-run rows.
                             val st = statusForSource(fieldUrl)
                             if (st.isNotBlank()) {
                                 statusViews[i].visibility = View.VISIBLE
@@ -4411,7 +4451,7 @@ class MainActivity : AppCompatActivity() {
                     )
                     showAppToast(
                         when {
-                            failedOrPending.isNotEmpty() && toFetch == failedOrPending ->
+                            toFetch.all { statusForSource(it).contains("Ошибка", true) } ->
                                 "Повторная загрузка источников с ошибкой"
                             reuseLocal ->
                                 "Читаем сохранённые файлы выбранных источников"
@@ -6914,13 +6954,12 @@ class MainActivity : AppCompatActivity() {
             hidePlayerLoadingUi()
             return
         }
-        // Только назад + время, без остальных элементов плеера.
-        // INVISIBLE (не GONE) для среднего блока — плашка времени остаётся справа.
+        // На этапе спиннера оставляем назад, LIVE/Архив, имя канала и время.
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         topInfoPanel.visibility = View.VISIBLE
-        findViewById<View>(R.id.liveStatusBadge)?.visibility = View.INVISIBLE
-        findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.INVISIBLE
+        findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
         findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
         findViewById<View>(R.id.btnBackToMenu)?.apply {
             visibility = View.VISIBLE
