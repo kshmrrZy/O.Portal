@@ -162,7 +162,8 @@ class MainActivity : AppCompatActivity() {
     private var retriedWithAlternateDecoder = false
     private var softwareDecoderMode = false
     private var preferGpuDecoding = true
-    private var lastPlaybackPositionMs = -1L
+    /** Unset sentinel — must not collide with live HLS positions, which can be negative. */
+    private var lastPlaybackPositionMs = PLAYBACK_POS_UNSET
     private var lastProgressWallClockMs = 0L
     private var stuckPositionSinceMs = 0L
     private var consecutiveForwardProgressTicks = 0
@@ -452,7 +453,7 @@ class MainActivity : AppCompatActivity() {
         }
         val pos = player.currentPosition
         when {
-            lastPlaybackPositionMs < 0L -> {
+            lastPlaybackPositionMs == PLAYBACK_POS_UNSET -> {
                 lastPlaybackPositionMs = pos
                 lastProgressWallClockMs = now
                 stuckPositionSinceMs = 0L
@@ -475,10 +476,9 @@ class MainActivity : AppCompatActivity() {
                         if (lastProgressWallClockMs > 0L) lastProgressWallClockMs else now
                 }
             }
-            // Healthy live DVR wrap: position jumps backwards but stays non-negative while
-            // segments keep loading. Count as progress so recovery can clear (otherwise
-            // wrap/forward/wrap never reaches 2 consecutive forward-only ticks).
-            pos >= 0L && pos < lastPlaybackPositionMs - 1_000L -> {
+            // Healthy live timeline remap: ExoPlayer's live window can jump backwards and even
+            // cross into negative currentPosition while segments keep loading. Treat like wrap.
+            pos < lastPlaybackPositionMs - 1_000L -> {
                 lastPlaybackPositionMs = pos
                 lastProgressWallClockMs = now
                 stuckPositionSinceMs = 0L
@@ -487,13 +487,6 @@ class MainActivity : AppCompatActivity() {
                     onPlaybackRecoverySucceeded()
                 }
             }
-            // Negative sliding with no forward progress — frozen picture that only drifts.
-            pos < 0L && pos < lastPlaybackPositionMs - 1_000L -> {
-                consecutiveForwardProgressTicks = 0
-                lastPlaybackPositionMs = pos
-                stuckPositionSinceMs = 0L
-                // Keep lastProgressWallClockMs from the last healthy tick.
-            }
             else -> {
                 consecutiveForwardProgressTicks = 0
             }
@@ -501,18 +494,18 @@ class MainActivity : AppCompatActivity() {
 
         val noForwardFor = if (lastProgressWallClockMs > 0L) now - lastProgressWallClockMs else 0L
         val stuckFor = if (stuckPositionSinceMs > 0L) now - stuckPositionSinceMs else 0L
-        val frozenNegative = pos < 0L
         val stuckNow = stuckFor >= PLAYBACK_STALL_STUCK_POS_MS
         val slidingTooLong = noForwardFor > PLAYBACK_STALL_PROGRESS_MS
         val progressStallReason = when {
-            frozenNegative && noForwardFor >= PLAYBACK_STALL_STUCK_POS_MS ->
-                "Поток завис (отрицательная позиция)"
+            // Truly frozen frame (same position while isPlaying). Brief negative live positions
+            // must not use this path — they are remaps, handled above as progress.
             stuckNow -> "Поток завис (нет прогресса)"
             slidingTooLong -> "Поток завис (нет прогресса)"
             else -> null
         }
         if (progressStallReason != null) {
-            val bypassGrace = frozenNegative || stuckNow
+            // Only a stuck positive/negative frame bypasses start grace; live remaps never do.
+            val bypassGrace = stuckNow
             if (bypassGrace || !inGrace) {
                 logDebug(
                     "PLAYER_STATE",
@@ -675,6 +668,8 @@ class MainActivity : AppCompatActivity() {
         private const val PLAYBACK_STALL_STUCK_POS_MS = 2_000L
         private const val PLAYBACK_PROGRESS_MIN_DELTA_MS = 400L
         private const val PLAYBACK_STUCK_POS_EPSILON_MS = 300L
+        // Sentinel distinct from live HLS currentPosition, which can be negative after window slides.
+        private const val PLAYBACK_POS_UNSET = Long.MIN_VALUE
         // Fast hard-stop for ENDED/IDLE: stream died, we need recovery quickly.
         private const val PLAYBACK_STALL_HARD_STOP_MS = 5_000L
         private const val PLAYBACK_STALL_GRACE_AFTER_START_MS = 8_000L
@@ -6264,7 +6259,7 @@ class MainActivity : AppCompatActivity() {
             handler.removeCallbacks(memoryLogRunnable)
             handler.post(memoryLogRunnable)
             handler.postDelayed(startupSlowStreamRunnable, 45_000L)
-            lastPlaybackPositionMs = -1L
+            lastPlaybackPositionMs = PLAYBACK_POS_UNSET
             lastProgressWallClockMs = System.currentTimeMillis()
             resetPlaybackProgressBaseline(extendGrace = true)
             armPlaybackFreezeWatchdog(4000L, withStartGrace = true)
@@ -9041,7 +9036,7 @@ class MainActivity : AppCompatActivity() {
         behindLiveWindowRecoveryInProgress = false
         startupRecoveryAttempts = 0
         bufferingSinceMs = 0L
-        lastPlaybackPositionMs = -1L
+        lastPlaybackPositionMs = PLAYBACK_POS_UNSET
         lastProgressWallClockMs = 0L
         stuckPositionSinceMs = 0L
         consecutiveForwardProgressTicks = 0
