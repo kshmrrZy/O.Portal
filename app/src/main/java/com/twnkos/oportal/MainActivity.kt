@@ -6357,8 +6357,14 @@ class MainActivity : AppCompatActivity() {
         if (source.isBlank()) return null
         val startUnix = (program.start / 1000L).coerceAtLeast(0L)
         val nowUnix = System.currentTimeMillis() / 1000L
-        val endUnix =
-            (program.stop / 1000L).coerceAtLeast((nowUnix + 6 * 60 * 60).coerceAtLeast(startUnix))
+        // Archive window must match the programme length from EPG (or 1 hour for hourly
+        // placeholders when EPG is missing). Never stretch utcend to "now + N hours" —
+        // that made Wink/others request a multi-hour chunk starting at utcstart.
+        val endUnix = if (program.stop > program.start) {
+            (program.stop / 1000L).coerceAtLeast(startUnix + 1L)
+        } else {
+            startUnix + 3_600L
+        }
         val duration = (endUnix - startUnix).coerceAtLeast(0L)
         // offset в секундах назад: текущее unix-время минус unix-время начала программы
         val offset = (nowUnix - startUnix).coerceAtLeast(0L)
