@@ -29,9 +29,13 @@ internal class ProgressInputStream(
     }
 
     private fun updateProgress(delta: Int) {
-        if (totalBytes <= 0L) return
         consumedBytes += delta
-        val progress = ((consumedBytes * 100L) / totalBytes).toInt().coerceIn(0, 100)
+        val progress = if (totalBytes > 0L) {
+            ((consumedBytes * 100L) / totalBytes).toInt().coerceIn(0, 100)
+        } else {
+            // Unknown length (streamed gzip): climb toward 95% by MiB read so UI leaves 0%.
+            (1 + (consumedBytes / (512L * 1024L)).toInt()).coerceIn(1, 95)
+        }
         if (progress != lastProgress) {
             onProgress(progress)
             lastProgress = progress

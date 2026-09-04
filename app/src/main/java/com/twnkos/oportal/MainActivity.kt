@@ -45,6 +45,9 @@ import android.graphics.Rect
 import android.text.TextPaint
 import android.text.style.MetricAffectingSpan
 import android.view.ScaleGestureDetector
+import android.Manifest
+import android.content.pm.PackageManager
+import android.provider.Settings
 import android.content.Intent
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
@@ -247,6 +250,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvPlayerSubtitles: TextView
     private var suppressAutoPlayerUiOnce: Boolean = false
     private var tvEpgLoadStatus: TextView? = null
+    private var pendingAfterStoragePermission: (() -> Unit)? = null
+    private val REQ_EPG_STORAGE_PERMISSION = 9911
 
     data class QualityOption(val label: String, val height: Int, val url: String)
     data class SubtitleOption(val label: String, val language: String?, val url: String)
@@ -4515,24 +4520,26 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     }
-                    fetchEpgSources(
-                        toFetch,
-                        statusMap,
-                        force = true,
-                        forceDownload = !reuseLocal,
-                        sourceSlots = sourceSlots,
-                        sourceSlotTotal = slotTotal
-                    )
-                    showAppToast(
-                        when {
-                            toFetch.all { statusForSource(it).contains("Ошибка", true) } ->
-                                "Повторная загрузка источников с ошибкой"
-                            reuseLocal ->
-                                "Читаем сохранённые файлы выбранных источников"
-                            else ->
-                                "Настройки сохранены, обновление EPG запущено"
-                        }
-                    )
+                    ensureEpgStorageAccess {
+                        fetchEpgSources(
+                            toFetch,
+                            statusMap,
+                            force = true,
+                            forceDownload = !reuseLocal,
+                            sourceSlots = sourceSlots,
+                            sourceSlotTotal = slotTotal
+                        )
+                        showAppToast(
+                            when {
+                                toFetch.all { statusForSource(it).contains("Ошибка", true) } ->
+                                    "Повторная загрузка источников с ошибкой"
+                                reuseLocal ->
+                                    "Читаем сохранённые файлы выбранных источников"
+                                else ->
+                                    "Настройки сохранены, обновление EPG запущено"
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -5770,13 +5777,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hasLocalEpgDownload(sourceUrl: String): Boolean {
+        fun hasUsable(file: File): Boolean = file.exists() && file.length() > 64L
         buildEpgUrlCandidates(sourceUrl).forEach { candidate ->
-            val f = epgDownloadFileForUrl(candidate)
-            if (f.exists() && f.length() > 64L) return true
+            val key = Integer.toHexString(candidate.trim().lowercase().hashCode())
+            if (hasUsable(epgDownloadFileForUrl(candidate))) return true
+            if (hasUsable(File(epgCacheDir(), "$key.xml"))) return true
         }
-        // Also check the bare source URL hash (before candidate expansion).
-        val direct = epgDownloadFileForUrl(sourceUrl)
-        return direct.exists() && direct.length() > 64L
+        val directKey = Integer.toHexString(sourceUrl.trim().lowercase().hashCode())
+        if (hasUsable(epgDownloadFileForUrl(sourceUrl))) return true
+        return hasUsable(File(epgCacheDir(), "$directKey.xml"))
     }
 
     private fun deleteLocalEpgDownloads(sources: Collection<String>) {
@@ -5847,43 +5856,58 @@ class MainActivity : AppCompatActivity() {
         onParse: (Int) -> Unit,
         forceDownload: Boolean = true
     ) {
-        // On-device paths (app-private):
+        // On-device paths (app-private — no external storage permission required):
         //   filesDir/epg_cache/<hash>.download — raw HTTP body (gzip or xml)
-        // Parse streams from .download (GZIP→XML) without writing a second 600MB+ XML copy.
+        //   filesDir/epg_cache/<hash>.xml       — unpacked XMLTV used for parse/re-read
         val cacheKey = Integer.toHexString(url.trim().lowercase().hashCode())
         val dir = epgCacheDir()
         val downloadFile = File(dir, "$cacheKey.download")
+        val xmlFile = File(dir, "$cacheKey.xml")
 
         val needDownload = forceDownload || !downloadFile.exists() || downloadFile.length() < 64L
         if (needDownload) {
-            val conn = openEpgHttpConnection(url)
-            try {
-                val compressedTotal = conn.contentLengthLong.coerceAtLeast(0L)
+            if (isLocalEpgUrl(url)) {
                 onDownload(0)
-                conn.inputStream.use { raw ->
-                    val compressedLimited = SizeLimitedInputStream(raw, MAX_EPG_COMPRESSED_BYTES)
-                    val progressCompressed =
-                        ProgressInputStream(compressedLimited, compressedTotal) { p ->
-                            onDownload(p)
-                            if (p >= 100) onDownload(100)
+                copyLocalEpgToCache(url, downloadFile, onDownload)
+                onDownload(100)
+            } else {
+                val conn = openEpgHttpConnection(url)
+                try {
+                    val compressedTotal = conn.contentLengthLong.coerceAtLeast(0L)
+                    onDownload(0)
+                    conn.inputStream.use { raw ->
+                        val compressedLimited = SizeLimitedInputStream(raw, MAX_EPG_COMPRESSED_BYTES)
+                        val progressCompressed =
+                            ProgressInputStream(compressedLimited, compressedTotal) { p ->
+                                onDownload(p)
+                                if (p >= 100) onDownload(100)
+                            }
+                        downloadFile.outputStream().buffered(64 * 1024).use { out ->
+                            progressCompressed.copyTo(out)
                         }
-                    downloadFile.outputStream().buffered(64 * 1024).use { out ->
-                        progressCompressed.copyTo(out)
+                        if (compressedTotal <= 0L) onDownload(100)
                     }
-                    if (compressedTotal <= 0L) onDownload(100)
+                } finally {
+                    conn.disconnect()
                 }
-            } finally {
-                conn.disconnect()
             }
         } else {
             onDownload(100)
             logDebug("EPG_DEBUG", "EPG_REUSE_DOWNLOAD ${downloadFile.absolutePath} (${downloadFile.length()} bytes)")
         }
 
+        if (!downloadFile.exists() || downloadFile.length() < 1L) {
+            throw IOException("Локальный файл EPG недоступен: ${downloadFile.absolutePath}")
+        }
+
         val header = ByteArray(2)
-        downloadFile.inputStream().use { input ->
-            val n = input.read(header)
-            if (n < 1) throw IOException("Пустой ответ EPG")
+        try {
+            downloadFile.inputStream().use { input ->
+                val n = input.read(header)
+                if (n < 1) throw IOException("Пустой ответ EPG")
+            }
+        } catch (se: SecurityException) {
+            throw IOException("Нет доступа к файлу EPG (нужно разрешение на файлы)", se)
         }
         val b1 = header[0].toInt() and 0xFF
         val b2 = if (downloadFile.length() > 1L) header[1].toInt() and 0xFF else -1
@@ -5893,36 +5917,89 @@ class MainActivity : AppCompatActivity() {
             throw IOException("Ответ не похож на EPG XML/GZIP")
         }
 
+        // Always materialize XML under app filesDir so "Чтение" has a real local file + size.
+        val needUnpack = forceDownload || !xmlFile.exists() || xmlFile.length() < 64L ||
+            xmlFile.lastModified() < downloadFile.lastModified()
+        if (needUnpack) {
+            if (isGzip) {
+                onUnpack(0)
+                try {
+                    downloadFile.inputStream().buffered(64 * 1024).use { raw ->
+                        val progress = ProgressInputStream(raw, downloadFile.length()) { p -> onUnpack(p) }
+                        GZIPInputStream(progress).use { gzip ->
+                            val limited = SizeLimitedInputStream(gzip, MAX_EPG_UNPACKED_BYTES)
+                            xmlFile.outputStream().buffered(64 * 1024).use { out -> limited.copyTo(out) }
+                        }
+                    }
+                } catch (se: SecurityException) {
+                    throw IOException("Нет доступа при распаковке EPG (нужно разрешение на файлы)", se)
+                }
+                onUnpack(100)
+            } else {
+                downloadFile.copyTo(xmlFile, overwrite = true)
+                onUnpack(100)
+            }
+        } else {
+            onUnpack(100)
+            logDebug("EPG_DEBUG", "EPG_REUSE_XML ${xmlFile.absolutePath} (${xmlFile.length()} bytes)")
+        }
+
+        if (!xmlFile.exists() || xmlFile.length() < 1L) {
+            throw IOException("Распакованный EPG недоступен: ${xmlFile.absolutePath}")
+        }
+
         logDebug(
             "EPG_DEBUG",
-            "EPG_FILES download=${downloadFile.absolutePath} (${downloadFile.length()} bytes) gzip=$isGzip streamParse=true"
+            "EPG_FILES download=${downloadFile.absolutePath} (${downloadFile.length()} bytes) " +
+                "xml=${xmlFile.absolutePath} (${xmlFile.length()} bytes) gzip=$isGzip"
         )
 
+        onParse(0)
         try {
-            downloadFile.inputStream().buffered(64 * 1024).use { raw ->
-                if (isGzip) {
-                    onUnpack(0)
-                    val progress = ProgressInputStream(raw, downloadFile.length()) { p ->
-                        onUnpack(p)
-                        // Approximate parse progress from compressed read while streaming.
-                        onParse((p * 0.95).toInt().coerceIn(0, 95))
-                    }
-                    GZIPInputStream(progress).use { gzip ->
-                        val limited = SizeLimitedInputStream(gzip, MAX_EPG_UNPACKED_BYTES)
-                        parseEpgXml(limited, -1, onParse)
-                    }
-                    onUnpack(100)
-                } else {
-                    onUnpack(100)
-                    val progress = ProgressInputStream(raw, downloadFile.length(), onParse)
-                    val limited = SizeLimitedInputStream(progress, MAX_EPG_UNPACKED_BYTES)
-                    parseEpgXml(limited, downloadFile.length().toInt().coerceAtLeast(1), onParse)
-                }
+            xmlFile.inputStream().buffered(64 * 1024).use { stream ->
+                val limited = SizeLimitedInputStream(stream, MAX_EPG_UNPACKED_BYTES)
+                parseEpgXml(limited, xmlFile.length().toInt().coerceAtLeast(1), onParse)
             }
             onParse(100)
         } catch (oom: OutOfMemoryError) {
             System.gc()
             throw IOException("Файл EPG слишком большой для памяти устройства", oom)
+        } catch (se: SecurityException) {
+            throw IOException("Нет доступа при чтении EPG (нужно разрешение на файлы)", se)
+        }
+    }
+
+    private fun isLocalEpgUrl(url: String): Boolean {
+        val t = url.trim().lowercase(Locale.ROOT)
+        return t.startsWith("file:") || t.startsWith("content:") || t.startsWith("/")
+    }
+
+    private fun copyLocalEpgToCache(url: String, dest: File, onProgress: (Int) -> Unit) {
+        openLocalEpgInputStream(url).use { input ->
+            val limited = SizeLimitedInputStream(input, MAX_EPG_COMPRESSED_BYTES)
+            val progress = ProgressInputStream(limited, -1L, onProgress)
+            dest.outputStream().buffered(64 * 1024).use { out -> progress.copyTo(out) }
+        }
+    }
+
+    private fun openLocalEpgInputStream(url: String): InputStream {
+        val trimmed = url.trim()
+        return try {
+            when {
+                trimmed.startsWith("content:", ignoreCase = true) -> {
+                    contentResolver.openInputStream(Uri.parse(trimmed))
+                        ?: throw IOException("Не удалось открыть content URI EPG")
+                }
+                trimmed.startsWith("file:", ignoreCase = true) -> {
+                    val path = Uri.parse(trimmed).path
+                        ?: throw IOException("Пустой путь file:// EPG")
+                    File(path).inputStream()
+                }
+                trimmed.startsWith("/") -> File(trimmed).inputStream()
+                else -> throw IOException("Не локальный EPG URL")
+            }
+        } catch (se: SecurityException) {
+            throw IOException("Нет доступа к локальному EPG — выдайте разрешение на файлы", se)
         }
     }
 
@@ -6648,13 +6725,16 @@ class MainActivity : AppCompatActivity() {
                 return@runCatching
             }
             // Channel switch / Live must dismiss a stuck recovery plate and cancel retries.
+            // Keep the loading chrome visible when we already showed it for last-channel startup.
             if (reason == PlayerOpenReason.CHANNEL_CLICK || reason == PlayerOpenReason.LIVE_RETRY) {
                 resetPlaybackRecoveryState()
                 if (::tvReloadingStatus.isInitialized && tvReloadingStatus.visibility == View.VISIBLE) {
                     stopReloadingPlateSpinner()
                     tvReloadingStatus.visibility = View.GONE
                 }
-                hidePlayerLoadingUi()
+                if (!playerLoadingUiActive) {
+                    hidePlayerLoadingUi()
+                }
             }
             logDebug("NAV", "open_player")
             dismissHomeForPlayback()
@@ -6968,6 +7048,8 @@ class MainActivity : AppCompatActivity() {
     private fun showAppLoadingSpinner() {
         if (tvReloadingStatus.visibility == View.VISIBLE) return
         val panel = findViewById<View>(R.id.loadingPanel) ?: return
+        panel.isClickable = true
+        panel.isFocusable = true
         panel.visibility = View.VISIBLE
         panel.bringToFront()
         startCompositeSpinner(findViewById(R.id.loadingSpinner))
@@ -6977,6 +7059,8 @@ class MainActivity : AppCompatActivity() {
         val panel = findViewById<View>(R.id.loadingPanel) ?: return
         stopCompositeSpinner(findViewById(R.id.loadingSpinner))
         panel.visibility = View.GONE
+        panel.isClickable = false
+        panel.isFocusable = false
     }
 
     private var hideSeekSpinnerRunnable: Runnable? = null
@@ -7183,6 +7267,60 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun epgCacheDir(): File = File(filesDir, "epg_cache").also { if (!it.exists()) it.mkdirs() }
+
+    /** Ask for Files access so TV Settings no longer says «приложение не запрашивало разрешения». */
+    private fun ensureEpgStorageAccess(then: () -> Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                runCatching {
+                    startActivity(
+                        Intent(
+                            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                            Uri.parse("package:$packageName")
+                        )
+                    )
+                }.recoverCatching {
+                    startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                }.onFailure {
+                    Log.w("EPG", "Cannot open file-access settings", it)
+                }
+                showAppToast(
+                    "Выдайте доступ к файлам для чтения EPG (нужно один раз в настройках)",
+                    4500L
+                )
+            }
+            // App-private epg_cache works without the grant; local file:// URLs need it.
+            then()
+            return
+        }
+        val read = Manifest.permission.READ_EXTERNAL_STORAGE
+        if (checkSelfPermission(read) == PackageManager.PERMISSION_GRANTED) {
+            then()
+            return
+        }
+        pendingAfterStoragePermission = then
+        val perms = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            arrayOf(read, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else {
+            arrayOf(read)
+        }
+        requestPermissions(perms, REQ_EPG_STORAGE_PERMISSION)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQ_EPG_STORAGE_PERMISSION) return
+        val pending = pendingAfterStoragePermission
+        pendingAfterStoragePermission = null
+        if (grantResults.isEmpty() || grantResults.all { it != PackageManager.PERMISSION_GRANTED }) {
+            showAppToast("Без доступа к файлам локальный EPG может не читаться", 3500L)
+        }
+        pending?.invoke()
+    }
 
     private fun clearEpgCacheFiles() {
         runCatching {
@@ -10024,11 +10162,22 @@ class MainActivity : AppCompatActivity() {
         val index = resolveLastChannelIndex()
         if (index < 0) return false
         currentChannelIndex = index
-        logDebug("NAV", "startup_restore_last_channel index=$index name=${channels[index].name}")
-        // Keep chrome hidden so D-pad L/R open channel list / EPG instead of focusing controls.
+        val ch = channels[index]
+        logDebug("NAV", "startup_restore_last_channel index=$index name=${ch.name}")
+        // Same loading chrome as a manual channel pick: LIVE + name + center spinner.
         suppressAutoPlayerUiOnce = true
         dismissHomeForPlayback()
+        hideAppLoadingSpinner()
+        setPlayerVideoVisible(true)
+        if (::tvChannelName.isInitialized) {
+            tvChannelName.text = "${index + 1}. ${ch.name}"
+            tvChannelName.visibility = View.VISIBLE
+        }
+        if (::tvEpg.isInitialized) {
+            tvEpg.visibility = View.GONE
+        }
         ensurePlayerControlsInteractive()
+        showPlayerLoadingUi()
         playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
         return true
     }
