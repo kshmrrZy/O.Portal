@@ -252,6 +252,7 @@ class MainActivity : AppCompatActivity() {
     private var tvEpgLoadStatus: TextView? = null
     private var pendingAfterStoragePermission: (() -> Unit)? = null
     private val REQ_EPG_STORAGE_PERMISSION = 9911
+    private val lastEpgStatusPostAtMs = mutableMapOf<String, Long>()
 
     data class QualityOption(val label: String, val height: Int, val url: String)
     data class SubtitleOption(val label: String, val language: String?, val url: String)
@@ -5659,6 +5660,17 @@ class MainActivity : AppCompatActivity() {
 
             fun applyEpgStatus(source: String, status: String) {
                 if (fetchGen != epgFetchGeneration) return
+                // Throttle UI posts — weak boxes stall if every % floods the main thread.
+                val now = System.currentTimeMillis()
+                val last = lastEpgStatusPostAtMs[source] ?: 0L
+                val isTerminal = status.startsWith("Готово") || status.startsWith("Ошибка")
+                if (!isTerminal && status == epgSourceStatus[source]) return
+                if (!isTerminal && now - last < 400L && status.contains('%')) {
+                    // Keep latest text in memory; flush on next due tick / terminal.
+                    epgSourceStatus[source] = status
+                    return
+                }
+                lastEpgStatusPostAtMs[source] = now
                 epgSourceStatus[source] = status
                 saveEpgStatusCache()
                 handler.post {
@@ -5682,7 +5694,7 @@ class MainActivity : AppCompatActivity() {
                 val reuseLocal = !forceDownload && hasLocalEpgDownload(sourceUrl)
                 applyEpgStatus(
                     sourceUrl,
-                    if (reuseLocal) "Чтение (0%)" else "Загрузка (0%)"
+                    if (reuseLocal) "Подготовка…" else "Загрузка (0%)"
                 )
                 var parsed = false
                 var lastError = "Неизвестная ошибка"
@@ -5856,13 +5868,18 @@ class MainActivity : AppCompatActivity() {
         onParse: (Int) -> Unit,
         forceDownload: Boolean = true
     ) {
-        // On-device paths (app-private — no external storage permission required):
+        // App-private cache only (no external storage required for HTTP EPG):
         //   filesDir/epg_cache/<hash>.download — raw HTTP body (gzip or xml)
-        //   filesDir/epg_cache/<hash>.xml       — unpacked XMLTV used for parse/re-read
+        // Weak TV boxes (e.g. Tanix W2): do NOT write a second full XML copy to slow eMMC —
+        // stream-parse GZIP→XML in one pass. Progress for «Чтение» tracks compressed bytes read.
         val cacheKey = Integer.toHexString(url.trim().lowercase().hashCode())
         val dir = epgCacheDir()
         val downloadFile = File(dir, "$cacheKey.download")
-        val xmlFile = File(dir, "$cacheKey.xml")
+        // Drop legacy full-XML copies that previously filled flash and stalled «Чтение».
+        File(dir, "$cacheKey.xml").takeIf { it.exists() }?.let { legacy ->
+            logDebug("EPG_DEBUG", "EPG_DELETE_LEGACY_XML ${legacy.absolutePath} (${legacy.length()} bytes)")
+            runCatching { legacy.delete() }
+        }
 
         val needDownload = forceDownload || !downloadFile.exists() || downloadFile.length() < 64L
         if (needDownload) {
@@ -5882,8 +5899,8 @@ class MainActivity : AppCompatActivity() {
                                 onDownload(p)
                                 if (p >= 100) onDownload(100)
                             }
-                        downloadFile.outputStream().buffered(64 * 1024).use { out ->
-                            progressCompressed.copyTo(out)
+                        downloadFile.outputStream().buffered(256 * 1024).use { out ->
+                            progressCompressed.copyTo(out, 256 * 1024)
                         }
                         if (compressedTotal <= 0L) onDownload(100)
                     }
@@ -5917,48 +5934,32 @@ class MainActivity : AppCompatActivity() {
             throw IOException("Ответ не похож на EPG XML/GZIP")
         }
 
-        // Always materialize XML under app filesDir so "Чтение" has a real local file + size.
-        val needUnpack = forceDownload || !xmlFile.exists() || xmlFile.length() < 64L ||
-            xmlFile.lastModified() < downloadFile.lastModified()
-        if (needUnpack) {
-            if (isGzip) {
-                onUnpack(0)
-                try {
-                    downloadFile.inputStream().buffered(64 * 1024).use { raw ->
-                        val progress = ProgressInputStream(raw, downloadFile.length()) { p -> onUnpack(p) }
-                        GZIPInputStream(progress).use { gzip ->
-                            val limited = SizeLimitedInputStream(gzip, MAX_EPG_UNPACKED_BYTES)
-                            xmlFile.outputStream().buffered(64 * 1024).use { out -> limited.copyTo(out) }
-                        }
-                    }
-                } catch (se: SecurityException) {
-                    throw IOException("Нет доступа при распаковке EPG (нужно разрешение на файлы)", se)
-                }
-                onUnpack(100)
-            } else {
-                downloadFile.copyTo(xmlFile, overwrite = true)
-                onUnpack(100)
-            }
-        } else {
-            onUnpack(100)
-            logDebug("EPG_DEBUG", "EPG_REUSE_XML ${xmlFile.absolutePath} (${xmlFile.length()} bytes)")
-        }
-
-        if (!xmlFile.exists() || xmlFile.length() < 1L) {
-            throw IOException("Распакованный EPG недоступен: ${xmlFile.absolutePath}")
-        }
-
         logDebug(
             "EPG_DEBUG",
-            "EPG_FILES download=${downloadFile.absolutePath} (${downloadFile.length()} bytes) " +
-                "xml=${xmlFile.absolutePath} (${xmlFile.length()} bytes) gzip=$isGzip"
+            "EPG_FILES download=${downloadFile.absolutePath} (${downloadFile.length()} bytes) gzip=$isGzip streamParse=true"
         )
 
+        onUnpack(if (isGzip) 0 else 100)
         onParse(0)
         try {
-            xmlFile.inputStream().buffered(64 * 1024).use { stream ->
-                val limited = SizeLimitedInputStream(stream, MAX_EPG_UNPACKED_BYTES)
-                parseEpgXml(limited, xmlFile.length().toInt().coerceAtLeast(1), onParse)
+            downloadFile.inputStream().buffered(256 * 1024).use { raw ->
+                if (isGzip) {
+                    val progress = ProgressInputStream(raw, downloadFile.length()) { p ->
+                        onUnpack(p)
+                        // Compressed-byte progress is the reliable meter on slow boxes.
+                        onParse(p.coerceIn(0, 99))
+                    }
+                    GZIPInputStream(progress, 64 * 1024).use { gzip ->
+                        val limited = SizeLimitedInputStream(gzip, MAX_EPG_UNPACKED_BYTES)
+                        parseEpgXml(limited, -1, onParse)
+                    }
+                    onUnpack(100)
+                } else {
+                    onUnpack(100)
+                    val progress = ProgressInputStream(raw, downloadFile.length(), onParse)
+                    val limited = SizeLimitedInputStream(progress, MAX_EPG_UNPACKED_BYTES)
+                    parseEpgXml(limited, downloadFile.length().toInt().coerceAtLeast(1), onParse)
+                }
             }
             onParse(100)
         } catch (oom: OutOfMemoryError) {
@@ -6118,6 +6119,7 @@ class MainActivity : AppCompatActivity() {
         val windowEnd = now + EPG_KEEP_FUTURE_DAYS * 24L * 60L * 60L * 1000L
 
         // Playlist keys we care about — huge XMLTVs (600MB+) must not be fully loaded.
+        onProgress(0)
         val playlistChannels = playlistChannelsForEpgFilter().ifEmpty {
             // Ensure we can filter against favorites before ingesting a huge XMLTV.
             val favUrl = resolveBuiltinPlaylistUrl()
@@ -6135,6 +6137,7 @@ class MainActivity : AppCompatActivity() {
             }
             playlistChannelsForEpgFilter()
         }
+        onProgress(1)
         val playlistKeySet = linkedSetOf<String>()
         playlistChannels.forEach { ch ->
             ch.tvgId?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { playlistKeySet += it }
@@ -6200,28 +6203,35 @@ class MainActivity : AppCompatActivity() {
                             val start = parseXmltvDate(rawStart)
                             val stop = parseXmltvDate(rawStop)
                             var title = ""
-                            // Skip heavy <desc> bodies for channels we will discard.
+                            // IMPORTANT: wantedXmlIds == null means "not resolved yet".
+                            // Empty wanted set must NOT treat every channel as wanted (that loaded every <desc>).
                             val maybeWanted = chId.isNotEmpty() && (
-                                wantedXmlIds.isNullOrEmpty() || chId in wantedXmlIds.orEmpty() ||
+                                wantedXmlIds == null ||
+                                    chId in wantedXmlIds.orEmpty() ||
                                     chId in playlistKeySet ||
                                     xmlChannelDisplayNames[chId].orEmpty().any { it in playlistKeySet }
                                 )
                             while (!(parser.next() == XmlPullParser.END_TAG && parser.name == "programme")) {
                                 if (parser.eventType != XmlPullParser.START_TAG) continue
                                 when (parser.name) {
-                                    "title" -> title = runCatching { parser.nextText() }.getOrDefault("")
-                                    "desc" -> {
+                                    "title" -> {
                                         if (maybeWanted) {
-                                            // Drop content without buffering huge descriptions.
-                                            runCatching { parser.nextText() }
+                                            title = runCatching { parser.nextText() }.getOrDefault("")
                                         } else {
-                                            runCatching { parser.nextText() }
+                                            skipXmlTag(parser)
                                         }
                                     }
+                                    // Never allocate huge <desc> strings on weak TV boxes (Tanix W2).
+                                    "desc" -> skipXmlTag(parser)
+                                    else -> skipXmlTag(parser)
                                 }
                             }
 
                             programmeTotal++
+                            if (programmeTotal % 400 == 0) {
+                                // Give the system a breath on slow Amlogic eMMC / single-core bursts.
+                                Thread.yield()
+                            }
                             if (chId.isNotBlank()) programmeChannelIdsSeen += chId
                             if (start == 0L || stop == 0L) programmeZeroDate++
                             if (loggedProgrammeSamples < 10) {
@@ -6302,9 +6312,23 @@ class MainActivity : AppCompatActivity() {
         return runCatching { M3uParser.parse(content) }.getOrDefault(emptyList())
     }
 
+    /** Skip current START_TAG and its children without allocating text (critical for huge <desc>). */
+    private fun skipXmlTag(parser: XmlPullParser) {
+        if (parser.eventType != XmlPullParser.START_TAG) return
+        var depth = 1
+        while (depth > 0) {
+            when (parser.next()) {
+                XmlPullParser.START_TAG -> depth++
+                XmlPullParser.END_TAG -> depth--
+                XmlPullParser.END_DOCUMENT -> return
+            }
+        }
+    }
+
     /**
      * Pick XMLTV channel ids that 1:1 match playlist channels (same priority as bind).
      * Empty playlist → empty wanted set (caller may keep nothing heavy).
+     * Uses hash indexes — O(n) instead of O(n×m) scans that freeze weak TV boxes.
      */
     private fun computeWantedXmlIds(
         xmlIds: Set<String>,
@@ -6312,46 +6336,44 @@ class MainActivity : AppCompatActivity() {
         playlistChannels: List<Channel>
     ): Set<String> {
         if (playlistChannels.isEmpty() || xmlIds.isEmpty()) return emptySet()
-        val boundPlaylistUrls = mutableSetOf<String>()
         val wanted = linkedSetOf<String>()
+        val boundPlaylistUrls = mutableSetOf<String>()
 
-        fun findUnbound(predicate: (Channel) -> Boolean): Channel? =
-            playlistChannels.firstOrNull { it.url !in boundPlaylistUrls && predicate(it) }
+        val byTvgId = HashMap<String, Channel>(playlistChannels.size)
+        val byTvgName = HashMap<String, Channel>(playlistChannels.size)
+        val byName = HashMap<String, Channel>(playlistChannels.size)
+        playlistChannels.forEach { ch ->
+            ch.tvgId?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { byTvgId.putIfAbsent(it, ch) }
+            ch.tvgName?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { byTvgName.putIfAbsent(it, ch) }
+            ch.name.lowercase().trim().takeIf { it.isNotEmpty() }?.let { byName.putIfAbsent(it, ch) }
+        }
 
-        fun take(xmlId: String, ch: Channel) {
-            if (xmlId in wanted || ch.url in boundPlaylistUrls) return
+        fun take(xmlId: String, ch: Channel?) {
+            if (ch == null || xmlId in wanted || ch.url in boundPlaylistUrls) return
             wanted += xmlId
             boundPlaylistUrls += ch.url
         }
 
+        xmlIds.forEach { xmlId -> take(xmlId, byTvgId[xmlId]) }
         xmlIds.forEach { xmlId ->
-            findUnbound { ch -> ch.tvgId?.lowercase()?.trim() == xmlId }?.let { take(xmlId, it) }
-        }
-        xmlIds.forEach { xmlId ->
-            if (xmlId in wanted) return@forEach
-            findUnbound { ch -> ch.tvgName?.lowercase()?.trim() == xmlId }?.let { take(xmlId, it) }
+            if (xmlId !in wanted) take(xmlId, byTvgName[xmlId])
         }
         xmlIds.forEach { xmlId ->
             if (xmlId in wanted) return@forEach
             val names = xmlDisplayNames[xmlId].orEmpty()
-            if (names.isEmpty()) return@forEach
-            findUnbound { ch ->
-                val tvgId = ch.tvgId?.lowercase()?.trim()
-                val tvgName = ch.tvgName?.lowercase()?.trim()
-                (tvgId != null && tvgId in names) || (tvgName != null && tvgName in names)
-            }?.let { take(xmlId, it) }
+            val match = names.firstNotNullOfOrNull { n -> byTvgId[n] ?: byTvgName[n] }
+            take(xmlId, match)
         }
         xmlIds.forEach { xmlId ->
             if (xmlId in wanted) return@forEach
             val names = xmlDisplayNames[xmlId].orEmpty() + xmlId
-            findUnbound { ch -> ch.name.lowercase().trim() in names }?.let { take(xmlId, it) }
+            val match = names.firstNotNullOfOrNull { n -> byName[n] }
+            take(xmlId, match)
         }
         // Always accept programme channel= attributes that equal playlist tvg-id / tvg-name / name.
-        playlistChannels.forEach { ch ->
-            ch.tvgId?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { wanted += it }
-            ch.tvgName?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { wanted += it }
-            ch.name.lowercase().trim().takeIf { it.isNotEmpty() }?.let { wanted += it }
-        }
+        byTvgId.keys.forEach { wanted += it }
+        byTvgName.keys.forEach { wanted += it }
+        byName.keys.forEach { wanted += it }
         return wanted
     }
 
@@ -7268,29 +7290,47 @@ class MainActivity : AppCompatActivity() {
 
     private fun epgCacheDir(): File = File(filesDir, "epg_cache").also { if (!it.exists()) it.mkdirs() }
 
-    /** Ask for Files access so TV Settings no longer says «приложение не запрашивало разрешения». */
+    /** Ask for Files access with an explicit dialog — Tanix/TV often ignores silent settings intents. */
     private fun ensureEpgStorageAccess(then: () -> Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                runCatching {
-                    startActivity(
-                        Intent(
-                            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                            Uri.parse("package:$packageName")
-                        )
-                    )
-                }.recoverCatching {
-                    startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-                }.onFailure {
-                    Log.w("EPG", "Cannot open file-access settings", it)
-                }
-                showAppToast(
-                    "Выдайте доступ к файлам для чтения EPG (нужно один раз в настройках)",
-                    4500L
-                )
+            if (Environment.isExternalStorageManager()) {
+                then()
+                return
             }
-            // App-private epg_cache works without the grant; local file:// URLs need it.
-            then()
+            AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
+                .setTitle("Доступ к файлам")
+                .setMessage(
+                    "На приставках (Tanix и др.) EPG по ссылке читается из памяти приложения и обычно " +
+                        "не требует доступа к файлам.\n\n" +
+                        "Если в настройках ТВ написано, что приложение не запрашивало разрешение — " +
+                        "нажмите «Открыть настройки», включите доступ ко всем файлам, вернитесь и " +
+                        "снова нажмите «Сохранить».\n\n" +
+                        "Можно продолжить без доступа: загрузка EPG по URL всё равно запустится."
+                )
+                .setPositiveButton("Открыть настройки") { _, _ ->
+                    pendingAfterStoragePermission = then
+                    runCatching {
+                        startActivity(
+                            Intent(
+                                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                Uri.parse("package:$packageName")
+                            )
+                        )
+                    }.recoverCatching {
+                        startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                    }.onFailure {
+                        Log.w("EPG", "Cannot open file-access settings", it)
+                        showAppToast(
+                            "Откройте Настройки → Приложения → O.Portal → Разрешения → Файлы",
+                            5000L
+                        )
+                        pendingAfterStoragePermission = null
+                        then()
+                    }
+                }
+                .setNegativeButton("Продолжить") { _, _ -> then() }
+                .setNeutralButton("Отмена", null)
+                .show()
             return
         }
         val read = Manifest.permission.READ_EXTERNAL_STORAGE
@@ -9141,6 +9181,16 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        // After returning from «All files access» settings on Android 11+.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            Environment.isExternalStorageManager() &&
+            pendingAfterStoragePermission != null
+        ) {
+            val pending = pendingAfterStoragePermission
+            pendingAfterStoragePermission = null
+            showAppToast("Доступ к файлам получен, продолжаем…", 2500L)
+            pending?.invoke()
+        }
         startEpgTicker()
         handler.post(timelineTickerRunnable)
         val packageInfo = packageManager.getPackageInfo(packageName, 0)
