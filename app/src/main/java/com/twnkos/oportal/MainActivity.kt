@@ -168,6 +168,8 @@ class MainActivity : AppCompatActivity() {
     private var stuckPositionSinceMs = 0L
     private var consecutiveForwardProgressTicks = 0
     private var bufferingSinceMs = 0L
+    /** True while channel-load spinner chrome is showing (programme line hidden). */
+    private var playerLoadingUiActive = false
     /** Ignore auto-recovery until this time — prevents reload loops after start/recover. */
     private var stallWatchdogGraceUntilMs = 0L
     private var playbackRecoveryActive = false
@@ -6956,6 +6958,7 @@ class MainActivity : AppCompatActivity() {
         }
         // На этапе спиннера: назад, LIVE/Архив, имя канала и время — без программы передач
         // (как при переключении канала номерами с пульта).
+        playerLoadingUiActive = true
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         topInfoPanel.visibility = View.VISIBLE
@@ -6986,6 +6989,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hidePlayerChromeFully() {
+        playerLoadingUiActive = false
         topInfoPanel.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
@@ -6997,11 +7001,17 @@ class MainActivity : AppCompatActivity() {
         val spinner = findViewById<View>(R.id.playerLoadingSpinner)
         stopCompositeSpinner(findViewById(R.id.playerLoadingSpinnerInner))
         spinner?.visibility = View.GONE
+        playerLoadingUiActive = false
+        // Restore programme line after loading (same as after remote number-zap).
+        if (::tvEpg.isInitialized && inputNumber.isEmpty()) {
+            tvEpg.visibility = View.VISIBLE
+            updateEpgDisplay()
+        }
         if (isHomeOrSettingsForeground()) {
             hidePlayerChromeFully()
             return
         }
-        // Loading chrome is back+time only; dismiss it fully when the stream is healthy again.
+        // Dismiss loading chrome when the stream is healthy again.
         // Full player UI is restored later via showUI() when the user opens controls.
         if (controlsPanel.visibility != View.VISIBLE) {
             topInfoPanel.visibility = View.GONE
@@ -7131,6 +7141,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateEpgDisplay() {
         if (inputNumber.isNotEmpty()) return
+        // While the channel-loading spinner is up, keep only the channel name (no programme).
+        if (playerLoadingUiActive) {
+            if (::tvEpg.isInitialized) tvEpg.visibility = View.GONE
+            return
+        }
+        if (::tvEpg.isInitialized && tvEpg.visibility != View.VISIBLE && inputNumber.isEmpty()) {
+            tvEpg.visibility = View.VISIBLE
+        }
         val suppressText = timelineUserSeeking || System.currentTimeMillis() < seekStatusHoldUntilMs
         if (isArchivePlayback) {
             val channel = channels.getOrNull(currentChannelIndex)
@@ -8530,7 +8548,7 @@ class MainActivity : AppCompatActivity() {
             handler.removeCallbacks(hideUiRunnable)
             return
         }
-        // До первого кадра — только назад и время.
+        // До первого кадра — только имя канала без программы.
         if (!firstFrameRendered) {
             showPlayerLoadingUi()
             return
@@ -8542,6 +8560,10 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
         findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
         findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
+        if (::tvEpg.isInitialized && inputNumber.isEmpty()) {
+            tvEpg.visibility = View.VISIBLE
+            updateEpgDisplay()
+        }
         findViewById<View>(R.id.btnBackToMenu).apply {
             visibility = View.VISIBLE
             isEnabled = true
@@ -8585,13 +8607,17 @@ class MainActivity : AppCompatActivity() {
         if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
             return
         }
-        // Во время загрузки канала оставляем назад + время.
+        // Во время загрузки канала оставляем назад + имя канала (без программы).
         if (!firstFrameRendered) {
             showPlayerLoadingUi()
             return
         }
+        playerLoadingUiActive = false
         findViewById<View>(R.id.playerLoadingSpinner)?.visibility = View.GONE
         stopCompositeSpinner(findViewById(R.id.playerLoadingSpinnerInner))
+        if (::tvEpg.isInitialized && inputNumber.isEmpty()) {
+            tvEpg.visibility = View.VISIBLE
+        }
         topInfoPanel.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
