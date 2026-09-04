@@ -36,6 +36,8 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.graphics.Paint
@@ -684,6 +686,13 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_EPG_SOURCE_MODE = "pref_epg_source_mode"
         private const val EPG_MODE_BUILTIN = "builtin"
         private const val EPG_MODE_CUSTOM = "custom"
+        private const val PREF_EPG_REFRESH_MODE = "pref_epg_refresh_mode"
+        private const val EPG_REFRESH_WEEKLY = "weekly"
+        private const val EPG_REFRESH_DAILY = "daily"
+        private const val EPG_REFRESH_CUSTOM = "custom"
+        private const val PREF_EPG_REFRESH_CUSTOM_AT = "pref_epg_refresh_custom_at"
+        private const val PREF_EPG_SOURCES_ADDED_AT = "pref_epg_sources_added_at"
+        private const val PREF_EPG_REFRESH_INTERVAL_DAYS = "pref_epg_refresh_interval_days"
         private const val PREF_LOGO_CACHE = "logo_cache"
         private const val PREF_PLAYLIST_CONTENT_CACHE = "playlist_content_cache"
         private const val PREF_START_LAST_CHANNEL = "pref_start_last_channel"
@@ -715,7 +724,6 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_APP_VERSION_CODE = "pref_app_version_code"
         private const val PREF_USE_GPU_DECODER = "pref_use_gpu_decoder"
         private const val PREF_EPG_SOURCES_FINGERPRINT = "pref_epg_sources_fingerprint"
-        private const val PREF_EPG_REFRESH_INTERVAL_DAYS = "pref_epg_refresh_interval_days"
         private const val PREF_USER_LOGIN = "pref_user_login"
         private const val PREF_KNOWN_SERVICE_NAMES = "pref_known_service_names"
         private val DEFAULT_SERVICE_NAMES = setOf("Wink", "iLook", "Сервис В", "Lime TV", "Only4")
@@ -933,6 +941,7 @@ class MainActivity : AppCompatActivity() {
         shouldOpenLastChannelOnStart = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
         startClockUpdater()
         startEpgTicker()
+        scheduleEpgRefreshAlarm()
         applyLockButtonVisibility()
         loadPlaylist(showErrors = true, autoPlay = true)
         if (!shouldOpenLastChannelOnStart) {
@@ -4003,14 +4012,23 @@ class MainActivity : AppCompatActivity() {
             findViewById(R.id.tvEpgUrlStatus2),
             findViewById(R.id.tvEpgUrlStatus3)
         )
-        val toggles = listOf<ImageView>(findViewById(R.id.ivEpgToggle1), findViewById(R.id.ivEpgToggle2), findViewById(R.id.ivEpgToggle3))
+        val toggles = listOf<View>(
+            findViewById(R.id.ivEpgToggle1),
+            findViewById(R.id.ivEpgToggle2),
+            findViewById(R.id.ivEpgToggle3)
+        )
+        val dots = listOf<View>(
+            findViewById(R.id.dotEpgActive1),
+            findViewById(R.id.dotEpgActive2),
+            findViewById(R.id.dotEpgActive3)
+        )
         val states = MutableList(3) { false }
         val tbInterval = findViewById<ToggleButton>(R.id.tbEpgRefreshInterval)
-        val intervals = listOf(1,3,5,7)
-        var intervalIndex = intervals.indexOf(prefs.getInt(PREF_EPG_REFRESH_INTERVAL_DAYS, 1)).takeIf { it >= 0 } ?: 0
-        var pendingApply: Runnable? = null
+        val tvRefreshHint = findViewById<TextView>(R.id.tvEpgRefreshHint)
+        val refreshModes = listOf(EPG_REFRESH_WEEKLY, EPG_REFRESH_DAILY, EPG_REFRESH_CUSTOM)
+        var refreshMode = prefs.getString(PREF_EPG_REFRESH_MODE, EPG_REFRESH_WEEKLY) ?: EPG_REFRESH_WEEKLY
+        if (refreshMode !in refreshModes) refreshMode = EPG_REFRESH_WEEKLY
 
-        val playlistOwnSources = resolveBuiltinPlaylistEpgSources()
         val customSources = getCustomEpgSources()
         val savedMode = prefs.getString(PREF_EPG_SOURCE_MODE, null)
         val modeCustom = when (savedMode) {
@@ -4031,9 +4049,11 @@ class MainActivity : AppCompatActivity() {
             }?.value.orEmpty()
         }
 
+        fun updateDot(i: Int) {
+            dots[i].visibility = if (states[i]) View.VISIBLE else View.GONE
+        }
+
         fun bindUrlStatuses(sources: List<String>) {
-            // Show per-form status only when this form's URL itself has a status
-            // (so switching Custom <-> Builtin keeps status only for shared URLs).
             urls.forEachIndexed { i, _ ->
                 val source = sources.getOrNull(i).orEmpty()
                 val status = statusForSource(source)
@@ -4049,20 +4069,25 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun fillUrlFields(sources: List<String>) {
+            val selectedNorm = selectedEpgSources.map { normalizeEpgUrl(it) }.toSet()
             urls.forEachIndexed { i, et ->
                 val value = sources.getOrNull(i).orEmpty()
                 et.setText(value)
-                states[i] = value.isNotBlank()
-                toggles[i].setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft)
+                states[i] = when {
+                    value.isBlank() -> false
+                    selectedNorm.isEmpty() -> true
+                    else -> normalizeEpgUrl(value) in selectedNorm
+                }
+                updateDot(i)
             }
             bindUrlStatuses(sources)
         }
 
         toggles.forEachIndexed { i, v ->
             v.setOnClickListener {
-                if (!v.isEnabled) return@setOnClickListener
+                if (urls[i].text.isNullOrBlank()) return@setOnClickListener
                 states[i] = !states[i]
-                v.setImageResource(if (states[i]) R.drawable.toggleright else R.drawable.toggleleft)
+                updateDot(i)
             }
         }
         urls.forEachIndexed { i, et ->
@@ -4072,7 +4097,10 @@ class MainActivity : AppCompatActivity() {
                 override fun afterTextChanged(s: android.text.Editable?) {
                     if (!s.isNullOrBlank() && !states[i]) {
                         states[i] = true
-                        toggles[i].setImageResource(R.drawable.toggleright)
+                        updateDot(i)
+                    } else if (s.isNullOrBlank()) {
+                        states[i] = false
+                        updateDot(i)
                     }
                 }
             })
@@ -4094,11 +4122,12 @@ class MainActivity : AppCompatActivity() {
                     et.setOnClickListener { /* consume click on locked field */ }
                 }
             }
+            // Source activation dots stay clickable in both modes.
             toggles.forEach { toggle ->
-                toggle.isEnabled = manual
-                toggle.alpha = if (manual) 1f else 0.5f
-                toggle.isFocusable = manual
-                toggle.isClickable = manual
+                toggle.isEnabled = true
+                toggle.alpha = 1f
+                toggle.isFocusable = true
+                toggle.isClickable = true
             }
             val builtin = resolveBuiltinPlaylistEpgSources()
             tvSourceHint.text = when {
@@ -4112,7 +4141,6 @@ class MainActivity : AppCompatActivity() {
 
         fun refreshBuiltinUrlFields() {
             showAppLoadingSpinner()
-            // Clear stale custom URLs while we load favorites x-tvg-url.
             fillUrlFields(emptyList())
             applyEpgSourceModeLock(manual = false)
             ensureBuiltinPlaylistEpgSourcesAsync(forceNetwork = true) { sources ->
@@ -4128,6 +4156,66 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+        }
+
+        fun updateRefreshModeUi() {
+            val label = when (refreshMode) {
+                EPG_REFRESH_DAILY -> "Каждый день"
+                EPG_REFRESH_CUSTOM -> {
+                    val at = prefs.getLong(PREF_EPG_REFRESH_CUSTOM_AT, 0L)
+                    if (at > 0L) {
+                        val fmt = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
+                        "Разово: ${fmt.format(Date(at))}"
+                    } else {
+                        "Дата и время"
+                    }
+                }
+                else -> "Каждую неделю"
+            }
+            tbInterval.textOn = label
+            tbInterval.textOff = label
+            tbInterval.text = label
+            tvRefreshHint.text = when (refreshMode) {
+                EPG_REFRESH_DAILY -> "Обновление каждый день в 03:00"
+                EPG_REFRESH_CUSTOM -> "Однократное обновление в выбранные дату и время"
+                else -> "По умолчанию: вторник в 03:00"
+            }
+        }
+
+        fun pickCustomRefreshDateTime() {
+            val cal = Calendar.getInstance()
+            val existing = prefs.getLong(PREF_EPG_REFRESH_CUSTOM_AT, 0L)
+            if (existing > System.currentTimeMillis()) cal.timeInMillis = existing
+            DatePickerDialog(
+                this,
+                { _, y, m, d ->
+                    cal.set(Calendar.YEAR, y)
+                    cal.set(Calendar.MONTH, m)
+                    cal.set(Calendar.DAY_OF_MONTH, d)
+                    TimePickerDialog(
+                        this,
+                        { _, hour, minute ->
+                            cal.set(Calendar.HOUR_OF_DAY, hour)
+                            cal.set(Calendar.MINUTE, minute)
+                            cal.set(Calendar.SECOND, 0)
+                            cal.set(Calendar.MILLISECOND, 0)
+                            prefs.edit()
+                                .putString(PREF_EPG_REFRESH_MODE, EPG_REFRESH_CUSTOM)
+                                .putLong(PREF_EPG_REFRESH_CUSTOM_AT, cal.timeInMillis)
+                                .apply()
+                            refreshMode = EPG_REFRESH_CUSTOM
+                            updateRefreshModeUi()
+                            scheduleEpgRefreshAlarm()
+                        },
+                        cal.get(Calendar.HOUR_OF_DAY),
+                        cal.get(Calendar.MINUTE),
+                        true
+                    ).show()
+                },
+                cal.get(Calendar.YEAR),
+                cal.get(Calendar.MONTH),
+                cal.get(Calendar.DAY_OF_MONTH)
+            ).show()
         }
 
         tbSourceMode.isChecked = modeCustom
@@ -4149,44 +4237,31 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        fun updateIntervalText() {
-            val d = intervals[intervalIndex]
-            tbInterval.textOn = when (d) {
-                1 -> "1 день"
-                3 -> "3 дня"
-                5 -> "5 дней"
-                else -> "7 дней"
-            }
-            tbInterval.textOff = tbInterval.textOn
-            tbInterval.text = tbInterval.textOn
-        }
-        fun scheduleIntervalSave() {
-            pendingApply?.let { handler.removeCallbacks(it) }
-            pendingApply = Runnable { prefs.edit().putInt(PREF_EPG_REFRESH_INTERVAL_DAYS, intervals[intervalIndex]).apply() }
-            handler.postDelayed(pendingApply!!, 7000L)
-        }
-        updateIntervalText()
+        updateRefreshModeUi()
         tbInterval.setOnClickListener {
-            intervalIndex = (intervalIndex + 1) % intervals.size
-            updateIntervalText()
-            scheduleIntervalSave()
+            val idx = refreshModes.indexOf(refreshMode).let { if (it < 0) 0 else it }
+            val next = refreshModes[(idx + 1) % refreshModes.size]
+            if (next == EPG_REFRESH_CUSTOM) {
+                pickCustomRefreshDateTime()
+            } else {
+                refreshMode = next
+                prefs.edit().putString(PREF_EPG_REFRESH_MODE, refreshMode).apply()
+                updateRefreshModeUi()
+                scheduleEpgRefreshAlarm()
+            }
         }
 
         findViewById<View>(R.id.btnSaveEpgSettings).setOnClickListener {
             val manual = tbSourceMode.isChecked
-            val links = if (manual) {
-                urls.mapIndexedNotNull { i, et ->
-                    et.text.toString().trim().takeIf { it.isNotBlank() && states[i] }
-                }.distinct()
-            } else {
-                resolveBuiltinPlaylistEpgSources()
-            }
+            val links = urls.mapIndexedNotNull { i, et ->
+                et.text.toString().trim().takeIf { it.isNotBlank() && states[i] }
+            }.distinct()
             if (links.isEmpty()) {
                 showAppToast(
                     if (manual) {
-                        "Нет выбранных источников EPG — укажите ссылку"
+                        "Нет выбранных источников EPG — включите точку у нужного URL"
                     } else {
-                        "В избранном плейлисте нет встроенных ссылок EPG (x-tvg-url)"
+                        "Выберите хотя бы один встроенный источник EPG (точка справа)"
                     },
                     3500L
                 )
@@ -4195,14 +4270,18 @@ class MainActivity : AppCompatActivity() {
 
             prefs.edit()
                 .putString(PREF_EPG_SOURCE_MODE, if (manual) EPG_MODE_CUSTOM else EPG_MODE_BUILTIN)
+                .putLong(PREF_EPG_SOURCES_ADDED_AT, System.currentTimeMillis())
                 .apply()
             if (manual) {
-                saveCustomEpgSources(links)
+                // Persist all filled custom URLs, but activate only toggled ones.
+                val allCustom = urls.map { it.text.toString().trim() }.filter { it.isNotBlank() }
+                saveCustomEpgSources(allCustom)
             } else {
                 clearCustomEpgSources()
             }
             selectedEpgSources = links.toMutableSet()
             saveSelectedEpgSources(selectedEpgSources)
+            scheduleEpgRefreshAlarm()
 
             val fingerprint = buildEpgSourceFingerprint(links)
             val sameSources = fingerprint.isNotBlank() && fingerprint == getEpgSourceFingerprint()
@@ -4214,7 +4293,7 @@ class MainActivity : AppCompatActivity() {
                     updateEpgLoadStatusUi()
                 }
                 sameSources && epgActive -> {
-                    showAppToast("EPG уже активен")
+                    showAppToast("EPG уже активен для выбранных источников")
                     links.forEach { src ->
                         if (epgSourceStatus[src].isNullOrBlank() ||
                             epgSourceStatus[src]?.contains("Ошибка", true) == true
@@ -4227,11 +4306,25 @@ class MainActivity : AppCompatActivity() {
                     updateEpgLoadStatusUi()
                 }
                 else -> {
+                    // Keep only the toggled sources in memory.
+                    clearEpgRuntimeData()
+                    val reuseLocal = links.all { hasLocalEpgDownload(it) }
                     val statusMap = links.mapIndexedNotNull { index, url ->
                         statusViews.getOrNull(index)?.let { url to it }
                     }.toMap()
-                    fetchEpgSources(links, statusMap, force = true)
-                    showAppToast("Настройки сохранены, обновление EPG запущено")
+                    fetchEpgSources(
+                        links,
+                        statusMap,
+                        force = true,
+                        forceDownload = !reuseLocal
+                    )
+                    showAppToast(
+                        if (reuseLocal) {
+                            "Читаем сохранённые файлы выбранных источников"
+                        } else {
+                            "Настройки сохранены, обновление EPG запущено"
+                        }
+                    )
                 }
             }
         }
@@ -5159,7 +5252,8 @@ class MainActivity : AppCompatActivity() {
     private fun fetchEpgSources(
         urls: List<String>,
         statusViews: Map<String, TextView> = emptyMap(),
-        force: Boolean = false
+        force: Boolean = false,
+        forceDownload: Boolean = true
     ) {
         if (urls.isEmpty()) return
         if (epgFetchInProgress && !force) return
@@ -5175,6 +5269,7 @@ class MainActivity : AppCompatActivity() {
         thread {
             fun humanReadableEpgError(t: Throwable): String {
                 return when {
+                    t is OutOfMemoryError -> "Файл EPG слишком большой для памяти устройства"
                     t is UnknownHostException -> "Нет доступа к сети или DNS недоступен"
                     t.message?.contains(
                         "Unable to resolve host",
@@ -5193,7 +5288,9 @@ class MainActivity : AppCompatActivity() {
                             t.message?.contains(
                                 "safe limit",
                                 ignoreCase = true
-                            ) == true -> "Файл EPG слишком большой"
+                            ) == true ||
+                            t.message?.contains("памяти", ignoreCase = true) == true ->
+                        "Файл EPG слишком большой"
 
                     else -> t.message?.take(120) ?: t.javaClass.simpleName
                 }
@@ -5218,10 +5315,23 @@ class MainActivity : AppCompatActivity() {
             urls.forEachIndexed { index, sourceUrl ->
                 if (fetchGen != epgFetchGeneration) return@forEachIndexed
                 val n = index + 1
-                applyEpgStatus(sourceUrl, "Загрузка $n/$totalSources (0%)")
+                val reuseLocal = !forceDownload && hasLocalEpgDownload(sourceUrl)
+                applyEpgStatus(
+                    sourceUrl,
+                    if (reuseLocal) "Чтение $n/$totalSources (0%)" else "Загрузка $n/$totalSources (0%)"
+                )
                 var parsed = false
                 var lastError = "Неизвестная ошибка"
-                val epgUrlVariants = buildEpgUrlCandidates(sourceUrl)
+                val epgUrlVariants = buildEpgUrlCandidates(sourceUrl).let { variants ->
+                    if (!forceDownload) {
+                        variants.sortedByDescending { candidate ->
+                            val f = epgDownloadFileForUrl(candidate)
+                            f.exists() && f.length() > 64L
+                        }
+                    } else {
+                        variants
+                    }
+                }
                 candidates = epgUrlVariants
 
                 for (candidateUrl in epgUrlVariants) {
@@ -5237,7 +5347,8 @@ class MainActivity : AppCompatActivity() {
                             },
                             onParse = { p ->
                                 applyEpgStatus(sourceUrl, "Чтение $n/$totalSources ($p%)")
-                            }
+                            },
+                            forceDownload = forceDownload
                         )
                         applyEpgStatus(sourceUrl, "Готово")
                         parsed = true
@@ -5246,18 +5357,19 @@ class MainActivity : AppCompatActivity() {
                         Log.w("EPG", redactSensitive("Ошибка обработки EPG кандидата: $candidateUrl"), t)
                         lastError = humanReadableEpgError(t)
                         when (t) {
-                            is OutOfMemoryError -> applyEpgStatus(
-                                sourceUrl,
-                                "Файл EPG слишком большой"
-                            )
-
+                            is OutOfMemoryError -> {
+                                applyEpgStatus(sourceUrl, "Ошибка чтения: файл слишком большой")
+                                System.gc()
+                                break
+                            }
                             is IOException -> if (t.message?.contains(
                                     "too large",
                                     ignoreCase = true
                                 ) == true ||
-                                t.message?.contains("safe limit", ignoreCase = true) == true
+                                t.message?.contains("safe limit", ignoreCase = true) == true ||
+                                t.message?.contains("памяти", ignoreCase = true) == true
                             ) {
-                                applyEpgStatus(sourceUrl, "Файл EPG слишком большой")
+                                applyEpgStatus(sourceUrl, "Ошибка чтения: файл слишком большой")
                             }
                         }
                     }
@@ -5287,9 +5399,35 @@ class MainActivity : AppCompatActivity() {
                 epgFetchInProgress = false
                 updateEpgLoadStatusUi()
                 refreshOpenOverlayPanelsAfterEpgUpdate()
+                scheduleEpgRefreshAlarm()
             }
         }
 
+    }
+
+    private fun epgDownloadFileForUrl(url: String): File {
+        val cacheKey = Integer.toHexString(url.trim().lowercase().hashCode())
+        return File(epgCacheDir(), "$cacheKey.download")
+    }
+
+    private fun hasLocalEpgDownload(sourceUrl: String): Boolean {
+        buildEpgUrlCandidates(sourceUrl).forEach { candidate ->
+            val f = epgDownloadFileForUrl(candidate)
+            if (f.exists() && f.length() > 64L) return true
+        }
+        // Also check the bare source URL hash (before candidate expansion).
+        val direct = epgDownloadFileForUrl(sourceUrl)
+        return direct.exists() && direct.length() > 64L
+    }
+
+    private fun deleteLocalEpgDownloads(sources: Collection<String>) {
+        sources.forEach { source ->
+            (buildEpgUrlCandidates(source) + source).forEach { candidate ->
+                runCatching { epgDownloadFileForUrl(candidate).delete() }
+                val key = Integer.toHexString(candidate.trim().lowercase().hashCode())
+                runCatching { File(epgCacheDir(), "$key.xml").delete() }
+            }
+        }
     }
 
     private fun ensureEpgLoadedLazy() {
@@ -5347,34 +5485,40 @@ class MainActivity : AppCompatActivity() {
         url: String,
         onDownload: (Int) -> Unit,
         onUnpack: (Int) -> Unit,
-        onParse: (Int) -> Unit
+        onParse: (Int) -> Unit,
+        forceDownload: Boolean = true
     ) {
         // On-device paths (app-private):
-        //   filesDir/epg_cache/<hash>.download  — raw HTTP body (gzip or xml)
-        //   filesDir/epg_cache/<hash>.xml       — unpacked XMLTV used for parse
+        //   filesDir/epg_cache/<hash>.download — raw HTTP body (gzip or xml)
+        // Parse streams from .download (GZIP→XML) without writing a second 600MB+ XML copy.
         val cacheKey = Integer.toHexString(url.trim().lowercase().hashCode())
         val dir = epgCacheDir()
         val downloadFile = File(dir, "$cacheKey.download")
-        val xmlFile = File(dir, "$cacheKey.xml")
 
-        val conn = openEpgHttpConnection(url)
-        try {
-            val compressedTotal = conn.contentLengthLong.coerceAtLeast(0L)
-            onDownload(0)
-            conn.inputStream.use { raw ->
-                val compressedLimited = SizeLimitedInputStream(raw, MAX_EPG_COMPRESSED_BYTES)
-                val progressCompressed =
-                    ProgressInputStream(compressedLimited, compressedTotal) { p ->
-                        onDownload(p)
-                        if (p >= 100) onDownload(100)
+        val needDownload = forceDownload || !downloadFile.exists() || downloadFile.length() < 64L
+        if (needDownload) {
+            val conn = openEpgHttpConnection(url)
+            try {
+                val compressedTotal = conn.contentLengthLong.coerceAtLeast(0L)
+                onDownload(0)
+                conn.inputStream.use { raw ->
+                    val compressedLimited = SizeLimitedInputStream(raw, MAX_EPG_COMPRESSED_BYTES)
+                    val progressCompressed =
+                        ProgressInputStream(compressedLimited, compressedTotal) { p ->
+                            onDownload(p)
+                            if (p >= 100) onDownload(100)
+                        }
+                    downloadFile.outputStream().buffered(64 * 1024).use { out ->
+                        progressCompressed.copyTo(out)
                     }
-                downloadFile.outputStream().buffered(64 * 1024).use { out ->
-                    progressCompressed.copyTo(out)
+                    if (compressedTotal <= 0L) onDownload(100)
                 }
-                if (compressedTotal <= 0L) onDownload(100)
+            } finally {
+                conn.disconnect()
             }
-        } finally {
-            conn.disconnect()
+        } else {
+            onDownload(100)
+            logDebug("EPG_DEBUG", "EPG_REUSE_DOWNLOAD ${downloadFile.absolutePath} (${downloadFile.length()} bytes)")
         }
 
         val header = ByteArray(2)
@@ -5390,30 +5534,36 @@ class MainActivity : AppCompatActivity() {
             throw IOException("Ответ не похож на EPG XML/GZIP")
         }
 
-        if (isGzip) {
-            onUnpack(0)
-            downloadFile.inputStream().buffered(64 * 1024).use { raw ->
-                val progress = ProgressInputStream(raw, downloadFile.length()) { p -> onUnpack(p) }
-                GZIPInputStream(progress).use { gzip ->
-                    val limited = SizeLimitedInputStream(gzip, MAX_EPG_UNPACKED_BYTES)
-                    xmlFile.outputStream().buffered(64 * 1024).use { out -> limited.copyTo(out) }
-                }
-            }
-            onUnpack(100)
-        } else {
-            downloadFile.copyTo(xmlFile, overwrite = true)
-            onUnpack(100)
-        }
-
         logDebug(
             "EPG_DEBUG",
-            "EPG_FILES download=${downloadFile.absolutePath} (${downloadFile.length()} bytes) " +
-                "xml=${xmlFile.absolutePath} (${xmlFile.length()} bytes) gzip=$isGzip"
+            "EPG_FILES download=${downloadFile.absolutePath} (${downloadFile.length()} bytes) gzip=$isGzip streamParse=true"
         )
 
-        xmlFile.inputStream().buffered(64 * 1024).use { stream ->
-            val limited = SizeLimitedInputStream(stream, MAX_EPG_UNPACKED_BYTES)
-            parseEpgXml(limited, xmlFile.length().toInt().coerceAtLeast(1), onParse)
+        try {
+            downloadFile.inputStream().buffered(64 * 1024).use { raw ->
+                if (isGzip) {
+                    onUnpack(0)
+                    val progress = ProgressInputStream(raw, downloadFile.length()) { p ->
+                        onUnpack(p)
+                        // Approximate parse progress from compressed read while streaming.
+                        onParse((p * 0.95).toInt().coerceIn(0, 95))
+                    }
+                    GZIPInputStream(progress).use { gzip ->
+                        val limited = SizeLimitedInputStream(gzip, MAX_EPG_UNPACKED_BYTES)
+                        parseEpgXml(limited, -1, onParse)
+                    }
+                    onUnpack(100)
+                } else {
+                    onUnpack(100)
+                    val progress = ProgressInputStream(raw, downloadFile.length(), onParse)
+                    val limited = SizeLimitedInputStream(progress, MAX_EPG_UNPACKED_BYTES)
+                    parseEpgXml(limited, downloadFile.length().toInt().coerceAtLeast(1), onParse)
+                }
+            }
+            onParse(100)
+        } catch (oom: OutOfMemoryError) {
+            System.gc()
+            throw IOException("Файл EPG слишком большой для памяти устройства", oom)
         }
     }
 
@@ -5517,12 +5667,61 @@ class MainActivity : AppCompatActivity() {
         var loggedChannelSamples = 0
         var loggedProgrammeSamples = 0
         var programmeTotal = 0
+        var programmeKept = 0
+        var programmeSkippedUnwanted = 0
+        var programmeSkippedWindow = 0
         var programmeSkippedEmptyChannel = 0
         var programmeZeroDate = 0
         val channelIdsSeen = LinkedHashSet<String>()
         val programmeChannelIdsSeen = LinkedHashSet<String>()
         val xmlChannelDisplayNames = HashMap<String, MutableSet<String>>()
         val xmlChannelIcons = HashMap<String, String>()
+
+        val now = System.currentTimeMillis()
+        val windowStart = now - EPG_KEEP_PAST_DAYS * 24L * 60L * 60L * 1000L
+        val windowEnd = now + EPG_KEEP_FUTURE_DAYS * 24L * 60L * 60L * 1000L
+
+        // Playlist keys we care about — huge XMLTVs (600MB+) must not be fully loaded.
+        val playlistChannels = playlistChannelsForEpgFilter().ifEmpty {
+            // Ensure we can filter against favorites before ingesting a huge XMLTV.
+            val favUrl = resolveBuiltinPlaylistUrl()
+            if (favUrl.isNotBlank()) {
+                runCatching {
+                    val body = URL(favUrl).readText()
+                    if (body.isNotBlank()) {
+                        saveCachedPlaylistContent(favUrl, body)
+                        if (lastLoadedPlaylistUrl.isBlank() || lastLoadedPlaylistUrl == favUrl) {
+                            currentPlaylistText = body
+                            lastLoadedPlaylistUrl = favUrl
+                        }
+                    }
+                }
+            }
+            playlistChannelsForEpgFilter()
+        }
+        val playlistKeySet = linkedSetOf<String>()
+        playlistChannels.forEach { ch ->
+            ch.tvgId?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { playlistKeySet += it }
+            ch.tvgName?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { playlistKeySet += it }
+            ch.name.lowercase().trim().takeIf { it.isNotEmpty() }?.let { playlistKeySet += it }
+        }
+        var wantedXmlIds: MutableSet<String>? = null
+        var wantedResolved = false
+
+        fun resolveWantedXmlIds() {
+            if (wantedResolved) return
+            wantedResolved = true
+            wantedXmlIds = computeWantedXmlIds(
+                xmlIds = channelIdsSeen.map { it.lowercase().trim() }.filter { it.isNotEmpty() }.toSet(),
+                xmlDisplayNames = xmlChannelDisplayNames,
+                playlistChannels = playlistChannels
+            ).toMutableSet()
+            logDebug(
+                "EPG_DEBUG",
+                "WANTED_XML_IDS count=${wantedXmlIds?.size ?: 0} playlistChannels=${playlistChannels.size} " +
+                    "sample=${wantedXmlIds?.take(8)}"
+            )
+        }
 
         ProgressInputStream(inputStream, totalBytes.toLong(), onProgress).use { stream ->
             val parser = Xml.newPullParser()
@@ -5557,6 +5756,7 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                         "programme" -> {
+                            resolveWantedXmlIds()
                             val rawChannel = parser.getAttributeValue(null, "channel") ?: ""
                             val rawStart = parser.getAttributeValue(null, "start")
                             val rawStop = parser.getAttributeValue(null, "stop")
@@ -5564,12 +5764,24 @@ class MainActivity : AppCompatActivity() {
                             val start = parseXmltvDate(rawStart)
                             val stop = parseXmltvDate(rawStop)
                             var title = ""
-                            var desc = ""
+                            // Skip heavy <desc> bodies for channels we will discard.
+                            val maybeWanted = chId.isNotEmpty() && (
+                                wantedXmlIds.isNullOrEmpty() || chId in wantedXmlIds.orEmpty() ||
+                                    chId in playlistKeySet ||
+                                    xmlChannelDisplayNames[chId].orEmpty().any { it in playlistKeySet }
+                                )
                             while (!(parser.next() == XmlPullParser.END_TAG && parser.name == "programme")) {
-                                if (parser.eventType == XmlPullParser.START_TAG && parser.name == "title") {
-                                    title = parser.nextText()
-                                } else if (parser.eventType == XmlPullParser.START_TAG && parser.name == "desc") {
-                                    desc = parser.nextText()
+                                if (parser.eventType != XmlPullParser.START_TAG) continue
+                                when (parser.name) {
+                                    "title" -> title = runCatching { parser.nextText() }.getOrDefault("")
+                                    "desc" -> {
+                                        if (maybeWanted) {
+                                            // Drop content without buffering huge descriptions.
+                                            runCatching { parser.nextText() }
+                                        } else {
+                                            runCatching { parser.nextText() }
+                                        }
+                                    }
                                 }
                             }
 
@@ -5586,20 +5798,21 @@ class MainActivity : AppCompatActivity() {
 
                             if (chId.isEmpty()) {
                                 programmeSkippedEmptyChannel++
+                            } else if (wantedXmlIds != null &&
+                                (wantedXmlIds!!.isEmpty() || chId !in wantedXmlIds!!)
+                            ) {
+                                // Empty wanted = playlist loaded but no XML match, or no playlist:
+                                // never keep the full XMLTV in RAM (causes OOM on ~600MB files).
+                                programmeSkippedUnwanted++
+                            } else if (stop < windowStart || start > windowEnd) {
+                                programmeSkippedWindow++
                             } else {
-                                // Always index by XML channel id and its display-names so matching
-                                // works even if the playlist was not loaded yet at parse time.
-                                val indexKeys = linkedSetOf(chId)
-                                xmlChannelDisplayNames[chId]?.let { indexKeys.addAll(it) }
-                                val trimmedDesc = desc.take(300)
-                                val program = Program(title, start, stop, trimmedDesc)
+                                val program = Program(title, start, stop, "")
                                 synchronized(epgDataLock) {
                                     val primary = epgData.getOrPut(chId) { mutableListOf() }
                                     if (primary.size < MAX_PROGRAMS_PER_CHANNEL) {
                                         primary.add(program)
-                                    }
-                                    indexKeys.forEach { key ->
-                                        if (key != chId) epgData[key] = primary
+                                        programmeKept++
                                     }
                                 }
                             }
@@ -5610,22 +5823,24 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        resolveWantedXmlIds()
         val xmlIds = (channelIdsSeen.map { it.lowercase().trim() } + programmeChannelIdsSeen).toSet()
-        lastEpgXmlIds = xmlIds
+        // Keep metadata for bound channels; drop unused display-name maps from heap later via bind.
+        lastEpgXmlIds = (wantedXmlIds?.toSet() ?: xmlIds)
         lastEpgXmlDisplayNames = xmlChannelDisplayNames.mapValues { it.value.toSet() }
         lastEpgXmlIcons = xmlChannelIcons.toMap()
 
-        // 1:1 bind playlist channels to XML channels and alias playlist keys + logos.
         bindEpgChannelsToPlaylist(
-            xmlIds = xmlIds,
+            xmlIds = lastEpgXmlIds,
             xmlDisplayNames = lastEpgXmlDisplayNames,
             xmlIcons = lastEpgXmlIcons
         )
 
         logDebug(
             "EPG_DEBUG",
-            "PARSE SUMMARY programmeTotal=$programmeTotal programmeZeroDate=$programmeZeroDate " +
-                "programmeSkippedEmptyChannel=$programmeSkippedEmptyChannel " +
+            "PARSE SUMMARY programmeTotal=$programmeTotal kept=$programmeKept " +
+                "skippedUnwanted=$programmeSkippedUnwanted skippedWindow=$programmeSkippedWindow " +
+                "programmeZeroDate=$programmeZeroDate programmeSkippedEmptyChannel=$programmeSkippedEmptyChannel " +
                 "distinctChannelIdsInXml=${channelIdsSeen.size} distinctProgrammeChannelIds=${programmeChannelIdsSeen.size}"
         )
         logDebug("EPG_DEBUG", "channelIdsSeen sample=${channelIdsSeen.take(10)}")
@@ -5633,9 +5848,75 @@ class MainActivity : AppCompatActivity() {
         logDebug(
             "EPG_DEBUG",
             "playlist channel keys sample (tvgId/tvgName/name)=${
-                channels.take(10).map { "id=${it.tvgId} name=${it.tvgName ?: it.name}" }
+                playlistChannels.take(10).map { "id=${it.tvgId} name=${it.tvgName ?: it.name}" }
             }"
         )
+    }
+
+    /** Channels used to filter a huge XMLTV down to the active playlist only. */
+    private fun playlistChannelsForEpgFilter(): List<Channel> {
+        val fromGroups = allChannelsForEpgBind()
+        if (fromGroups.isNotEmpty()) return fromGroups
+        val url = resolveBuiltinPlaylistUrl().ifBlank { resolveCurrentPlaylistUrl() }
+        val content = when {
+            lastLoadedPlaylistUrl == url && currentPlaylistText.isNotBlank() -> currentPlaylistText
+            else -> getCachedPlaylistContent(url).orEmpty().ifBlank { currentPlaylistText }
+        }
+        if (content.isBlank()) return emptyList()
+        return runCatching { M3uParser.parse(content) }.getOrDefault(emptyList())
+    }
+
+    /**
+     * Pick XMLTV channel ids that 1:1 match playlist channels (same priority as bind).
+     * Empty playlist → empty wanted set (caller may keep nothing heavy).
+     */
+    private fun computeWantedXmlIds(
+        xmlIds: Set<String>,
+        xmlDisplayNames: Map<String, Set<String>>,
+        playlistChannels: List<Channel>
+    ): Set<String> {
+        if (playlistChannels.isEmpty() || xmlIds.isEmpty()) return emptySet()
+        val boundPlaylistUrls = mutableSetOf<String>()
+        val wanted = linkedSetOf<String>()
+
+        fun findUnbound(predicate: (Channel) -> Boolean): Channel? =
+            playlistChannels.firstOrNull { it.url !in boundPlaylistUrls && predicate(it) }
+
+        fun take(xmlId: String, ch: Channel) {
+            if (xmlId in wanted || ch.url in boundPlaylistUrls) return
+            wanted += xmlId
+            boundPlaylistUrls += ch.url
+        }
+
+        xmlIds.forEach { xmlId ->
+            findUnbound { ch -> ch.tvgId?.lowercase()?.trim() == xmlId }?.let { take(xmlId, it) }
+        }
+        xmlIds.forEach { xmlId ->
+            if (xmlId in wanted) return@forEach
+            findUnbound { ch -> ch.tvgName?.lowercase()?.trim() == xmlId }?.let { take(xmlId, it) }
+        }
+        xmlIds.forEach { xmlId ->
+            if (xmlId in wanted) return@forEach
+            val names = xmlDisplayNames[xmlId].orEmpty()
+            if (names.isEmpty()) return@forEach
+            findUnbound { ch ->
+                val tvgId = ch.tvgId?.lowercase()?.trim()
+                val tvgName = ch.tvgName?.lowercase()?.trim()
+                (tvgId != null && tvgId in names) || (tvgName != null && tvgName in names)
+            }?.let { take(xmlId, it) }
+        }
+        xmlIds.forEach { xmlId ->
+            if (xmlId in wanted) return@forEach
+            val names = xmlDisplayNames[xmlId].orEmpty() + xmlId
+            findUnbound { ch -> ch.name.lowercase().trim() in names }?.let { take(xmlId, it) }
+        }
+        // Always accept programme channel= attributes that equal playlist tvg-id / tvg-name / name.
+        playlistChannels.forEach { ch ->
+            ch.tvgId?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { wanted += it }
+            ch.tvgName?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { wanted += it }
+            ch.name.lowercase().trim().takeIf { it.isNotEmpty() }?.let { wanted += it }
+        }
+        return wanted
     }
 
     /**
@@ -9142,15 +9423,95 @@ class MainActivity : AppCompatActivity() {
 
     private fun shouldDailyRefreshEpg(): Boolean {
         val last = prefs.getLong(PREF_EPG_LAST_REFRESH, 0L)
-        if (last == 0L) return true
-        val days = prefs.getInt(PREF_EPG_REFRESH_INTERVAL_DAYS, 1).coerceIn(1, 7)
-        return System.currentTimeMillis() - last >= days * 24L * 60L * 60L * 1000L
+        if (last == 0L) return selectedEpgSources.isNotEmpty()
+        val now = System.currentTimeMillis()
+        return now >= computeNextEpgRefreshAt(fromMillis = last)
     }
 
-
     private fun shouldRefreshEpgNow(): Boolean {
+        if (selectedEpgSources.isEmpty()) return false
         if (shouldDailyRefreshEpg()) return true
         return getEpgSourceFingerprint() != buildEpgSourceFingerprint(selectedEpgSources.toList())
+    }
+
+    private fun getEpgRefreshMode(): String {
+        val mode = prefs.getString(PREF_EPG_REFRESH_MODE, EPG_REFRESH_WEEKLY) ?: EPG_REFRESH_WEEKLY
+        return mode.takeIf {
+            it == EPG_REFRESH_WEEKLY || it == EPG_REFRESH_DAILY || it == EPG_REFRESH_CUSTOM
+        } ?: EPG_REFRESH_WEEKLY
+    }
+
+    /** Next refresh instant. Default weekly = Tuesday 03:00. */
+    private fun computeNextEpgRefreshAt(fromMillis: Long = System.currentTimeMillis()): Long {
+        return when (getEpgRefreshMode()) {
+            EPG_REFRESH_DAILY -> nextDayAtThree(fromMillis)
+            EPG_REFRESH_CUSTOM -> {
+                val at = prefs.getLong(PREF_EPG_REFRESH_CUSTOM_AT, 0L)
+                if (at > fromMillis) at else Long.MAX_VALUE
+            }
+            else -> nextWeekdayAtThree(fromMillis, Calendar.TUESDAY)
+        }
+    }
+
+    private fun nextWeekdayAtThree(fromMillis: Long, weekday: Int): Long {
+        val cal = Calendar.getInstance().apply { timeInMillis = fromMillis }
+        cal.set(Calendar.HOUR_OF_DAY, 3)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        while (cal.get(Calendar.DAY_OF_WEEK) != weekday || cal.timeInMillis <= fromMillis) {
+            cal.add(Calendar.DAY_OF_YEAR, 1)
+            cal.set(Calendar.HOUR_OF_DAY, 3)
+            cal.set(Calendar.MINUTE, 0)
+            cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
+        }
+        return cal.timeInMillis
+    }
+
+    private val epgRefreshRunnable = Runnable { runScheduledEpgRefresh() }
+
+    private fun scheduleEpgRefreshAlarm() {
+        handler.removeCallbacks(epgRefreshRunnable)
+        if (selectedEpgSources.isEmpty()) {
+            selectedEpgSources = getSelectedEpgSources()
+        }
+        if (selectedEpgSources.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val next = computeNextEpgRefreshAt(now)
+        if (next == Long.MAX_VALUE || next <= 0L) return
+        val delay = (next - now).coerceAtLeast(5_000L).coerceAtMost(24L * 60L * 60L * 1000L)
+        logDebug("EPG_DEBUG", "EPG_REFRESH_SCHEDULED in ${delay}ms mode=${getEpgRefreshMode()} next=$next")
+        handler.postDelayed(epgRefreshRunnable, delay)
+        if (delay >= 24L * 60L * 60L * 1000L) {
+            handler.postDelayed({ scheduleEpgRefreshAlarm() }, 6L * 60L * 60L * 1000L)
+        }
+    }
+
+    private fun runScheduledEpgRefresh() {
+        val sources = selectedEpgSources.ifEmpty { getSelectedEpgSources() }.toList()
+        if (sources.isEmpty()) {
+            scheduleEpgRefreshAlarm()
+            return
+        }
+        if (epgFetchInProgress) {
+            handler.postDelayed(epgRefreshRunnable, 60_000L)
+            return
+        }
+        val last = prefs.getLong(PREF_EPG_LAST_REFRESH, 0L)
+        val due = System.currentTimeMillis() >= computeNextEpgRefreshAt(if (last > 0L) last else 0L)
+        if (!due && getEpgRefreshMode() != EPG_REFRESH_CUSTOM) {
+            scheduleEpgRefreshAlarm()
+            return
+        }
+        logDebug("EPG_DEBUG", "EPG_REFRESH_FIRE sources=$sources")
+        sources.forEach { src -> epgSourceStatus[src] = "Обновление по расписанию…" }
+        saveEpgStatusCache()
+        updateEpgLoadStatusUi()
+        deleteLocalEpgDownloads(sources)
+        clearEpgRuntimeData()
+        selectedEpgSources = sources.toMutableSet()
+        fetchEpgSources(sources, force = true, forceDownload = true)
     }
 
     private fun buildEpgSourceFingerprint(sources: List<String>): String =
