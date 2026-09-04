@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <solid android:color="#9E0C1018" />
-    <stroke android:width="0.5dp" android:color="#FFFFFFFF" />
+    <!-- Same subtle stroke as playlist/settings cards (#1AFFFFFF), not a hard white outline. -->
+    <stroke android:width="0.5dp" android:color="#1AFFFFFF" />
     <corners android:radius="10dp" />
 </shape>
