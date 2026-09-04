@@ -6954,13 +6954,24 @@ class MainActivity : AppCompatActivity() {
             hidePlayerLoadingUi()
             return
         }
-        // На этапе спиннера оставляем назад, LIVE/Архив, имя канала и время.
+        // На этапе спиннера: назад, LIVE/Архив, имя канала и время — без программы передач
+        // (как при переключении канала номерами с пульта).
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         topInfoPanel.visibility = View.VISIBLE
         findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
         findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
         findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
+        if (::tvChannelName.isInitialized) {
+            val ch = channels.getOrNull(currentChannelIndex)
+            if (ch != null) {
+                tvChannelName.text = "${currentChannelIndex + 1}. ${ch.name}"
+            }
+            tvChannelName.visibility = View.VISIBLE
+        }
+        if (::tvEpg.isInitialized) {
+            tvEpg.visibility = View.GONE
+        }
         findViewById<View>(R.id.btnBackToMenu)?.apply {
             visibility = View.VISIBLE
             isEnabled = true
