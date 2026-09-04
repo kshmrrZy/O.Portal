@@ -1979,13 +1979,18 @@ class MainActivity : AppCompatActivity() {
         setupHomeBottomActionTiles(contentScale, HOME_BOTTOM_TILE_TEXT_SP)
     }
 
-    private fun bindHomeTiles(items: List<HomeTileItem>, source: String = "generic", titleSizeSp: Float = 18f) {
+    private fun bindHomeTiles(
+        items: List<HomeTileItem>,
+        source: String = "generic",
+        titleSizeSp: Float = 18f,
+        requestTileFocus: Boolean = true
+    ) {
         currentHomeTilesItems = items
         applyHomeGridContainerGeometry(source)
         if (rvHomeTiles.width <= 0) {
             rvHomeTiles.post {
                 if (currentHomeTilesItems === items || currentHomeTilesItems == items) {
-                    bindHomeTiles(currentHomeTilesItems, source, titleSizeSp)
+                    bindHomeTiles(currentHomeTilesItems, source, titleSizeSp, requestTileFocus)
                 }
             }
             return
@@ -2038,7 +2043,11 @@ class MainActivity : AppCompatActivity() {
             )
             logHomeGridRealCoords(source, tileWidth, columns)
             applyHomeBottomTilesGeometry()
-            if (!rvHomeTiles.hasFocus()) {
+            // Do not steal focus from the search field while the user is filtering tiles.
+            if (requestTileFocus &&
+                !rvHomeTiles.hasFocus() &&
+                !(::etHomeListSearch.isInitialized && etHomeListSearch.hasFocus())
+            ) {
                 first?.requestFocus()
             }
         }
@@ -2250,7 +2259,7 @@ class MainActivity : AppCompatActivity() {
                             categoryOpenInProgress = false
                         }, remaining)
                     }
-                }, source = "categories")
+                }, source = "categories", requestTileFocus = fromUserSubmit && q.isBlank())
             }
             HomeSearchMode.CHANNELS -> {
                 val q = query.trim()
