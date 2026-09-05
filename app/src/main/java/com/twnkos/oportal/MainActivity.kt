@@ -618,12 +618,20 @@ class MainActivity : AppCompatActivity() {
                 liveTimelineFrozenForStallMs = getLiveTimelinePositionMs()
             }
         }
-        showPlayerLoadingUi()
+        showPlayerLoadingUi(keepControlsVisible = true)
     }
 
     private fun clearStallSpinnerTimer() {
+        // When stall ends, continue the left clock from the frozen moment (not wall-clock jump).
+        val frozen = liveTimelineFrozenForStallMs
         stallSpinnerShownAtMs = 0L
         liveTimelineFrozenForStallMs = 0L
+        if (frozen > 0L && !isArchivePlayback) {
+            liveTimelinePausedContentMs = frozen
+            liveTimelinePlayerPosAtPauseMs = mediaPlayer?.currentPosition ?: 0L
+            liveTimelineFollowFromPause = true
+            liveTimelineAnchorMs = frozen
+        }
     }
 
     private fun stallSpinnerVisibleLongEnough(now: Long = System.currentTimeMillis()): Boolean {
@@ -701,9 +709,13 @@ class MainActivity : AppCompatActivity() {
         val attempt = playbackRecoveryAttemptCount
         val title = "Обновление трансляции"
         val subtitle = "Попытка $attempt из $PLAYBACK_RECOVERY_MAX_ATTEMPTS"
-        showReloadingStatus(title, subtitle)
-        forceFreshPlayerSession = true
-        playChannel(forcePlay = true, reason = PlayerOpenReason.RECOVERY)
+        try {
+            showReloadingStatus(title, subtitle)
+            forceFreshPlayerSession = true
+            playChannel(forcePlay = true, reason = PlayerOpenReason.RECOVERY)
+        } catch (t: Throwable) {
+            logDebug("PLAYER_STATE", "recovery step failed offline/error: ${t.message}", t)
+        }
         schedulePlaybackRecoveryRetry(immediate = false)
     }
 
@@ -1140,11 +1152,11 @@ class MainActivity : AppCompatActivity() {
         hideAppLoadingSpinner()
         startCompositeSpinner(findViewById(R.id.launchSplashSpinner))
         launchSplashShownAtElapsedMs = android.os.SystemClock.elapsedRealtime()
-        // Drop the system SplashScreen ASAP so the in-app logo+spinner overlay is visible
-        // during load (system splash is solid bg without the wordmark).
-        keepLaunchSplashOnScreen = false
+        // System splash now also shows the O.Portal wordmark. Keep it until the in-app
+        // overlay (logo + bottom spinner) has been laid out, then hand off seamlessly.
         // Wordmark width ≈ 35% of screen width (height-based sizing made it huge).
         splash.post {
+            keepLaunchSplashOnScreen = false
             if (splash.width <= 0 || splash.height <= 0) return@post
             val targetWidth = (splash.width * 0.35f).coerceAtLeast(1f)
             var textPx = splash.height * 0.12f
@@ -1209,6 +1221,16 @@ private fun showDefaultStartupScreen() {
         val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
         val hasEnabledThirdParty = hasEnabledThirdPartyPlaylists()
         if (isAuthorizedUser || hasEnabledThirdParty) showPlaylistPageOnHome(source = "cold_start") else showStartPage()
+    }
+
+
+    /** After playlist failure: services page only if user can actually use it. */
+    private fun showHomeAfterPlaylistFailure() {
+        if (isAuthorizedUser() || hasEnabledThirdPartyPlaylists()) {
+            showPlaylistPageOnHome()
+        } else {
+            showStartPage()
+        }
     }
 
     private fun hasEnabledThirdPartyPlaylists(): Boolean =
@@ -4485,7 +4507,7 @@ private fun showDefaultStartupScreen() {
 
         val customSources = getCustomEpgSources()
         val savedMode = prefs.getString(PREF_EPG_SOURCE_MODE, null)
-        val modeCustom = when (savedMode) {
+        var modeCustom = when (savedMode) {
             EPG_MODE_CUSTOM -> true
             EPG_MODE_BUILTIN -> false
             else -> customSources.isNotEmpty()
@@ -4721,7 +4743,16 @@ private fun showDefaultStartupScreen() {
             ).show()
         }
 
-        tbSourceMode.isChecked = modeCustom
+        // Unauthorized users only get "Свои источники" — no Built-in toggle.
+        if (!isAuthorizedUser()) {
+            modeCustom = true
+            tbSourceMode.isChecked = true
+            tbSourceMode.visibility = View.GONE
+            prefs.edit().putString(PREF_EPG_SOURCE_MODE, EPG_MODE_CUSTOM).apply()
+        } else {
+            tbSourceMode.visibility = View.VISIBLE
+            tbSourceMode.isChecked = modeCustom
+        }
         applyEpgSourceModeLock(modeCustom)
         if (modeCustom) {
             fillUrlFields(customSources.take(3))
@@ -5689,7 +5720,7 @@ private fun showDefaultStartupScreen() {
                         tvEpg.text = "Откройте настройки и задайте токен или плейлист"
                         if (showErrors) {
                             showAppToast("Плейлист не задан", 3000L)
-                            showPlaylistPageOnHome()
+                            showHomeAfterPlaylistFailure()
                         }
                         showUI()
                     }
@@ -5777,7 +5808,7 @@ private fun showDefaultStartupScreen() {
                     if (channels.isEmpty()) {
                         tvEpg.text = "Каналы не найдены в плейлисте"
                         showAppToast("В плейлисте нет каналов", 3500L)
-                        showPlaylistPageOnHome()
+                        showHomeAfterPlaylistFailure()
                     } else if (shouldOpenLastChannelOnStart && autoPlay) {
                         if (!restoreLastChannelAndPlay()) {
                             logDebug("NAV", "startup_last_channel_not_found")
@@ -5820,7 +5851,7 @@ private fun showDefaultStartupScreen() {
                         lastLoadedPlaylistUrl = playlistUrl
                         if (channels.isEmpty()) {
                             if (showErrors) showAppToast("В плейлисте нет каналов", 3500L)
-                            showPlaylistPageOnHome()
+                            showHomeAfterPlaylistFailure()
                         } else if (!autoPlay) {
                             selectedPlaylistDisplayName = getSelectedPlaylistName()
                             if (!isSettingsModalVisible) {
@@ -5836,7 +5867,7 @@ private fun showDefaultStartupScreen() {
                         hideAppLoadingSpinner()
                         if (showErrors) {
                             showAppToast("Сервис временно недоступен", 3500L)
-                            showPlaylistPageOnHome()
+                            showHomeAfterPlaylistFailure()
                             AlertDialog.Builder(this)
                                 .setTitle("Сервис недоступен")
                                 .setMessage("Не удалось загрузить плейлист. Проверьте токен, ссылку или доступность сервиса.")
@@ -7496,6 +7527,7 @@ private fun showDefaultStartupScreen() {
     private var seekSpinnerStartedAtMs = 0L
 
     private fun showReloadingStatus(title: String, subtitle: String, isError: Boolean = false) {
+        if (isFinishing || isDestroyed) return
         if (!isError) {
             hideSeekSpinnerRunnable?.let { handler.removeCallbacks(it) }
             hideSeekSpinnerRunnable = null
@@ -7534,10 +7566,15 @@ private fun showDefaultStartupScreen() {
         tvReloadingStatus.visibility = View.VISIBLE
         tvReloadingStatus.bringToFront()
         tvReloadingStatus.parent?.let { (it as? View)?.requestLayout() }
-        // Alerts must not show player timeline / controls underneath.
-        // Use chrome hide only — hideUI() can revive the loading top bar when first frame is missing.
+        // Keep top/bottom player chrome; only suppress the stacked center loading spinner.
         hidePlayerLoadingUi()
-        hidePlayerChromeFully()
+        if (homePanel.visibility != View.VISIBLE &&
+            !(::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) &&
+            !(::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE)
+        ) {
+            if (topInfoPanel.visibility != View.VISIBLE) topInfoPanel.visibility = View.VISIBLE
+            if (controlsPanel.visibility != View.VISIBLE) controlsPanel.visibility = View.VISIBLE
+        }
     }
 
     private fun stopReloadingPlateSpinner() {
@@ -7681,7 +7718,7 @@ private fun showDefaultStartupScreen() {
         showSeekSpinner()
     }
 
-    private fun showPlayerLoadingUi() {
+    private fun showPlayerLoadingUi(keepControlsVisible: Boolean = false) {
         if (homePanel.visibility == View.VISIBLE || isSettingsModalVisible) {
             hidePlayerChromeFully()
             return
@@ -7693,14 +7730,21 @@ private fun showDefaultStartupScreen() {
         }
         if (tvReloadingStatus.visibility == View.VISIBLE) {
             // Status plate already on screen — do not stack a center spinner under it.
-            hidePlayerLoadingUi()
+            if (keepControlsVisible) {
+                playerLoadingUiActive = true
+                if (topInfoPanel.visibility != View.VISIBLE) topInfoPanel.visibility = View.VISIBLE
+                if (controlsPanel.visibility != View.VISIBLE) controlsPanel.visibility = View.VISIBLE
+            } else {
+                hidePlayerLoadingUi()
+            }
             return
         }
         // На этапе спиннера: назад, LIVE/Архив, имя канала и время — без программы передач
         // (как при переключении канала номерами с пульта).
+        // Stall path may keep bottom controls so the frozen left timestamp stays visible.
         playerLoadingUiActive = true
         topGradientOverlay.visibility = View.GONE
-        controlsPanel.visibility = View.GONE
+        controlsPanel.visibility = if (keepControlsVisible) View.VISIBLE else View.GONE
         topInfoPanel.visibility = View.VISIBLE
         findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
         findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
@@ -8717,12 +8761,9 @@ private fun showDefaultStartupScreen() {
                         hideSeekSpinnerIfReady(0L)
                         hidePlayerLoadingUi()
                         if (homePanel.visibility != View.VISIBLE && !isPlayerOverlayOpen()) {
-                            if (suppressAutoPlayerUiOnce) {
-                                suppressAutoPlayerUiOnce = false
-                                hideUI()
-                            } else {
-                                showUI()
-                            }
+                            // After tune-in, dismiss chrome — user opens it explicitly.
+                            suppressAutoPlayerUiOnce = false
+                            hideUI()
                         }
                         layoutPlayerSubtitlesOverlay()
                         logDebug("PLAYER_STATE", "onRenderedFirstFrame videoOnlyMode=$videoOnlyMinimalMode url=$lastRequestedPlaybackUrl")
@@ -8819,6 +8860,7 @@ private fun showDefaultStartupScreen() {
                             logDebug("PLAYER_LIFECYCLE", "PLAYER_ERROR_SOURCE marked_renderer_tainted=true errorCode=${error.errorCode} codeName=${error.errorCodeName}")
                         }
                         handler.post {
+                            if (isFinishing || isDestroyed) return@post
                             handler.removeCallbacks(startupSlowStreamRunnable)
                             handler.removeCallbacks(playbackFreezeWatchdogRunnable)
                             videoOnlyMinimalMode = false
@@ -9377,8 +9419,14 @@ private fun showDefaultStartupScreen() {
             handler.removeCallbacks(hideUiRunnable)
             return
         }
-        // Пока открыт EPG — панель управления и верхний бар не показываем.
+        // Пока открыт EPG / список каналов — верх/низ плеера не показываем
+        // (в т.ч. после сворачивания и возврата на EPG).
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
+            hidePlayerChromeFully()
+            handler.removeCallbacks(hideUiRunnable)
+            return
+        }
+        if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
             hidePlayerChromeFully()
             handler.removeCallbacks(hideUiRunnable)
             return
@@ -9842,6 +9890,7 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun updateTimelineUi() {
+        if (!::tvCurrentTime.isInitialized || !::controlsPanel.isInitialized) return
         val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val p =
             if (isArchivePlayback) currentArchiveProgram else channels.getOrNull(currentChannelIndex)
