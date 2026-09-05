@@ -387,6 +387,8 @@ class MainActivity : AppCompatActivity() {
     private var videoOnlyMinimalTriedSoftwareDecoder = false
     private var videoOnlyMinimalNoFrameRunnable: Runnable? = null
     private val enableTsForensicDump = false
+    /** Extra parallel manifest GET on every tune — keep off; it competes with ExoPlayer startup. */
+    private val enableHlsManifestPreviewLog = false
     private val startupSlowStreamRunnable: Runnable = Runnable {
         if (!firstFrameRendered) {
             showCenterError("Поток долго загружается", 3000L)
@@ -1061,8 +1063,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // SW posters live in drawable-sw*-nodpi/oportal_bg.png (nodpi avoids density upscale/OOM → black).
-        window.setBackgroundDrawableResource(R.drawable.oportal_bg)
+        // Match in-app home look; never use oportal_bg posters (they also bled into the player).
+        window.setBackgroundDrawableResource(R.drawable.bg_home_screen)
         try {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         } catch (_: Exception) {
@@ -1070,14 +1072,7 @@ class MainActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemUI()
         setContentView(R.layout.activity_main)
-        // Keep poster on top until home/player is ready (PlayerView shutter was painting black).
-        findViewById<ImageView>(R.id.launchSplashImage)?.let { splash ->
-            splash.setImageResource(R.drawable.oportal_bg)
-            splash.setBackgroundResource(R.drawable.oportal_bg)
-            splash.scaleType = ImageView.ScaleType.CENTER_CROP
-            splash.visibility = View.VISIBLE
-            splash.bringToFront()
-        }
+        setupLaunchSplashOverlay()
 
         ensureDefaultPlaylistProfile()
         initViews()
@@ -1095,12 +1090,31 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupLaunchSplashOverlay() {
+        val splash = findViewById<View>(R.id.launchSplashOverlay) ?: return
+        val logo = findViewById<ImageView>(R.id.launchSplashLogo)
+        splash.visibility = View.VISIBLE
+        splash.alpha = 1f
+        splash.bringToFront()
+        startCompositeSpinner(findViewById(R.id.launchSplashSpinner))
+        // Logo = 25% of the shorter screen side.
+        splash.post {
+            val side = (minOf(splash.width, splash.height) * 0.25f).toInt().coerceAtLeast(1)
+            logo?.layoutParams = logo.layoutParams?.apply {
+                width = side
+                height = side
+            }
+            logo?.requestLayout()
+        }
+    }
+
     private fun dismissLaunchSplash() {
-        val splash = findViewById<View?>(R.id.launchSplashImage) ?: return
+        val splash = findViewById<View?>(R.id.launchSplashOverlay) ?: return
         if (splash.visibility != View.VISIBLE) return
-        // Wait one frame so home/player content is drawn before the poster fades out.
+        // Wait one frame so home/player content is drawn before the splash fades out.
         splash.post {
             if (splash.visibility != View.VISIBLE) return@post
+            stopCompositeSpinner(findViewById(R.id.launchSplashSpinner))
             splash.animate().cancel()
             splash.animate()
                 .alpha(0f)
@@ -7130,7 +7144,18 @@ class MainActivity : AppCompatActivity() {
                         masterBase != channelBase
                 if (needFetch) {
                     qualityFetchToken++ // cancel in-flight probe for previous channel
-                    fetchStreamQualityInfo(ch.url)
+                    val token = qualityFetchToken
+                    val url = ch.url
+                    // Defer CC/HD probe so it does not compete with HLS startup bandwidth.
+                    handler.postDelayed({
+                        if (token != qualityFetchToken) return@postDelayed
+                        if (currentChannelIndex != channels.indexOf(ch) &&
+                            channels.getOrNull(currentChannelIndex)?.url != url
+                        ) {
+                            return@postDelayed
+                        }
+                        fetchStreamQualityInfo(url)
+                    }, 2_000L)
                 } else {
                     updateCcHdButtons()
                 }
@@ -7138,7 +7163,9 @@ class MainActivity : AppCompatActivity() {
             startupPlaybackUrlLock = lastRequestedPlaybackUrl
             videoOnlyMinimalNoFrameRunnable?.let { handler.removeCallbacks(it) }
             videoOnlyMinimalNoFrameRunnable = null
-            logHlsManifestPreview(lastRequestedPlaybackUrl)
+            if (enableHlsManifestPreviewLog) {
+                logHlsManifestPreview(lastRequestedPlaybackUrl)
+            }
             dumpDebugTsSegments(lastRequestedPlaybackUrl, "problem")
             firstFrameRendered = false
             playbackStartedAtMs = System.currentTimeMillis()
@@ -8429,10 +8456,11 @@ class MainActivity : AppCompatActivity() {
         val loadControl = DefaultLoadControl.Builder()
             .setAllocator(allocator)
             .setBufferDurationsMs(
-                6_000,
-                20_000,
-                1_200,
-                2_500
+                // Slightly leaner startup buffers — first frame sooner on weak TV boxes.
+                3_500,
+                18_000,
+                750,
+                1_500
             )
             .setTargetBufferBytes(C.LENGTH_UNSET)
             .setBackBuffer(0, false)
@@ -8807,7 +8835,8 @@ class MainActivity : AppCompatActivity() {
             if (effectiveAllowNonIdr) DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES else 0
         logDebug("PLAYER_HLS", "hlsPayloadReaderFlags=$hlsPayloadReaderFlags allowNonIdr=$effectiveAllowNonIdr requestedAllowNonIdr=$allowNonIdr")
         return HlsMediaSource.Factory(httpFactory)
-            .setAllowChunklessPreparation(false)
+            // Chunkless prep starts from the multivariant playlist without waiting on a media segment.
+            .setAllowChunklessPreparation(true)
             .setExtractorFactory(DefaultHlsExtractorFactory(hlsPayloadReaderFlags, true))
             .createMediaSource(buildMediaItem(url))
     }

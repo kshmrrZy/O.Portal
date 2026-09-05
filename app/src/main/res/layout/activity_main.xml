@@ -4,14 +4,14 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/oportal_bg">
+    android:background="@android:color/black">
 
     <androidx.media3.ui.PlayerView
         android:id="@+id/videoLayout"
         app:use_controller="false"
         app:surface_type="texture_view"
         app:resize_mode="fit"
-        app:shutter_background_color="@android:color/transparent"
+        app:shutter_background_color="@android:color/black"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:visibility="invisible" />
@@ -1144,6 +1144,7 @@
             android:textColor="#FFFFFF"
             android:textFontWeight="600"
             android:textSize="@dimen/home_page_title_size"
+            android:elevation="4dp"
             android:visibility="gone"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
@@ -1163,6 +1164,7 @@
             android:textColor="#80FFFFFF"
             android:textFontWeight="400"
             android:textSize="@dimen/home_page_subtitle_size"
+            android:elevation="4dp"
             android:visibility="gone"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
@@ -1201,6 +1203,7 @@
 
         <!-- ScrollView wraps grid + bottom actions so "Свои плейлисты"/"Избранные" sit below
              and only appear after scroll on short screens (pre-a0f4e04 behavior). -->
+        <!-- Clipped below "Доступные сервисы…" so tiles never paint over the title while scrolling. -->
         <com.twnkos.oportal.ContentAwareScrollView
             android:id="@+id/homePlaylistTilesPanel"
             android:layout_width="0dp"
@@ -1209,8 +1212,8 @@
             android:fillViewport="false"
             android:overScrollMode="never"
             android:scrollbars="none"
-            android:clipChildren="false"
-            android:clipToPadding="false"
+            android:clipChildren="true"
+            android:clipToPadding="true"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             android:layout_marginStart="@dimen/home_edge_margin"
@@ -1399,15 +1402,38 @@
         android:background="#12050505"
         android:visibility="gone" />
 
-    <!-- Topmost launch poster from drawable-sw*-nodpi/oportal_bg.png; hidden once home/player is ready. -->
-    <ImageView
-        android:id="@+id/launchSplashImage"
+    <!-- Cold-start splash: app home background + logo (25% screen) + bottom spinner. Not used as player bg. -->
+    <FrameLayout
+        android:id="@+id/launchSplashOverlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@drawable/oportal_bg"
-        android:contentDescription="@null"
-        android:importantForAccessibility="no"
-        android:scaleType="centerCrop"
-        android:src="@drawable/oportal_bg" />
+        android:background="@drawable/bg_home_screen"
+        android:clickable="true"
+        android:focusable="true">
+
+        <ImageView
+            android:id="@+id/launchSplashLogo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:adjustViewBounds="true"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no"
+            android:scaleType="fitCenter"
+            android:src="@mipmap/ic_launcher_foreground" />
+
+        <FrameLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="48dp">
+
+            <include
+                android:id="@+id/launchSplashSpinner"
+                layout="@layout/view_loading_spinner"
+                android:layout_width="@dimen/portal_spinner_size"
+                android:layout_height="@dimen/portal_spinner_size" />
+        </FrameLayout>
+    </FrameLayout>
 
 </FrameLayout>

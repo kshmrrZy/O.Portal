@@ -3,6 +3,6 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <color name="purple_700">#FF3700B3</color>
-    <!-- Approx. average of oportal_bg posters — SplashScreen API requires a color, not a bitmap. -->
-    <color name="oportal_splash_bg">#FF363C50</color>
+    <!-- Matches bg_home_screen base (#15202B) — SplashScreen API requires a color, not a bitmap. -->
+    <color name="oportal_splash_bg">#FF15202B</color>
 </resources>
