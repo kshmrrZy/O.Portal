@@ -791,8 +791,8 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@drawable/bg_home_screen"
-        android:clipChildren="false"
-        android:clipToPadding="false"
+        android:clipChildren="true"
+        android:clipToPadding="true"
         android:visibility="gone">
 
         <TextView
@@ -1177,6 +1177,7 @@
         <EditText
             android:id="@+id/etHomeListSearch"
             style="@style/AppGolosText"
+            android:elevation="8dp"
             android:layout_width="0dp"
             android:layout_height="@dimen/settings_sub_panel_field_height"
             android:layout_marginTop="8dp"
@@ -1229,8 +1230,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:clipChildren="false"
-                android:clipToPadding="false"
+                android:clipChildren="true"
+                android:clipToPadding="true"
                 android:paddingBottom="@dimen/home_bottom_margin">
 
                 <androidx.recyclerview.widget.RecyclerView
@@ -1238,8 +1239,8 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:nestedScrollingEnabled="false"
-                    android:clipChildren="false"
-                    android:clipToPadding="false"
+                    android:clipChildren="true"
+                    android:clipToPadding="true"
                     android:paddingBottom="8dp"
                     android:overScrollMode="never"
                     android:scrollbars="none" />
@@ -1292,7 +1293,7 @@
             android:verticalSpacing="12dp"
             android:stretchMode="columnWidth"
             android:gravity="start"
-            android:clipToPadding="false"
+            android:clipToPadding="true"
             android:paddingStart="0dp"
             android:paddingEnd="0dp"
             android:paddingTop="8dp"

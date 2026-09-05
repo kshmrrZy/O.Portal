@@ -188,6 +188,7 @@ class MainActivity : AppCompatActivity() {
     private var lastPlaybackStallReason = ""
     /** When the stall spinner first became visible; recovery starts only after 10s of continuous spinner. */
     private var stallSpinnerShownAtMs = 0L
+    private var liveTimelineFrozenForStallMs = 0L
     /** After 3 failed reloads, stop auto-recovery until channel change / manual LIVE. */
     private var playbackRecoveryExhausted = false
     private val playbackRecoveryRetryRunnable = Runnable { attemptPlaybackRecoveryStep() }
@@ -525,13 +526,17 @@ class MainActivity : AppCompatActivity() {
             stopReloadingPlateSpinner()
             tvReloadingStatus.visibility = View.GONE
         }
-        // Stream resumed after a stall/buffer — drop the loading spinner and top chrome.
+        // Stream resumed after a stall/buffer — drop spinner only after sustained progress.
+        // Brief isPlaying / single ticks (common on Only4) must NOT reset the 10s stall timer,
+        // or spinner↔frozen-frame loops forever without reaching recovery.
         val loadingSpinner = findViewById<View>(R.id.playerLoadingSpinner)
         if (loadingSpinner?.visibility == View.VISIBLE && !playbackRecoveryActive) {
-            clearStallSpinnerTimer()
-            hidePlayerLoadingUi()
-            if (controlsPanel.visibility != View.VISIBLE) {
-                hideUI()
+            if (consecutiveForwardProgressTicks >= 3) {
+                clearStallSpinnerTimer()
+                hidePlayerLoadingUi()
+                if (controlsPanel.visibility != View.VISIBLE) {
+                    hideUI()
+                }
             }
         }
         val pos = player.currentPosition
@@ -608,12 +613,17 @@ class MainActivity : AppCompatActivity() {
     private fun markStallSpinnerVisible() {
         if (stallSpinnerShownAtMs == 0L) {
             stallSpinnerShownAtMs = System.currentTimeMillis()
+            // Freeze the left live clock for this stall episode (network loss / freeze).
+            if (liveTimelineFrozenForStallMs == 0L && !isArchivePlayback) {
+                liveTimelineFrozenForStallMs = getLiveTimelinePositionMs()
+            }
         }
         showPlayerLoadingUi()
     }
 
     private fun clearStallSpinnerTimer() {
         stallSpinnerShownAtMs = 0L
+        liveTimelineFrozenForStallMs = 0L
     }
 
     private fun stallSpinnerVisibleLongEnough(now: Long = System.currentTimeMillis()): Boolean {
@@ -692,7 +702,6 @@ class MainActivity : AppCompatActivity() {
         val title = "Обновление трансляции"
         val subtitle = "Попытка $attempt из $PLAYBACK_RECOVERY_MAX_ATTEMPTS"
         showReloadingStatus(title, subtitle)
-        showUI(preferFocus = btnLiveReload)
         forceFreshPlayerSession = true
         playChannel(forcePlay = true, reason = PlayerOpenReason.RECOVERY)
         schedulePlaybackRecoveryRetry(immediate = false)
@@ -750,7 +759,6 @@ class MainActivity : AppCompatActivity() {
             },
             isError = true
         )
-        showUI(preferFocus = btnLiveReload)
         suppressReloadOverlayUntilMs = System.currentTimeMillis() + 12_000L
         handler.postDelayed({
             if (::tvReloadingStatus.isInitialized &&
@@ -912,8 +920,12 @@ class MainActivity : AppCompatActivity() {
     private var liveTimelinePausedContentMs = 0L
     private var liveTimelinePlayerPosAtPauseMs = 0L
     private var liveTimelineFollowFromPause = false
-    /** Keep system SplashScreen until our gradient overlay has been drawn. */
+    /** Keep system SplashScreen until our gradient overlay with logo has been drawn. */
     private var keepLaunchSplashOnScreen = true
+    private var launchSplashShownAtElapsedMs = 0L
+    private var launchSplashDismissScheduled = false
+    private val minLaunchSplashVisibleMs = 700L
+    private val dismissLaunchSplashRunnable = Runnable { dismissLaunchSplashNow() }
     private val applySeekDeltaRunnable = Runnable {
         val deltaSec = pendingSeekDeltaSec
         pendingSeekDeltaSec = 0
@@ -1127,8 +1139,13 @@ class MainActivity : AppCompatActivity() {
         // Splash already has a bottom spinner — never stack the centered loadingPanel spinner.
         hideAppLoadingSpinner()
         startCompositeSpinner(findViewById(R.id.launchSplashSpinner))
+        launchSplashShownAtElapsedMs = android.os.SystemClock.elapsedRealtime()
+        // Drop the system SplashScreen ASAP so the in-app logo+spinner overlay is visible
+        // during load (system splash is solid bg without the wordmark).
+        keepLaunchSplashOnScreen = false
         // Wordmark width ≈ 35% of screen width (height-based sizing made it huge).
         splash.post {
+            if (splash.width <= 0 || splash.height <= 0) return@post
             val targetWidth = (splash.width * 0.35f).coerceAtLeast(1f)
             var textPx = splash.height * 0.12f
             logo?.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textPx)
@@ -1142,11 +1159,33 @@ class MainActivity : AppCompatActivity() {
                 splash.height * 0.16f
             )
             logo?.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textPx)
-            keepLaunchSplashOnScreen = false
         }
     }
 
     private fun dismissLaunchSplash() {
+        keepLaunchSplashOnScreen = false
+        val splash = findViewById<View?>(R.id.launchSplashOverlay) ?: return
+        if (splash.visibility != View.VISIBLE) return
+        if (launchSplashDismissScheduled) return
+        val shownAt = launchSplashShownAtElapsedMs
+        val elapsed = if (shownAt > 0L) {
+            android.os.SystemClock.elapsedRealtime() - shownAt
+        } else {
+            minLaunchSplashVisibleMs
+        }
+        val remain = (minLaunchSplashVisibleMs - elapsed).coerceAtLeast(0L)
+        if (remain > 0L) {
+            launchSplashDismissScheduled = true
+            handler.removeCallbacks(dismissLaunchSplashRunnable)
+            handler.postDelayed(dismissLaunchSplashRunnable, remain)
+            return
+        }
+        dismissLaunchSplashNow()
+    }
+
+    private fun dismissLaunchSplashNow() {
+        launchSplashDismissScheduled = false
+        handler.removeCallbacks(dismissLaunchSplashRunnable)
         keepLaunchSplashOnScreen = false
         val splash = findViewById<View?>(R.id.launchSplashOverlay) ?: return
         if (splash.visibility != View.VISIBLE) return
@@ -1166,7 +1205,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showDefaultStartupScreen() {
+private fun showDefaultStartupScreen() {
         val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
         val hasEnabledThirdParty = hasEnabledThirdPartyPlaylists()
         if (isAuthorizedUser || hasEnabledThirdParty) showPlaylistPageOnHome(source = "cold_start") else showStartPage()
@@ -2265,6 +2304,23 @@ class MainActivity : AppCompatActivity() {
 
         homeTilesAdapter?.submit(items)
 
+        // Explicit content height so ContentAwareScrollView can scroll through all category rows
+        // (wrap_content RecyclerView measure can under-report with large grids).
+        val rows = if (items.isEmpty()) 0 else (items.size + columns - 1) / columns
+        val contentH = if (rows <= 0) {
+            0
+        } else {
+            rows * tileHeight + (rows - 1) * spacing + rvHomeTiles.paddingTop + rvHomeTiles.paddingBottom
+        }
+        val rvLp = rvHomeTiles.layoutParams
+        if (rvLp.height != contentH) {
+            rvLp.height = contentH
+            rvHomeTiles.layoutParams = rvLp
+        }
+        (homePlaylistTilesPanel as? ContentAwareScrollView)?.post {
+            (homePlaylistTilesPanel as ContentAwareScrollView).updateScrollEnabled()
+        }
+
         rvHomeTiles.post {
             val first = rvHomeTiles.getChildAt(0)
             val last = rvHomeTiles.getChildAt((rvHomeTiles.childCount - 1).coerceAtLeast(0))
@@ -3266,6 +3322,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showChannelListPanel() {
+        if (channels.isEmpty()) {
+            // Offline / after process quirks: restore last cached playlist for the current URL.
+            val url = lastLoadedPlaylistUrl.ifBlank { resolveCurrentPlaylistUrl() }
+            val cached = if (url.isNotBlank()) getCachedPlaylistContent(url) else null
+            if (looksLikePlaylistBody(cached)) {
+                channels.clear()
+                channels.addAll(M3uParser.parse(cached!!))
+                currentPlaylistText = cached
+                lastLoadedPlaylistUrl = url
+                logDebug("PLAYLIST_FLOW", "CHANNEL_LIST_CACHE_RESTORE count=${channels.size}")
+            }
+        }
         if (channels.isEmpty()) return
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
             hideEpgPanel(restorePlayerUi = false)
@@ -3282,6 +3350,9 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(hideUiRunnable)
         pausePlaybackStallWatchdogForOverlay()
         channelListPanel.visibility = View.VISIBLE
+        // Show cached channels immediately (offline-safe); EPG titles fill in asynchronously.
+        channelListProgramTitles = emptyMap()
+        bindChannelListPanelAdapter()
         channelListPanel.post {
             thread(name = "channel-list-prep") {
                 val titles = channels.mapIndexed { index, ch ->
@@ -5627,8 +5698,13 @@ class MainActivity : AppCompatActivity() {
 
                 var content = if (!forceReload) getCachedPlaylistContent(playlistUrl) else null
                 if (!looksLikePlaylistBody(content)) {
-                    content = fetchPlaylistBodyText(playlistUrl).also { body ->
-                        if (looksLikePlaylistBody(body)) saveCachedPlaylistContent(playlistUrl, body)
+                    content = runCatching {
+                        fetchPlaylistBodyText(playlistUrl).also { body ->
+                            if (looksLikePlaylistBody(body)) saveCachedPlaylistContent(playlistUrl, body)
+                        }
+                    }.getOrElse { err ->
+                        logDebug("PLAYLIST_FLOW", "PLAYLIST_FETCH_FAIL ${err.message}")
+                        getCachedPlaylistContent(playlistUrl)
                     }
                 }
                 // Stale header-only cache (saved by EPG settings) → force network once.
@@ -5643,10 +5719,19 @@ class MainActivity : AppCompatActivity() {
                         "PLAYLIST_CACHE_MISS_OR_EMPTY urlHash=${playlistUrl.hashCode()} " +
                             "cachedLen=${content?.length ?: 0} forceNetwork=true"
                     )
-                    content = fetchPlaylistBodyText(playlistUrl)
+                    content = runCatching { fetchPlaylistBodyText(playlistUrl) }
+                        .getOrElse { getCachedPlaylistContent(playlistUrl) }
                     if (looksLikePlaylistBody(content)) {
                         saveCachedPlaylistContent(playlistUrl, content!!)
                         parsedChannels = M3uParser.parse(content!!)
+                    } else {
+                        // Last resort: any previously cached body for this URL.
+                        val cached = getCachedPlaylistContent(playlistUrl)
+                        if (looksLikePlaylistBody(cached)) {
+                            content = cached
+                            parsedChannels = M3uParser.parse(cached!!)
+                            logDebug("PLAYLIST_FLOW", "PLAYLIST_OFFLINE_CACHE_FALLBACK len=${cached.length}")
+                        }
                     }
                 }
 
@@ -5719,23 +5804,52 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 Log.e("M3U", "Ошибка загрузки плейлиста: ${redactThrowableChain(e)}")
-                handler.post {
-                    hideAppLoadingSpinner()
-                    if (showErrors) {
-                        showAppToast("Сервис временно недоступен", 3500L)
-                        showPlaylistPageOnHome()
-                        AlertDialog.Builder(this)
-                            .setTitle("Сервис недоступен")
-                            .setMessage("Не удалось загрузить плейлист. Проверьте токен, ссылку или доступность сервиса.")
-                            .setPositiveButton("Открыть настройки") { _, _ ->
-                                showSettingsDialog()
-                                openPlaylistSettingsScreen()
+                val playlistUrl = runCatching { resolveCurrentPlaylistUrl() }.getOrNull().orEmpty()
+                val cached = if (playlistUrl.isNotBlank()) getCachedPlaylistContent(playlistUrl) else null
+                if (looksLikePlaylistBody(cached)) {
+                    logDebug("PLAYLIST_FLOW", "PLAYLIST_CATCH_CACHE_HIT len=${cached!!.length}")
+                    val parsedChannels = M3uParser.parse(cached)
+                    val groupedCategories = parsedChannels
+                        .groupBy { ch -> ch.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
+                        .filterKeys { key -> key != "{region_name}" }
+                    handler.post {
+                        hideAppLoadingSpinner()
+                        channels.clear()
+                        channels.addAll(parsedChannels)
+                        currentPlaylistText = cached
+                        lastLoadedPlaylistUrl = playlistUrl
+                        if (channels.isEmpty()) {
+                            if (showErrors) showAppToast("В плейлисте нет каналов", 3500L)
+                            showPlaylistPageOnHome()
+                        } else if (!autoPlay) {
+                            selectedPlaylistDisplayName = getSelectedPlaylistName()
+                            if (!isSettingsModalVisible) {
+                                showCategoryTilesOnHome(selectedPlaylistDisplayName, groupedCategories)
                             }
-                            .setNegativeButton("Закрыть", null)
-                            .show()
+                        } else if (shouldOpenLastChannelOnStart) {
+                            if (!restoreLastChannelAndPlay()) showDefaultStartupScreen()
+                        }
+                        showAppToast("Нет сети — показан сохранённый список", 2800L)
                     }
-                    tvEpg.text = "Ошибка загрузки плейлиста"
-                    showUI()
+                } else {
+                    handler.post {
+                        hideAppLoadingSpinner()
+                        if (showErrors) {
+                            showAppToast("Сервис временно недоступен", 3500L)
+                            showPlaylistPageOnHome()
+                            AlertDialog.Builder(this)
+                                .setTitle("Сервис недоступен")
+                                .setMessage("Не удалось загрузить плейлист. Проверьте токен, ссылку или доступность сервиса.")
+                                .setPositiveButton("Открыть настройки") { _, _ ->
+                                    showSettingsDialog()
+                                    openPlaylistSettingsScreen()
+                                }
+                                .setNegativeButton("Закрыть", null)
+                                .show()
+                        }
+                        tvEpg.text = "Ошибка загрузки плейлиста"
+                        showUI()
+                    }
                 }
             }
         }
@@ -7139,7 +7253,10 @@ class MainActivity : AppCompatActivity() {
         reason: PlayerOpenReason = PlayerOpenReason.RECOVERY
     ) {
         playbackRecoveryExhausted = false
-        clearStallSpinnerTimer()
+        // Keep stall timeline freeze + spinner episode across recovery reloads.
+        if (!playbackRecoveryActive) {
+            clearStallSpinnerTimer()
+        }
         runCatching {
             if (!hasStartedPlaybackFromChannelClick && reason != PlayerOpenReason.CHANNEL_CLICK) {
                 logDebug("NAV", "ERROR unexpected_player_open_before_channel_click reason=$reason")
@@ -7417,6 +7534,10 @@ class MainActivity : AppCompatActivity() {
         tvReloadingStatus.visibility = View.VISIBLE
         tvReloadingStatus.bringToFront()
         tvReloadingStatus.parent?.let { (it as? View)?.requestLayout() }
+        // Alerts must not show player timeline / controls underneath.
+        // Use chrome hide only — hideUI() can revive the loading top bar when first frame is missing.
+        hidePlayerLoadingUi()
+        hidePlayerChromeFully()
     }
 
     private fun stopReloadingPlateSpinner() {
@@ -9756,6 +9877,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun getLiveTimelinePositionMs(): Long {
         if (isArchivePlayback) return System.currentTimeMillis()
+        if (liveTimelineFrozenForStallMs > 0L &&
+            (stallSpinnerShownAtMs > 0L || playbackRecoveryActive ||
+                (::tvReloadingStatus.isInitialized && tvReloadingStatus.visibility == View.VISIBLE))
+        ) {
+            return liveTimelineFrozenForStallMs
+        }
         if (isPlaybackPaused && liveTimelinePausedContentMs > 0L) {
             return liveTimelinePausedContentMs
         }
