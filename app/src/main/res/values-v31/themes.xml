@@ -3,9 +3,12 @@
     <!-- API 31+ attrs also set on Theme.SplashScreen in values/themes.xml. -->
     <style name="Theme.O_portal_OTT" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/oportal_splash_bg</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_transparent_icon</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_wordmark_icon</item>
         <item name="windowSplashScreenIconBackgroundColor">@color/oportal_splash_bg</item>
         <item name="android:windowSplashScreenBrandingImage">@null</item>
         <item name="postSplashScreenTheme">@style/Theme.O_portal_OTT.Main</item>
+        <item name="android:statusBarColor">@color/oportal_splash_bg</item>
+        <item name="android:navigationBarColor">@color/oportal_splash_bg</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
     </style>
 </resources>
