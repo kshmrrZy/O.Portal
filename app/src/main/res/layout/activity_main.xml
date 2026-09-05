@@ -791,11 +791,12 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@drawable/bg_home_screen"
-        android:clipChildren="false"
-        android:clipToPadding="false"
+        android:clipChildren="true"
+        android:clipToPadding="true"
         android:visibility="gone">
 
         <TextView
+            android:elevation="6dp"
             android:id="@+id/tvHomeAppTitle"
             style="@style/AppGolosText"
             android:layout_width="wrap_content"
@@ -1144,7 +1145,7 @@
             android:textColor="#FFFFFF"
             android:textFontWeight="600"
             android:textSize="@dimen/home_page_title_size"
-            android:elevation="4dp"
+            android:elevation="6dp"
             android:visibility="gone"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
@@ -1199,7 +1200,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             app:barrierDirection="bottom"
-            app:constraint_referenced_ids="tvPlaylistPageSubtitle,etHomeListSearch" />
+            app:barrierAllowsGoneWidgets="false"
+            app:constraint_referenced_ids="tvHomeAppTitle,tvPlaylistPageTitle,tvPlaylistPageSubtitle,etHomeListSearch" />
 
         <!-- ScrollView wraps grid + bottom actions so "Свои плейлисты"/"Избранные" sit below
              and only appear after scroll on short screens (pre-a0f4e04 behavior). -->
@@ -1402,7 +1404,7 @@
         android:background="#12050505"
         android:visibility="gone" />
 
-    <!-- Cold-start splash: app home background + logo (25% screen) + bottom spinner. Not used as player bg. -->
+    <!-- Cold-start splash: same home gradient + header wordmark (O.Portal) + bottom spinner. -->
     <FrameLayout
         android:id="@+id/launchSplashOverlay"
         android:layout_width="match_parent"
@@ -1411,22 +1413,24 @@
         android:clickable="true"
         android:focusable="true">
 
-        <ImageView
+        <TextView
             android:id="@+id/launchSplashLogo"
+            style="@style/AppGolosText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:adjustViewBounds="true"
-            android:contentDescription="@null"
+            android:includeFontPadding="false"
             android:importantForAccessibility="no"
-            android:scaleType="fitCenter"
-            android:src="@mipmap/ic_launcher_foreground" />
+            android:text="O.Portal"
+            android:textColor="#FFFFFF"
+            android:textFontWeight="700"
+            android:textSize="@dimen/home_app_title_size" />
 
         <FrameLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom|center_horizontal"
-            android:layout_marginBottom="48dp">
+            android:layout_marginBottom="56dp">
 
             <include
                 android:id="@+id/launchSplashSpinner"

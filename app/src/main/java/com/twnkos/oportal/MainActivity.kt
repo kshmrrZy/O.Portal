@@ -185,6 +185,10 @@ class MainActivity : AppCompatActivity() {
     private var lastRecoveryAttemptAtMs = 0L
     private var playbackRecoveryAttemptCount = 0
     private var lastPlaybackStallReason = ""
+    /** When the stall spinner first became visible; recovery starts only after 10s of continuous spinner. */
+    private var stallSpinnerShownAtMs = 0L
+    /** After 3 failed reloads, stop auto-recovery until channel change / manual LIVE. */
+    private var playbackRecoveryExhausted = false
     private val playbackRecoveryRetryRunnable = Runnable { attemptPlaybackRecoveryStep() }
     private var playerEventListener: androidx.media3.common.Player.Listener? = null
     private var playerAnalyticsListener: AnalyticsListener? = null
@@ -440,7 +444,7 @@ class MainActivity : AppCompatActivity() {
                         "isPlaying=${player.isPlaying} state=${player.playbackState}"
                 )
                 if (tvReloadingStatus.visibility != View.VISIBLE && homePanel.visibility != View.VISIBLE) {
-                    showPlayerLoadingUi()
+                    markStallSpinnerVisible()
                 }
                 notifyPlaybackStall("Нет видеокадра", immediate = true)
             }
@@ -469,7 +473,7 @@ class MainActivity : AppCompatActivity() {
                     tvReloadingStatus.visibility != View.VISIBLE &&
                     homePanel.visibility != View.VISIBLE
                 ) {
-                    showPlayerLoadingUi()
+                    markStallSpinnerVisible()
                 }
                 if (!inGrace && bufferingFor > PLAYBACK_STALL_BUFFERING_MS) {
                     val reason = if (!isNetworkConnected()) {
@@ -489,7 +493,7 @@ class MainActivity : AppCompatActivity() {
                 ) {
                     logDebug("PLAYER_STATE", "watchdog hard-stop stall state=${player.playbackState}")
                     if (tvReloadingStatus.visibility != View.VISIBLE) {
-                        showPlayerLoadingUi()
+                        markStallSpinnerVisible()
                     }
                     notifyPlaybackStall("Воспроизведение остановилось", immediate = true)
                 }
@@ -503,7 +507,7 @@ class MainActivity : AppCompatActivity() {
                     tvReloadingStatus.visibility != View.VISIBLE &&
                     homePanel.visibility != View.VISIBLE
                 ) {
-                    showPlayerLoadingUi()
+                    markStallSpinnerVisible()
                 }
                 if (!inGrace && gapFor > PLAYBACK_STALL_BUFFERING_MS) {
                     logDebug("PLAYER_STATE", "watchdog ready-not-playing stall gapFor=$gapFor")
@@ -523,6 +527,7 @@ class MainActivity : AppCompatActivity() {
         // Stream resumed after a stall/buffer — drop the loading spinner and top chrome.
         val loadingSpinner = findViewById<View>(R.id.playerLoadingSpinner)
         if (loadingSpinner?.visibility == View.VISIBLE && !playbackRecoveryActive) {
+            clearStallSpinnerTimer()
             hidePlayerLoadingUi()
             if (controlsPanel.visibility != View.VISIBLE) {
                 hideUI()
@@ -576,7 +581,7 @@ class MainActivity : AppCompatActivity() {
             tvReloadingStatus.visibility != View.VISIBLE &&
             homePanel.visibility != View.VISIBLE
         ) {
-            showPlayerLoadingUi()
+            markStallSpinnerVisible()
         }
         val progressStallReason = when {
             stuckNow -> "Поток завис (нет прогресса)"
@@ -599,24 +604,45 @@ class MainActivity : AppCompatActivity() {
         reschedulePlaybackFreezeWatchdog()
     }
 
+    private fun markStallSpinnerVisible() {
+        if (stallSpinnerShownAtMs == 0L) {
+            stallSpinnerShownAtMs = System.currentTimeMillis()
+        }
+        showPlayerLoadingUi()
+    }
+
+    private fun clearStallSpinnerTimer() {
+        stallSpinnerShownAtMs = 0L
+    }
+
+    private fun stallSpinnerVisibleLongEnough(now: Long = System.currentTimeMillis()): Boolean {
+        val shownAt = stallSpinnerShownAtMs
+        return shownAt > 0L && now - shownAt >= PLAYBACK_STALL_SPINNER_BEFORE_RECOVERY_MS
+    }
+
     private fun notifyPlaybackStall(reason: String, immediate: Boolean = false) {
         if (isSettingsModalVisible || homePanel.visibility == View.VISIBLE) return
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) return
         if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) return
+        if (playbackRecoveryExhausted) return
         val now = System.currentTimeMillis()
-        // Grace only blocks slow stalls (buffering/progress); immediate == true bypasses it.
         if (!immediate && now < stallWatchdogGraceUntilMs) return
         if (now < suppressReloadOverlayUntilMs) return
         lastPlaybackStallReason = reason
+        // Always show spinner first; do not alert / reload until it has been up for 10s.
+        markStallSpinnerVisible()
+        if (!stallSpinnerVisibleLongEnough(now)) {
+            return
+        }
         if (!playbackRecoveryActive) {
             playbackRecoveryActive = true
             playbackRecoveryStartedAtMs = now
             playbackRecoveryAttemptCount = 0
-            schedulePlaybackRecoveryRetry(immediate = immediate)
+            schedulePlaybackRecoveryRetry(immediate = true)
         } else {
             val sinceLastAttempt =
                 if (lastRecoveryAttemptAtMs > 0L) now - lastRecoveryAttemptAtMs else Long.MAX_VALUE
-            val retryNow = immediate && sinceLastAttempt >= PLAYBACK_RECOVERY_RETRY_IF_STILL_FROZEN_MS
+            val retryNow = sinceLastAttempt >= PLAYBACK_RECOVERY_RETRY_IF_STILL_FROZEN_MS
             schedulePlaybackRecoveryRetry(immediate = retryNow)
         }
     }
@@ -629,6 +655,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun attemptPlaybackRecoveryStep() {
         if (!playbackRecoveryActive) return
+        if (playbackRecoveryExhausted) {
+            resetPlaybackRecoveryState()
+            return
+        }
         if (isSettingsModalVisible || homePanel.visibility == View.VISIBLE || isPlayerOverlayOpen()) {
             resetPlaybackRecoveryState()
             if (::tvReloadingStatus.isInitialized && tvReloadingStatus.visibility == View.VISIBLE) {
@@ -637,7 +667,6 @@ class MainActivity : AppCompatActivity() {
             }
             return
         }
-        // Healthy only when the timeline actually advances — isPlaying+firstFrame can still be a freeze.
         val player = mediaPlayer
         if (player != null &&
             player.playWhenReady &&
@@ -648,54 +677,35 @@ class MainActivity : AppCompatActivity() {
             onPlaybackRecoverySucceeded()
             return
         }
-        val elapsed = System.currentTimeMillis() - playbackRecoveryStartedAtMs
-        if (elapsed >= PLAYBACK_RECOVERY_WINDOW_MS) {
-            if (player != null &&
-                player.isPlaying &&
-                firstFrameRendered &&
-                consecutiveForwardProgressTicks >= 1
-            ) {
-                onPlaybackRecoverySucceeded()
-                return
-            }
-            val reason = lastPlaybackStallReason.ifBlank { "Поток не отвечает" }
+        if (playbackRecoveryAttemptCount >= PLAYBACK_RECOVERY_MAX_ATTEMPTS) {
+            playbackRecoveryExhausted = true
             resetPlaybackRecoveryState()
-            showPlaybackFreezeFailure(reason)
+            showPlaybackFreezeFailure("Ошибка буферизации")
+            // Stop further auto play attempts for this stall episode.
+            runCatching { mediaPlayer?.pause() }
             return
         }
-        // Keep reloading while frozen. Do NOT treat READY+firstFrame as success without progress.
         playbackRecoveryAttemptCount++
         lastRecoveryAttemptAtMs = System.currentTimeMillis()
-        val remainingSec = ((PLAYBACK_RECOVERY_WINDOW_MS - elapsed) / 1000L).coerceAtLeast(1L)
-        val networkIssue = !isNetworkConnected() ||
-            lastPlaybackStallReason.contains("интернет", ignoreCase = true)
-        val title = if (networkIssue) "Проблемы с интернетом" else "Обновление трансляции"
-        val subtitle = if (networkIssue) {
-            "Проверьте подключение. Попытка $playbackRecoveryAttemptCount, осталось ~${remainingSec}с"
-        } else {
-            "Попытка $playbackRecoveryAttemptCount, осталось ~${remainingSec}с"
-        }
+        val attempt = playbackRecoveryAttemptCount
+        val title = "Обновление трансляции"
+        val subtitle = "Попытка $attempt из $PLAYBACK_RECOVERY_MAX_ATTEMPTS"
         showReloadingStatus(title, subtitle)
         showUI(preferFocus = btnLiveReload)
-        if (!firstFrameRendered ||
-            lastPlaybackStallReason.contains("видео", ignoreCase = true) ||
-            lastPlaybackStallReason.contains("завис", ignoreCase = true) ||
-            lastPlaybackStallReason.contains("пропали", ignoreCase = true)
-        ) {
-            forceFreshPlayerSession = true
-        }
+        forceFreshPlayerSession = true
         playChannel(forcePlay = true, reason = PlayerOpenReason.RECOVERY)
         schedulePlaybackRecoveryRetry(immediate = false)
     }
 
     private fun onPlaybackRecoverySucceeded() {
-        if (!playbackRecoveryActive) return
+        if (!playbackRecoveryActive && stallSpinnerShownAtMs == 0L) return
         resetPlaybackRecoveryState()
+        clearStallSpinnerTimer()
+        playbackRecoveryExhausted = false
         val now = System.currentTimeMillis()
         stallWatchdogGraceUntilMs = now + PLAYBACK_STALL_GRACE_AFTER_RECOVERY_MS
-        // Live windows often emit a spurious ENDED right after a successful re-join.
         suppressEndedRecoveryUntilMs = now + PLAYBACK_STALL_GRACE_AFTER_RECOVERY_MS
-        if (tvReloadingStatus.visibility == View.VISIBLE) {
+        if (::tvReloadingStatus.isInitialized && tvReloadingStatus.visibility == View.VISIBLE) {
             stopReloadingPlateSpinner()
             tvReloadingStatus.visibility = View.GONE
         }
@@ -711,6 +721,7 @@ class MainActivity : AppCompatActivity() {
         playbackRecoveryAttemptCount = 0
         handler.removeCallbacks(playbackRecoveryRetryRunnable)
     }
+
 
     private fun showPlaybackFreezeFailure(reason: String) {
         val player = mediaPlayer
@@ -730,15 +741,19 @@ class MainActivity : AppCompatActivity() {
             return
         }
         showReloadingStatus(
-            title = "ОШИБКА",
-            subtitle = if (reason.isBlank()) "Не удалось восстановить трансляцию" else reason,
+            title = "Ошибка буферизации",
+            subtitle = if (reason.isBlank() || reason == "Ошибка буферизации") {
+                "Не удалось восстановить трансляцию"
+            } else {
+                reason
+            },
             isError = true
         )
         showUI(preferFocus = btnLiveReload)
         suppressReloadOverlayUntilMs = System.currentTimeMillis() + 12_000L
         handler.postDelayed({
             if (::tvReloadingStatus.isInitialized &&
-                tvReloadingTitle.text?.toString() == "ОШИБКА"
+                tvReloadingTitle.text?.toString() == "Ошибка буферизации"
             ) {
                 tvReloadingStatus.visibility = View.GONE
             }
@@ -777,17 +792,20 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_PLAYLISTS = "playlist_profiles"
         private const val PREF_SELECTED_PLAYLIST = "selected_playlist"
         private const val PREF_SELECTED_EPG = "selected_epg"
-        private const val PLAYBACK_RECOVERY_WINDOW_MS = 30_000L
-        private const val PLAYBACK_RECOVERY_RETRY_MS = 3_000L
-        private const val PLAYBACK_RECOVERY_RETRY_IF_STILL_FROZEN_MS = 1_500L
-        // Any freeze / audio drop: spinner almost immediately, then reload.
+        /** Max stream reloads after the 10s stall-spinner wait. */
+        private const val PLAYBACK_RECOVERY_MAX_ATTEMPTS = 3
+        private const val PLAYBACK_RECOVERY_RETRY_MS = 8_000L
+        private const val PLAYBACK_RECOVERY_RETRY_IF_STILL_FROZEN_MS = 4_000L
         private const val PLAYBACK_STALL_WATCHDOG_MS = 500L
-        private const val PLAYBACK_STALL_SPINNER_BUFFERING_MS = 250L
-        private const val PLAYBACK_STALL_BUFFERING_MS = 1_200L
+        /** Show spinner after this much continuous buffering/freeze. */
+        private const val PLAYBACK_STALL_SPINNER_BUFFERING_MS = 1_500L
+        /** Recovery / alerts only after spinner has been visible this long while still stalled. */
+        private const val PLAYBACK_STALL_SPINNER_BEFORE_RECOVERY_MS = 10_000L
+        private const val PLAYBACK_STALL_BUFFERING_MS = 10_000L
         // Fallback: no forward progress (includes a frozen picture whose live timeline only slides).
-        private const val PLAYBACK_STALL_PROGRESS_MS = 2_500L
+        private const val PLAYBACK_STALL_PROGRESS_MS = 10_000L
         // Same reported position while isPlaying — the picture is frozen.
-        private const val PLAYBACK_STALL_STUCK_POS_MS = 500L
+        private const val PLAYBACK_STALL_STUCK_POS_MS = 3_000L
         private const val PLAYBACK_PROGRESS_MIN_DELTA_MS = 200L
         private const val PLAYBACK_STUCK_POS_EPSILON_MS = 200L
         // Sentinel distinct from live HLS currentPosition, which can be negative after window slides.
@@ -1092,19 +1110,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupLaunchSplashOverlay() {
         val splash = findViewById<View>(R.id.launchSplashOverlay) ?: return
-        val logo = findViewById<ImageView>(R.id.launchSplashLogo)
+        val logo = findViewById<TextView>(R.id.launchSplashLogo)
+        splash.setBackgroundResource(R.drawable.bg_home_screen)
         splash.visibility = View.VISIBLE
         splash.alpha = 1f
         splash.bringToFront()
         startCompositeSpinner(findViewById(R.id.launchSplashSpinner))
-        // Logo = 25% of the shorter screen side.
+        // Header wordmark "O.Portal", ~37% of the shorter screen side.
         splash.post {
-            val side = (minOf(splash.width, splash.height) * 0.25f).toInt().coerceAtLeast(1)
-            logo?.layoutParams = logo.layoutParams?.apply {
-                width = side
-                height = side
-            }
-            logo?.requestLayout()
+            val shortSide = minOf(splash.width, splash.height).coerceAtLeast(1)
+            logo?.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, shortSide * 0.37f)
         }
     }
 
@@ -7085,6 +7100,8 @@ class MainActivity : AppCompatActivity() {
         forcePlay: Boolean = false,
         reason: PlayerOpenReason = PlayerOpenReason.RECOVERY
     ) {
+        playbackRecoveryExhausted = false
+        clearStallSpinnerTimer()
         runCatching {
             if (!hasStartedPlaybackFromChannelClick && reason != PlayerOpenReason.CHANNEL_CLICK) {
                 logDebug("NAV", "ERROR unexpected_player_open_before_channel_click reason=$reason")

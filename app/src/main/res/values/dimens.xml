@@ -59,7 +59,7 @@
     <dimen name="home_grid_margin_top">20dp</dimen>
     <dimen name="home_tile_text_size">18sp</dimen>
     <dimen name="home_tile_spacing">12dp</dimen>
-    <dimen name="home_tile_min_height">70dp</dimen>
+    <dimen name="home_tile_min_height">68dp</dimen>
     <dimen name="home_bottom_row_margin_top">12dp</dimen>
     <dimen name="home_bottom_action_icon_size">22dp</dimen>
     <dimen name="home_bottom_action_icon_gap">10dp</dimen>
@@ -82,7 +82,7 @@
     <dimen name="profile_card_padding_v">16dp</dimen>
     <dimen name="portal_spinner_size">40dp</dimen>
     <dimen name="settings_form_padding_horizontal">8dp</dimen>
-    <dimen name="settings_start_mode_row_height">54dp</dimen>
+    <dimen name="settings_start_mode_row_height">52dp</dimen>
     <!-- Same vertical gap as between settings button rows. -->
     <dimen name="settings_start_mode_margin_top">@dimen/home_tile_spacing</dimen>
     <dimen name="settings_start_mode_margin_bottom">@dimen/home_tile_spacing</dimen>
