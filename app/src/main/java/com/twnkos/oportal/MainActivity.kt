@@ -5782,7 +5782,11 @@ class MainActivity : AppCompatActivity() {
                         applyEpgStatus(sourceUrl, "Готово")
                         parsed = true
                         break
+                    } catch (cancelled: EpgParseCancelled) {
+                        logDebug("EPG_DEBUG", "source parse aborted by newer refresh url=$sourceUrl")
+                        break
                     } catch (t: Throwable) {
+                        if (fetchGen != epgFetchGeneration) break
                         Log.w("EPG", redactSensitive("Ошибка обработки EPG кандидата: $candidateUrl"), t)
                         lastError = humanReadableEpgError(t)
                         when (t) {
@@ -5805,8 +5809,12 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (!parsed) {
-                    applyEpgStatus(sourceUrl, "Ошибка загрузки: $lastError")
-                    Log.w("EPG", redactSensitive("Не удалось обработать источник EPG: $sourceUrl ($lastError)"))
+                    if (fetchGen != epgFetchGeneration) {
+                        logDebug("EPG_DEBUG", "skip failure status — fetch superseded url=$sourceUrl")
+                    } else {
+                        applyEpgStatus(sourceUrl, "Ошибка загрузки: $lastError")
+                        Log.w("EPG", redactSensitive("Не удалось обработать источник EPG: $sourceUrl ($lastError)"))
+                    }
                 }
             }
 
@@ -6025,6 +6033,9 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             onParse(100)
+        } catch (cancelled: EpgParseCancelled) {
+            logDebug("EPG_DEBUG", "PARSE_CANCELLED superseded by newer refresh")
+            throw cancelled
         } catch (oom: OutOfMemoryError) {
             System.gc()
             throw IOException("Файл EPG слишком большой для памяти устройства", oom)
@@ -6163,12 +6174,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private class EpgParseCancelled : RuntimeException("EPG parse cancelled by newer refresh")
+
     private fun parseEpgXml(
         inputStream: InputStream,
         totalBytes: Int,
         onProgress: (Int) -> Unit,
         onMessage: ((String) -> Unit)? = null
     ) {
+        // Snapshot generation so a forced re-refresh can abort this pass without dual-parse thrash.
+        val parseGeneration = epgFetchGeneration
+        fun ensureParseStillCurrent() {
+            if (parseGeneration != epgFetchGeneration) throw EpgParseCancelled()
+        }
         var loggedChannelSamples = 0
         var loggedProgrammeSamples = 0
         var programmeTotal = 0
@@ -6255,12 +6273,20 @@ class MainActivity : AppCompatActivity() {
             val nowMs = System.currentTimeMillis()
             if (nowMs - lastHeartbeatAtMs < 10_000L) return
             lastHeartbeatAtMs = nowMs
+            ensureParseStillCurrent()
             logDebug(
                 "EPG_DEBUG",
                 "PARSE_HEARTBEAT phase=$phase channels=${channelIdsSeen.size} " +
                     "programmes=$programmeTotal kept=$programmeKept " +
                     "elapsedMs=${nowMs - parseStartedAtMs}"
             )
+            if (phase == "programmes") {
+                // Keep the reading label alive so 15% does not look frozen on slow boxes.
+                onMessage?.invoke("Чтение программ… $programmeTotal (сохранено $programmeKept)")
+                // Byte-% can sit still on gzip streams; nudge 16–90% from programme volume.
+                val synthetic = (16 + (programmeTotal / 8000).coerceAtMost(74)).coerceIn(16, 90)
+                onProgress(synthetic)
+            }
         }
 
         // Bridge: ignore byte progress until programmes — catalog uses emitCatalogProgress.
@@ -6323,18 +6349,17 @@ class MainActivity : AppCompatActivity() {
                             var title = ""
                             // IMPORTANT: wantedXmlIds == null means "not resolved yet".
                             // Empty wanted set must NOT treat every channel as wanted (that loaded every <desc>).
-                            val displayKeys = xmlChannelDisplayNames[chId].orEmpty()
-                                .flatMap { epgKeysForMatch(it) }
-                                .toSet()
-                            val channelKeys = epgKeysForMatch(chId)
+                            // Membership is O(1) only. Fuzzy aliases are expanded once in
+                            // computeWantedXmlIds / playlistKeySet — never per programme
+                            // (an O(playlist) scan here made IPTVX crawl at ~2 programmes/16s
+                            // and the UI looked "lost" at 15%).
+                            val wanted = wantedXmlIds
                             val maybeWanted = chId.isNotEmpty() && (
-                                wantedXmlIds == null ||
-                                    chId in wantedXmlIds.orEmpty() ||
-                                    channelKeys.any { it in wantedXmlIds.orEmpty() } ||
-                                    channelKeys.any { it in playlistKeySet } ||
-                                    displayKeys.any { it in playlistKeySet } ||
-                                    playlistKeySet.any { pk -> epgKeysForMatch(pk).any { it in displayKeys || it in channelKeys } }
+                                wanted == null ||
+                                    chId in wanted ||
+                                    chId in playlistKeySet
                                 )
+                            if (programmeTotal % 64 == 0) ensureParseStillCurrent()
                             while (!(parser.next() == XmlPullParser.END_TAG && parser.name == "programme")) {
                                 if (parser.eventType != XmlPullParser.START_TAG) continue
                                 when (parser.name) {
