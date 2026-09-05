@@ -163,6 +163,8 @@ class MainActivity : AppCompatActivity() {
     private var trackSelector: DefaultTrackSelector? = null
     private var retriedWithoutAudio = false
     private var firstFrameRendered = false
+    /** Wall-clock when current channel source started (audio-without-video watchdog). */
+    private var playbackStartedAtMs = 0L
     private var retriedWithAlternateDecoder = false
     private var softwareDecoderMode = false
     private var preferGpuDecoding = true
@@ -407,6 +409,25 @@ class MainActivity : AppCompatActivity() {
             return@Runnable
         }
         if (!firstFrameRendered) {
+            val nowNoFrame = System.currentTimeMillis()
+            val startedAt = playbackStartedAtMs
+            val waitingForFrameMs = if (startedAt > 0L) nowNoFrame - startedAt else 0L
+            // Audio/READY without a painted frame: bare spinner is useless — start recovery plate.
+            if (!isPlaybackPaused &&
+                !isPlayerOverlayOpen() &&
+                !isHomeOrSettingsForeground() &&
+                nowNoFrame >= stallWatchdogGraceUntilMs &&
+                waitingForFrameMs >= PLAYBACK_AUDIO_WITHOUT_VIDEO_MS &&
+                player.playWhenReady &&
+                (player.isPlaying || player.playbackState == androidx.media3.common.Player.STATE_READY)
+            ) {
+                logDebug(
+                    "PLAYER_STATE",
+                    "watchdog audio-without-video stall waitingForFrameMs=$waitingForFrameMs " +
+                        "isPlaying=${player.isPlaying} state=${player.playbackState}"
+                )
+                notifyPlaybackStall("Нет видеокадра", immediate = true)
+            }
             handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
             return@Runnable
         }
@@ -611,10 +632,15 @@ class MainActivity : AppCompatActivity() {
             showPlaybackFreezeFailure(reason)
             return
         }
-        // First frame already up after a reload — wait for progress instead of re-arming another reload.
-        if (player != null && firstFrameRendered &&
+        // After a reload that already painted a frame, wait for progress instead of reloading again.
+        // Do NOT take this on the first stall tick: firstFrameRendered is still true from the frozen
+        // stream, which previously left users on a bare spinner with no recovery plate.
+        if (playbackRecoveryAttemptCount > 0 &&
+            player != null &&
+            firstFrameRendered &&
             player.playbackState != androidx.media3.common.Player.STATE_ENDED &&
-            player.playbackState != androidx.media3.common.Player.STATE_IDLE
+            player.playbackState != androidx.media3.common.Player.STATE_IDLE &&
+            player.playbackState != androidx.media3.common.Player.STATE_BUFFERING
         ) {
             schedulePlaybackRecoveryRetry(immediate = false)
             return
@@ -632,6 +658,10 @@ class MainActivity : AppCompatActivity() {
         }
         showReloadingStatus(title, subtitle)
         showUI(preferFocus = btnLiveReload)
+        // Fresh codec session helps after audio-only / stuck-decoder limbo (without hiding surface).
+        if (!firstFrameRendered || lastPlaybackStallReason.contains("видео", ignoreCase = true)) {
+            forceFreshPlayerSession = true
+        }
         playChannel(forcePlay = true, reason = PlayerOpenReason.RECOVERY)
         schedulePlaybackRecoveryRetry(immediate = false)
     }
@@ -732,6 +762,8 @@ class MainActivity : AppCompatActivity() {
         private const val PLAYBACK_STALL_HARD_STOP_MS = 5_000L
         private const val PLAYBACK_STALL_GRACE_AFTER_START_MS = 8_000L
         private const val PLAYBACK_STALL_GRACE_AFTER_RECOVERY_MS = 4_000L
+        // Audio can start while video never paints after a zap — escalate before spinner-only limbo.
+        private const val PLAYBACK_AUDIO_WITHOUT_VIDEO_MS = 8_000L
         private const val PREF_EPG_CACHE = "epg_cache"
         private const val PREF_EPG_STATUS = "epg_status"
         private const val PREF_EPG_LAST_REFRESH = "epg_last_refresh"
@@ -1929,8 +1961,9 @@ class MainActivity : AppCompatActivity() {
 
         (rvHomeTiles.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
             lp.width = ViewGroup.LayoutParams.MATCH_PARENT
-            lp.height = 0
-            lp.weight = 1f
+            // wrap_content so bottom action tiles sit below the grid inside ContentAwareScrollView
+            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            lp.weight = 0f
             lp.leftMargin = 0
             lp.rightMargin = 0
             lp.marginStart = 0
@@ -1938,6 +1971,7 @@ class MainActivity : AppCompatActivity() {
             rvHomeTiles.layoutParams = lp
         } ?: (rvHomeTiles.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
             lp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
             lp.leftMargin = 0
             lp.rightMargin = 0
             lp.marginStart = 0
@@ -1945,7 +1979,11 @@ class MainActivity : AppCompatActivity() {
             rvHomeTiles.layoutParams = lp
         }
 
+        rvHomeTiles.isNestedScrollingEnabled = false
         rvHomeTiles.setPadding(0, rvHomeTiles.paddingTop, 0, rvHomeTiles.paddingBottom)
+        (homePlaylistTilesPanel as? ContentAwareScrollView)?.post {
+            (homePlaylistTilesPanel as ContentAwareScrollView).updateScrollEnabled()
+        }
     }
 
     private data class HomeGridGeometry(
@@ -2395,6 +2433,9 @@ class MainActivity : AppCompatActivity() {
         } else {
             homePlaylistTilesPanel.post { applyHomeBottomTilesGeometry() }
         }
+        homePlaylistTilesPanel.post {
+            (homePlaylistTilesPanel as? ContentAwareScrollView)?.updateScrollEnabled()
+        }
     }
 
 
@@ -2665,6 +2706,25 @@ class MainActivity : AppCompatActivity() {
             }
             if (homeSettingsScreen.visibility == View.VISIBLE) {
                 handleSettingsBackPress()
+                return@addCallback
+            }
+            // Stuck playback (audio-only / bare spinner / recovery plate): Back must always leave player.
+            val inPlayer = homePanel.visibility != View.VISIBLE &&
+                (mediaPlayer != null || playerLoadingUiActive || playbackRecoveryActive ||
+                    (::tvReloadingStatus.isInitialized && tvReloadingStatus.visibility == View.VISIBLE))
+            if (inPlayer) {
+                if (inputNumber.isNotEmpty()) {
+                    inputNumber = ""
+                    handler.removeCallbacks(channelSwitchRunnable)
+                    seekStatusHoldUntilMs = 0L
+                    restoreChannelHeaderAfterNumberInput()
+                    return@addCallback
+                }
+                if (controlsPanel.visibility == View.VISIBLE || topInfoPanel.visibility == View.VISIBLE) {
+                    hideUI()
+                    return@addCallback
+                }
+                exitPlayerToPlaylist()
                 return@addCallback
             }
             if (homePanel.visibility == View.VISIBLE) {
@@ -6999,6 +7059,7 @@ class MainActivity : AppCompatActivity() {
             logHlsManifestPreview(lastRequestedPlaybackUrl)
             dumpDebugTsSegments(lastRequestedPlaybackUrl, "problem")
             firstFrameRendered = false
+            playbackStartedAtMs = System.currentTimeMillis()
             handler.removeCallbacks(startupSlowStreamRunnable)
             resetPlaybackProgressBaseline(extendGrace = true)
             armPlaybackFreezeWatchdog(4000L, withStartGrace = true)
@@ -9793,6 +9854,12 @@ class MainActivity : AppCompatActivity() {
         dismissPlayerTrackMenu()
         clearPlayerSubtitles()
         logDebug("NAV", "EXIT_PLAYER_TO_PLAYLIST_ENTERED")
+        resetPlaybackRecoveryState()
+        if (::tvReloadingStatus.isInitialized) {
+            stopReloadingPlateSpinner()
+            tvReloadingStatus.visibility = View.GONE
+        }
+        hidePlayerLoadingUi()
         if (::epgPanel.isInitialized) {
             epgPanel.visibility = View.GONE
             lvEpgPrograms.adapter = null
@@ -9801,7 +9868,8 @@ class MainActivity : AppCompatActivity() {
             channelListPanel.visibility = View.GONE
             gvChannelListPanel.adapter = null
         }
-        stopPlayback()
+        runCatching { stopPlayback() }
+            .onFailure { logDebug("NAV", "EXIT_PLAYER_STOP_PLAYBACK_FAILED msg=${it.message}") }
         resetPlaybackSessionStateOnExit()
         hasStartedPlaybackFromChannelClick = false
         logDebug("NAV", "EXIT_PLAYER_LOCAL_HOME_RESET")
