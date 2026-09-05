@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fallback launch/home backdrop. Override per screen size by dropping PNG files:
+     res/drawable-sw480dp/oportal_bg.png
+     res/drawable-sw720dp/oportal_bg.png
+     res/drawable-sw1080dp/oportal_bg.png
+     res/drawable-sw2160dp/oportal_bg.png  (4K)
+     Keep the resource name exactly: oportal_bg.png -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FF000000" />
+</shape>

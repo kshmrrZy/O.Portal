@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="@drawable/oportal_bg">
 
     <androidx.media3.ui.PlayerView
         android:id="@+id/videoLayout"
@@ -789,7 +789,7 @@
         android:id="@+id/homePanel"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@drawable/bg_home_screen"
+        android:background="@drawable/oportal_bg"
         android:visibility="gone">
 
         <TextView
@@ -1196,15 +1196,18 @@
             app:barrierDirection="bottom"
             app:constraint_referenced_ids="tvPlaylistPageSubtitle,etHomeListSearch" />
 
-        <!-- LinearLayout (not ScrollView): RV scrolls itself so D-pad focus stays in viewport. -->
-        <LinearLayout
+        <!-- ScrollView wraps grid + bottom actions so "Свои плейлисты"/"Избранные" sit below
+             and only appear after scroll on short screens (pre-a0f4e04 behavior). -->
+        <com.twnkos.oportal.ContentAwareScrollView
             android:id="@+id/homePlaylistTilesPanel"
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:visibility="gone"
-            android:orientation="vertical"
-            android:clipChildren="false"
-            android:clipToPadding="false"
+            android:fillViewport="false"
+            android:overScrollMode="never"
+            android:scrollbars="none"
+            android:clipChildren="true"
+            android:clipToPadding="true"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             android:layout_marginStart="@dimen/home_edge_margin"
@@ -1214,51 +1217,59 @@
             android:layout_marginTop="@dimen/home_grid_margin_top"
             android:layout_marginBottom="@dimen/home_bottom_margin">
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvHomeTiles"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:clipChildren="false"
-                android:clipToPadding="false"
-                android:paddingBottom="8dp"
-                android:overScrollMode="never"
-                android:scrollbars="none" />
-
             <LinearLayout
-                android:id="@+id/homeBottomTilesRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/home_bottom_row_margin_top"
-                android:orientation="horizontal"
-                android:visibility="gone">
+                android:orientation="vertical"
+                android:clipChildren="true"
+                android:clipToPadding="true">
 
-                <FrameLayout
-                    android:id="@+id/btnOwnPlaylistsTile"
-                    android:layout_width="wrap_content"
-                    android:layout_height="@dimen/home_tile_min_height"
-                    android:background="@drawable/bg_playlist_tile"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:focusableInTouchMode="false">
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvHomeTiles"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:nestedScrollingEnabled="false"
+                    android:clipChildren="true"
+                    android:clipToPadding="true"
+                    android:paddingBottom="8dp"
+                    android:overScrollMode="never"
+                    android:scrollbars="none" />
 
-                    <include layout="@layout/item_home_bottom_action" />
-                </FrameLayout>
+                <LinearLayout
+                    android:id="@+id/homeBottomTilesRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/home_bottom_row_margin_top"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
 
-                <FrameLayout
-                    android:id="@+id/btnFavoritesTile"
-                    android:layout_width="wrap_content"
-                    android:layout_height="@dimen/home_tile_min_height"
-                    android:layout_marginStart="@dimen/home_tile_spacing"
-                    android:background="@drawable/bg_playlist_tile"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:focusableInTouchMode="false">
+                    <FrameLayout
+                        android:id="@+id/btnOwnPlaylistsTile"
+                        android:layout_width="wrap_content"
+                        android:layout_height="@dimen/home_tile_min_height"
+                        android:background="@drawable/bg_playlist_tile"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:focusableInTouchMode="false">
 
-                    <include layout="@layout/item_home_bottom_action" />
-                </FrameLayout>
+                        <include layout="@layout/item_home_bottom_action" />
+                    </FrameLayout>
+
+                    <FrameLayout
+                        android:id="@+id/btnFavoritesTile"
+                        android:layout_width="wrap_content"
+                        android:layout_height="@dimen/home_tile_min_height"
+                        android:layout_marginStart="@dimen/home_tile_spacing"
+                        android:background="@drawable/bg_playlist_tile"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:focusableInTouchMode="false">
+
+                        <include layout="@layout/item_home_bottom_action" />
+                    </FrameLayout>
+                </LinearLayout>
             </LinearLayout>
-        </LinearLayout>
+        </com.twnkos.oportal.ContentAwareScrollView>
 
         <GridView
             android:id="@+id/gvHomeChannelList"
