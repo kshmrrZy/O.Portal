@@ -1144,6 +1144,7 @@ class MainActivity : AppCompatActivity() {
     private fun setupLaunchSplashOverlay() {
         val splash = findViewById<View>(R.id.launchSplashOverlay) ?: return
         val logo = findViewById<TextView>(R.id.launchSplashLogo)
+        logo?.text = buildPortalWordmarkSpan()
         splash.setBackgroundResource(R.drawable.bg_home_screen)
         splash.visibility = View.VISIBLE
         splash.alpha = 1f
@@ -1398,11 +1399,7 @@ private fun showDefaultStartupScreen() {
         btnPlayPause.alpha = 1.0f
     }
 
-    private fun applyHomeAppTitleStyle(
-        settingsMode: Boolean = false,
-        settingsTitle: String = "Настройки",
-        settingsTitle2: String? = null
-    ) {
+    private fun buildPortalWordmarkSpan(): CharSequence {
         val logo = SpannableString("O.Portal")
         val medium = golosTypeface
         val portalFace = golosTypefaceSemiBold ?: golosTypefaceExtraBold ?: Typeface.create(golosTypeface, Typeface.BOLD)
@@ -1412,7 +1409,15 @@ private fun showDefaultStartupScreen() {
         if (portalFace != null) {
             logo.setSpan(CustomTypefaceSpan(portalFace), 2, logo.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        tvHomeAppTitle.text = logo
+        return logo
+    }
+
+    private fun applyHomeAppTitleStyle(
+        settingsMode: Boolean = false,
+        settingsTitle: String = "Настройки",
+        settingsTitle2: String? = null
+    ) {
+        tvHomeAppTitle.text = buildPortalWordmarkSpan()
         tvHomeSystemTime.typeface = golosTypeface ?: Typeface.DEFAULT
         tvHomeBreadcrumbArrow.visibility = if (settingsMode) View.VISIBLE else View.GONE
         tvHomeBreadcrumbPill.visibility = if (settingsMode) View.VISIBLE else View.GONE
@@ -1879,10 +1884,31 @@ private fun showDefaultStartupScreen() {
             }
 
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                if (homePanel.visibility == View.VISIBLE) return false
+                if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) return false
+                if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) return false
                 if (controlsPanel.visibility == View.VISIBLE) hideUI() else showUI()
                 return true
             }
         })
+        // PlayerView eats touches — forward them so chrome can toggle on phone taps.
+        videoLayout.isClickable = true
+        videoLayout.setOnTouchListener { _, event ->
+            if (homePanel.visibility == View.VISIBLE) return@setOnTouchListener false
+            if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
+                return@setOnTouchListener false
+            }
+            if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
+                return@setOnTouchListener false
+            }
+            if (::scaleGestureDetector.isInitialized) {
+                scaleGestureDetector.onTouchEvent(event)
+            }
+            if (::mDetector.isInitialized) {
+                mDetector.onTouchEvent(event)
+            }
+            true
+        }
     }
 
     private fun showStartPage() {
@@ -3714,11 +3740,6 @@ private fun showDefaultStartupScreen() {
             profileCard.visibility = View.VISIBLE
             updateProfileHeaderCard()
         }
-        findViewById<View>(R.id.btnProfileChangeToken).apply {
-            isClickable = false
-            isFocusable = false
-            isFocusableInTouchMode = false
-        }
         // Pull playlist/EPG/About content closer under the profile card.
         applySettingsSubScreenContentInsets(tightUnderProfile = true)
     }
@@ -3739,12 +3760,8 @@ private fun showDefaultStartupScreen() {
         homeSettingsScreen.setPadding(0, top, 0, bottom)
     }
 
-    private fun restoreSettingsProfileHeaderInteractivity() {
-        findViewById<View>(R.id.btnProfileChangeToken).apply {
-            isClickable = true
-            isFocusable = true
-            isFocusableInTouchMode = false
-        }
+        private fun restoreSettingsProfileHeaderInteractivity() {
+        // Token refresh control removed from the profile card.
     }
 
     private fun returnToSettingsRowList() {
@@ -3872,8 +3889,7 @@ private fun showDefaultStartupScreen() {
         tvNickname.text = if (login.isNotBlank()) "@$login" else "не авторизован"
         val tokenRowViews = listOf(
             findViewById<View>(R.id.tvProfileTokenLabel),
-            findViewById<View>(R.id.tvProfileTokenValue),
-            findViewById<View>(R.id.btnProfileChangeToken)
+            findViewById<View>(R.id.tvProfileTokenValue)
         )
         val tvTokenValue = findViewById<TextView>(R.id.tvProfileTokenValue)
         if (token.isNotBlank()) {
@@ -3923,66 +3939,8 @@ private fun showDefaultStartupScreen() {
             tvTokenValue.setOnLongClickListener(null)
             tvTokenValue.isLongClickable = false
         }
-        findViewById<View>(R.id.btnProfileChangeToken).setOnClickListener {
-            refreshPortalTokenAndLogout()
-        }
     }
 
-    private fun refreshPortalTokenAndLogout() {
-        val login = (prefs.getString(PREF_USER_LOGIN, "") ?: "").trim()
-        val token = (prefs.getString(PREF_USER_TOKEN, "") ?: "").trim()
-        if (login.isBlank() || token.isBlank()) {
-            showAppToast("Нет сохранённого логина или токена")
-            return
-        }
-        val btn = findViewById<View>(R.id.btnProfileChangeToken)
-        btn.isEnabled = false
-        btn.isClickable = false
-        showAppToast("Обновление токена…")
-        thread {
-            val result = runCatching {
-                val url =
-                    "https://o.avff.pw/api.php?module=app&action=token&login=${Uri.encode(login)}&token=${
-                        Uri.encode(token)
-                    }"
-                JSONObject(URL(url).readText())
-            }
-            handler.post {
-                btn.isEnabled = true
-                btn.isClickable = true
-                result.onSuccess { json ->
-                    val error = json.optString("error")
-                    if (error.isNotBlank() && json.optString("valid") != "OK") {
-                        val message = json.optString("message").ifBlank { "Не удалось обновить токен" }
-                        showAppToast(message, 3500L)
-                        // Invalid/expired token — still sign the user out.
-                        if (error == "validation_failed" ||
-                            message.contains("login", ignoreCase = true) ||
-                            message.contains("token", ignoreCase = true)
-                        ) {
-                            performLogout()
-                        }
-                        return@onSuccess
-                    }
-                    showAppToast("Токен обновлён. Войдите заново с новым токеном", 3500L)
-                    performLogout()
-                }.onFailure { e ->
-                    val isNetworkError = e is UnknownHostException ||
-                        e is SocketTimeoutException ||
-                        e.message?.contains("Unable to resolve host", ignoreCase = true) == true ||
-                        e.message?.contains("timeout", ignoreCase = true) == true
-                    showAppToast(
-                        if (isNetworkError) {
-                            "Ошибка сети. Проверьте подключение и повторите"
-                        } else {
-                            "Не удалось обновить токен"
-                        },
-                        3500L
-                    )
-                }
-            }
-        }
-    }
 
     private fun copyTextToClipboard(label: String, text: String, toast: String) {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -4008,10 +3966,6 @@ private fun showDefaultStartupScreen() {
         findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.userSettingsPanel).visibility = View.VISIBLE
-        findViewById<View>(R.id.btnProfileChangeToken).apply {
-            isClickable = false
-            isFocusable = false
-        }
         val isAuthorizedUser = (prefs.getString(PREF_USER_NAME, "") ?: "").isNotBlank()
         // Для экрана авторизации гостя блок профиля не показываем.
         findViewById<View>(R.id.userProfileHeaderCard).visibility =
