@@ -796,6 +796,8 @@ class MainActivity : AppCompatActivity() {
         private const val PLAYBACK_STALL_GRACE_AFTER_RECOVERY_MS = 2_500L
         // Audio can start while video never paints after a zap — escalate before spinner-only limbo.
         private const val PLAYBACK_AUDIO_WITHOUT_VIDEO_MS = 2_000L
+        // Keep player buttons reachable; short hide made L/R open EPG instead of LIVE.
+        private const val PLAYER_CHROME_HIDE_MS = 12_000L
         private const val PREF_EPG_CACHE = "epg_cache"
         private const val PREF_EPG_STATUS = "epg_status"
         private const val PREF_EPG_LAST_REFRESH = "epg_last_refresh"
@@ -868,7 +870,21 @@ class MainActivity : AppCompatActivity() {
         private val SLEEP_TIMER_OPTIONS = intArrayOf(0, 10, 30, 60, 90, 120)
     }
 
-    private val hideUiRunnable = Runnable { hideUI() }
+    private val hideUiRunnable = Runnable {
+        // Don't yank chrome away mid-navigation — otherwise the next L/R opens EPG.
+        if (controlsPanel.visibility == View.VISIBLE && isFocusInPlayerControlsRow()) {
+            scheduleHidePlayerChrome()
+            return@Runnable
+        }
+        hideUI()
+    }
+
+    private fun scheduleHidePlayerChrome(delayMs: Long = PLAYER_CHROME_HIDE_MS) {
+        handler.removeCallbacks(hideUiRunnable)
+        // Stall/recovery plate: keep LIVE reachable until recovery ends.
+        if (isStallNavigationLockActive()) return
+        handler.postDelayed(hideUiRunnable, delayMs)
+    }
     private var pendingSeekDeltaSec: Int = 0
     private var liveTimelineAnchorMs: Long = 0L
     private val applySeekDeltaRunnable = Runnable {
@@ -1700,10 +1716,6 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (dx > 120 && abs(dx) > abs(dy)) {
-                    if (isStallNavigationLockActive()) {
-                        showUI(preferFocus = btnLiveReload)
-                        return true
-                    }
                     showEpgPanel()
                     return true
                 }
@@ -2757,17 +2769,7 @@ class MainActivity : AppCompatActivity() {
                     return@addCallback
                 }
                 if (controlsPanel.visibility == View.VISIBLE || topInfoPanel.visibility == View.VISIBLE) {
-                    // Stall/recovery: keep chrome so LIVE stays reachable; focus LIVE instead of hiding.
-                    if (isStallNavigationLockActive()) {
-                        btnLiveReload.requestFocus()
-                        return@addCallback
-                    }
                     hideUI()
-                    return@addCallback
-                }
-                // Chrome hidden while frozen: open controls on LIVE — do not exit into EPG/home.
-                if (isStallNavigationLockActive()) {
-                    showUI(preferFocus = btnLiveReload)
                     return@addCallback
                 }
                 exitPlayerToPlaylist()
@@ -9163,11 +9165,7 @@ class MainActivity : AppCompatActivity() {
         }
         bindRealPlayerExitButtonListener()
         sbTimeline.isEnabled = true
-        handler.removeCallbacks(hideUiRunnable)
-        // Keep LIVE / controls visible during stall recovery so the user can reach LIVE.
-        if (!isStallNavigationLockActive()) {
-            handler.postDelayed(hideUiRunnable, 5000)
-        }
+        scheduleHidePlayerChrome()
         updatePlayPauseButton()
         ensurePlayerControlsInteractive()
         layoutPlayerSubtitlesOverlay()
@@ -9180,7 +9178,6 @@ class MainActivity : AppCompatActivity() {
         val keepCurrent = current != null && controlsPanelButtonIds.any { findViewById<View>(it) === current }
         val focusTarget = when {
             preferFocus != null -> preferFocus
-            isStallNavigationLockActive() -> btnLiveReload
             keepCurrent -> current
             else -> findViewById(R.id.btnPlayPause)
         }
@@ -9447,14 +9444,9 @@ class MainActivity : AppCompatActivity() {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
                 KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                     if (!isFocusInPlayerControlsRow()) {
-                        findViewById<View>(
-                            if (isStallNavigationLockActive()) R.id.btnLiveReload else R.id.btnPlayPause
-                        )?.requestFocus()
+                        findViewById<View>(R.id.btnPlayPause)?.requestFocus()
                     }
-                    handler.removeCallbacks(hideUiRunnable)
-                    if (!isStallNavigationLockActive()) {
-                        handler.postDelayed(hideUiRunnable, 5000)
-                    }
+                    scheduleHidePlayerChrome()
                     return super.onKeyDown(keyCode, event)
                 }
             }
@@ -9502,22 +9494,15 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
 
+            // Chrome hidden: L/R must open player buttons for navigation, not EPG/channel list.
+            // EPG / channel list stay on their own buttons (and swipe).
             keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                // During freeze/recovery, RIGHT must reach LIVE — not open EPG.
-                if (isStallNavigationLockActive()) {
-                    showUI(preferFocus = btnLiveReload)
-                    return true
-                }
-                toggleEpgPanel()
+                showUI(preferFocus = btnPlayPause)
                 return true
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_LEFT -> {
-                if (isStallNavigationLockActive()) {
-                    showUI(preferFocus = btnLiveReload)
-                    return true
-                }
-                showChannelListPanel()
+                showUI(preferFocus = btnPlayPause)
                 return true
             }
         }
