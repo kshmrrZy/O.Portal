@@ -12,8 +12,9 @@
     <dimen name="player_control_icon_padding">9dp</dimen>
     <dimen name="player_top_icon_size">38dp</dimen>
     <dimen name="player_timeline_thumb_size">12dp</dimen>
-    <!-- Gap between time labels and the scrub track; raise to push the bar lower. -->
-    <dimen name="player_timeline_time_gap">8dp</dimen>
+    <!-- Gap between time labels (tvCurrentTime row) and the scrub track in activity_main.xml
+         (timelineTrack layout_marginTop). Increase to move the progress bar lower. -->
+    <dimen name="player_timeline_time_gap">10dp</dimen>
     <dimen name="player_controls_top_margin">6dp</dimen>
     <dimen name="player_live_badge_min_width">0dp</dimen>
     <dimen name="player_live_badge_pad_h">10dp</dimen>

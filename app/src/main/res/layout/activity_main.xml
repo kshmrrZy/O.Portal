@@ -791,8 +791,8 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@drawable/bg_home_screen"
-        android:clipChildren="true"
-        android:clipToPadding="true"
+        android:clipChildren="false"
+        android:clipToPadding="false"
         android:visibility="gone">
 
         <TextView
@@ -1362,6 +1362,7 @@
         android:background="#99000000"
         android:clickable="true"
         android:focusable="true"
+        android:elevation="40dp"
         android:visibility="gone">
 
         <include
@@ -1411,7 +1412,8 @@
         android:layout_height="match_parent"
         android:background="@drawable/bg_home_screen"
         android:clickable="true"
-        android:focusable="true">
+        android:focusable="true"
+        android:elevation="80dp">
 
         <TextView
             android:id="@+id/launchSplashLogo"
