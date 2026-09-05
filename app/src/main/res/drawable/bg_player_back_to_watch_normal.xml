@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <!-- Light translucent plate — same look for EPG and channel-list back buttons. -->
+    <solid android:color="#40FFFFFF" />
+    <stroke android:width="0.5dp" android:color="#33FFFFFF" />
+    <corners android:radius="14dp" />
+</shape>
