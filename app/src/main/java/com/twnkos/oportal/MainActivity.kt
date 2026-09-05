@@ -163,8 +163,6 @@ class MainActivity : AppCompatActivity() {
     private var trackSelector: DefaultTrackSelector? = null
     private var retriedWithoutAudio = false
     private var firstFrameRendered = false
-    /** Wall-clock when the current channel source was started (for audio-without-video watchdog). */
-    private var playbackStartedAtMs = 0L
     private var retriedWithAlternateDecoder = false
     private var softwareDecoderMode = false
     private var preferGpuDecoding = true
@@ -409,25 +407,6 @@ class MainActivity : AppCompatActivity() {
             return@Runnable
         }
         if (!firstFrameRendered) {
-            val nowNoFrame = System.currentTimeMillis()
-            val startedAt = playbackStartedAtMs
-            val waitingForFrameMs = if (startedAt > 0L) nowNoFrame - startedAt else 0L
-            // Audio playing / READY without a painted frame: spinner alone is useless — start recovery.
-            if (!isPlaybackPaused &&
-                !isPlayerOverlayOpen() &&
-                !isHomeOrSettingsForeground() &&
-                nowNoFrame >= stallWatchdogGraceUntilMs &&
-                waitingForFrameMs >= PLAYBACK_AUDIO_WITHOUT_VIDEO_MS &&
-                player.playWhenReady &&
-                (player.isPlaying || player.playbackState == androidx.media3.common.Player.STATE_READY)
-            ) {
-                logDebug(
-                    "PLAYER_STATE",
-                    "watchdog audio-without-video stall waitingForFrameMs=$waitingForFrameMs " +
-                        "isPlaying=${player.isPlaying} state=${player.playbackState}"
-                )
-                notifyPlaybackStall("Нет видеокадра", immediate = true)
-            }
             handler.postDelayed(playbackFreezeWatchdogRunnable, 2000L)
             return@Runnable
         }
@@ -632,15 +611,10 @@ class MainActivity : AppCompatActivity() {
             showPlaybackFreezeFailure(reason)
             return
         }
-        // After a reload that already painted a frame, wait for progress instead of reloading again.
-        // Do NOT take this path on the first stall tick: firstFrameRendered is still true from the
-        // frozen stream, which previously left users on a bare spinner with no recovery plate.
-        if (playbackRecoveryAttemptCount > 0 &&
-            player != null &&
-            firstFrameRendered &&
+        // First frame already up after a reload — wait for progress instead of re-arming another reload.
+        if (player != null && firstFrameRendered &&
             player.playbackState != androidx.media3.common.Player.STATE_ENDED &&
-            player.playbackState != androidx.media3.common.Player.STATE_IDLE &&
-            player.playbackState != androidx.media3.common.Player.STATE_BUFFERING
+            player.playbackState != androidx.media3.common.Player.STATE_IDLE
         ) {
             schedulePlaybackRecoveryRetry(immediate = false)
             return
@@ -658,10 +632,6 @@ class MainActivity : AppCompatActivity() {
         }
         showReloadingStatus(title, subtitle)
         showUI(preferFocus = btnLiveReload)
-        // Amlogic often needs a fresh codec session after audio-only / green-stripe stuck states.
-        if (!firstFrameRendered || lastPlaybackStallReason.contains("видео", ignoreCase = true)) {
-            forceFreshPlayerSession = true
-        }
         playChannel(forcePlay = true, reason = PlayerOpenReason.RECOVERY)
         schedulePlaybackRecoveryRetry(immediate = false)
     }
@@ -762,8 +732,6 @@ class MainActivity : AppCompatActivity() {
         private const val PLAYBACK_STALL_HARD_STOP_MS = 5_000L
         private const val PLAYBACK_STALL_GRACE_AFTER_START_MS = 8_000L
         private const val PLAYBACK_STALL_GRACE_AFTER_RECOVERY_MS = 4_000L
-        // Audio can start while video never paints (Amlogic / only4 zap). Escalate before user is stuck on spinner.
-        private const val PLAYBACK_AUDIO_WITHOUT_VIDEO_MS = 8_000L
         private const val PREF_EPG_CACHE = "epg_cache"
         private const val PREF_EPG_STATUS = "epg_status"
         private const val PREF_EPG_LAST_REFRESH = "epg_last_refresh"
@@ -6986,8 +6954,7 @@ class MainActivity : AppCompatActivity() {
             logDebug("NAV", "open_player")
             dismissHomeForPlayback()
             ensurePlayerControlsInteractive()
-            // Keep surface hidden until the first clean frame — avoids only4 green stripes / stale frame.
-            setPlayerVideoVisible(false)
+            setPlayerVideoVisible(true)
             applyAspectRatioMode()
             val shouldUseSoftware = !preferGpuDecoding
             if (softwareDecoderMode != shouldUseSoftware) {
@@ -7032,7 +6999,6 @@ class MainActivity : AppCompatActivity() {
             logHlsManifestPreview(lastRequestedPlaybackUrl)
             dumpDebugTsSegments(lastRequestedPlaybackUrl, "problem")
             firstFrameRendered = false
-            playbackStartedAtMs = System.currentTimeMillis()
             handler.removeCallbacks(startupSlowStreamRunnable)
             resetPlaybackProgressBaseline(extendGrace = true)
             armPlaybackFreezeWatchdog(4000L, withStartGrace = true)
@@ -7125,7 +7091,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (lowerUrl.contains(".m3u8") || url.contains("/only4/", ignoreCase = true)) {
-            val targetOffset = if (url.contains("/only4/", ignoreCase = true)) 20_000L else 12_000L
+            val targetOffset = if (url.contains("/only4/", ignoreCase = true)) 16_000L else 12_000L
             builder.setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()
                     .setTargetOffsetMs(targetOffset)
@@ -8383,7 +8349,6 @@ class MainActivity : AppCompatActivity() {
                 val listener = object : androidx.media3.common.Player.Listener {
                     override fun onRenderedFirstFrame() {
                         firstFrameRendered = true
-                        setPlayerVideoVisible(true)
                         startupPlaybackUrlLock = null
                         handler.removeCallbacks(startupSlowStreamRunnable)
                         // Seed the stall baseline only. A first frame is not full recovery success
@@ -8706,9 +8671,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun shouldAllowNonIdrForStream(url: String): Boolean {
         val lower = url.lowercase(Locale.ROOT)
-        // only4 on Amlogic: non-IDR start paints green stripes until the next IDR.
-        // Prefer waiting for a keyframe over showing decoder garbage.
-        if (lower.contains("/only4/")) return false
         if (lower.contains(".m3u8")) return true
         if (lower.startsWith("udp://") || lower.contains(".ts") || lower.contains("mpegts")) return true
         return false
@@ -10490,7 +10452,7 @@ class MainActivity : AppCompatActivity() {
         suppressAutoPlayerUiOnce = true
         dismissHomeForPlayback()
         hideAppLoadingSpinner()
-        setPlayerVideoVisible(false)
+        setPlayerVideoVisible(true)
         if (::tvChannelName.isInitialized) {
             tvChannelName.text = "${index + 1}. ${ch.name}"
             tvChannelName.visibility = View.VISIBLE
