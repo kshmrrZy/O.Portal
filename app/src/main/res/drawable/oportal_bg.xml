@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Fallback launch/home backdrop. Override per screen size by dropping PNG files:
-     res/drawable-sw480dp/oportal_bg.png
-     res/drawable-sw720dp/oportal_bg.png
-     res/drawable-sw1080dp/oportal_bg.png
-     res/drawable-sw2160dp/oportal_bg.png  (4K)
-     Keep the resource name exactly: oportal_bg.png -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#FF000000" />
-</shape>
+<!-- Launch / window backdrop. Fill width; crop top/bottom to screen height.
+     Size buckets (replace oportal_bg_poster.png in each folder with your art):
+       drawable/            — devices < 480dp SW (uses 480 poster)
+       drawable-sw480dp/    — 480p-class
+       drawable-sw720dp/    — 720p
+       drawable-sw1080dp/   — 1080p
+       drawable-sw2160dp/   — 4K and above -->
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@drawable/oportal_bg_poster"
+    android:gravity="fill_horizontal|center_vertical"
+    android:antialias="true"
+    android:filter="true" />

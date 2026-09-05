@@ -7,8 +7,8 @@
         <item name="fontFamily">@font/main_font</item>
         <item name="android:textViewStyle">@style/AppTextView</item>
         <item name="android:buttonStyle">@style/AppButton</item>
-        <!-- Shown while the activity inflates (replaces plain black/grey flash).
-             Drop size-specific PNGs as drawable-sw*/oportal_bg.png to override. -->
+        <!-- Launch backdrop: size-specific posters in drawable-sw*/oportal_bg_poster.png
+             (480 / 720 / 1080 / 4K). <480 uses default 480; >4K uses 4K. Cropped by height. -->
         <item name="android:windowBackground">@drawable/oportal_bg</item>
         <item name="android:navigationBarColor">@android:color/black</item>
         <item name="android:statusBarColor">@android:color/black</item>

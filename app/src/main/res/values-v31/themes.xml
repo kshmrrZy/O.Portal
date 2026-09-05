@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ system splash: full-bleed poster, no round emblem. -->
+    <style name="Theme.O_portal_OTT" parent="Base.Theme.O_portal_OTT">
+        <item name="android:windowSplashScreenBackground">@drawable/oportal_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_transparent_icon</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+        <item name="android:windowSplashScreenBrandingImage">@null</item>
+    </style>
+</resources>

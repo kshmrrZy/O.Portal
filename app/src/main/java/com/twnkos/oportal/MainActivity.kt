@@ -1736,6 +1736,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showStartPage() {
+        homePanel.setBackgroundResource(R.drawable.bg_home_screen)
         homePanel.visibility = View.VISIBLE
         homePlaylistTilesPanel.visibility = View.GONE
         homeStartCenterBlock.visibility = View.VISIBLE
@@ -2047,7 +2048,7 @@ class MainActivity : AppCompatActivity() {
         val rightInset: Int
     )
 
-    private fun computeHomeGridGeometry(): HomeGridGeometry {
+    private fun computeHomeGridGeometry(itemCount: Int = currentHomeTilesItems.size): HomeGridGeometry {
         val columns = computeHomeTileColumns()
         val edgeMargin = resources.getDimensionPixelSize(R.dimen.home_edge_margin)
         val panelWidth = when {
@@ -2057,11 +2058,32 @@ class MainActivity : AppCompatActivity() {
         }.coerceAtLeast(dpToPx(320))
         val availableWidth = panelWidth
         val spacing = resources.getDimensionPixelSize(R.dimen.home_tile_spacing)
-        val tileHeight = resources.getDimensionPixelSize(R.dimen.home_tile_min_height)
+        val minTileHeight = resources.getDimensionPixelSize(R.dimen.home_tile_min_height)
         val tileWidth = if (columns > 1) {
             ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(100))
         } else {
             availableWidth
+        }
+
+        // Grow tiles to fill the services panel — no fixed height cap.
+        val panelHeight = when {
+            homePlaylistTilesPanel.height > 0 -> homePlaylistTilesPanel.height
+            homePanel.height > 0 -> (homePanel.height * 0.55f).toInt()
+            else -> 0
+        }
+        val bottomRow = findViewById<View?>(R.id.homeBottomTilesRow)
+        val bottomReserved = if (bottomRow != null && bottomRow.visibility == View.VISIBLE) {
+            minTileHeight + resources.getDimensionPixelSize(R.dimen.home_bottom_row_margin_top)
+        } else {
+            0
+        }
+        val rows = ((itemCount + columns - 1) / columns).coerceAtLeast(1)
+        val tileHeight = if (panelHeight > 0) {
+            val verticalGaps = spacing * (rows - 1).coerceAtLeast(0)
+            val availableForTiles = (panelHeight - bottomReserved - verticalGaps).coerceAtLeast(minTileHeight)
+            (availableForTiles / rows).coerceAtLeast(minTileHeight)
+        } else {
+            minTileHeight
         }
 
         return HomeGridGeometry(
@@ -2421,6 +2443,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showPlaylistPageOnHome(source: String = "playlist_page") {
+        homePanel.setBackgroundResource(R.drawable.bg_home_screen)
         homePanel.visibility = View.VISIBLE
         homeStartCenterBlock.visibility = View.GONE
         hidePlayerChromeFully()
