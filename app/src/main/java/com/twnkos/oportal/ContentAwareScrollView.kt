@@ -71,8 +71,8 @@ class ContentAwareScrollView @JvmOverloads constructor(
         rectangle: Rect,
         immediate: Boolean
     ): Boolean {
-        // Always allow focus-driven scroll so D-pad can reach bottom category tiles
-        // even if updateScrollEnabled has not run yet after a layout pass.
+        // When content already fits, do not shift tiles up on TV focus to the last card.
+        if (!scrollingEnabled) return false
         return super.requestChildRectangleOnScreen(child, rectangle, immediate)
     }
 }
