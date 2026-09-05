@@ -9494,15 +9494,16 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
 
-            // Chrome hidden: L/R must open player buttons for navigation, not EPG/channel list.
-            // EPG / channel list stay on their own buttons (and swipe).
+            // Chrome hidden: L/R open channel list / EPG (same as before).
+            // While chrome is visible, L/R only move between player buttons — and chrome
+            // stays up for as long as focus remains on those buttons.
             keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                showUI(preferFocus = btnPlayPause)
+                toggleEpgPanel()
                 return true
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_LEFT -> {
-                showUI(preferFocus = btnPlayPause)
+                showChannelListPanel()
                 return true
             }
         }
