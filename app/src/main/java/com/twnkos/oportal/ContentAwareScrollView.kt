@@ -20,7 +20,13 @@ class ContentAwareScrollView @JvmOverloads constructor(
 
     fun updateScrollEnabled() {
         val child = getChildAt(0)
-        val needScroll = child != null && child.height > height + 1
+        // Prefer the larger of laid-out / measured height so a wrap_content RecyclerView
+        // that finishes measuring after onLayout still enables scroll (avoids bottom crop).
+        val childH = when (child) {
+            null -> 0
+            else -> maxOf(child.height, child.measuredHeight)
+        }
+        val needScroll = child != null && height > 0 && childH > height + 1
         scrollingEnabled = needScroll
         overScrollMode = if (needScroll) OVER_SCROLL_IF_CONTENT_SCROLLS else OVER_SCROLL_NEVER
         if (!needScroll && scrollY != 0) {

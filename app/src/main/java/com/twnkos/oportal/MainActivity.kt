@@ -1061,6 +1061,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // SW posters live in drawable-sw*-nodpi/oportal_bg.png (nodpi avoids density upscale/OOM → black).
+        window.setBackgroundDrawableResource(R.drawable.oportal_bg)
         try {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         } catch (_: Exception) {
@@ -1068,6 +1070,14 @@ class MainActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemUI()
         setContentView(R.layout.activity_main)
+        // Keep poster on top until home/player is ready (PlayerView shutter was painting black).
+        findViewById<ImageView>(R.id.launchSplashImage)?.let { splash ->
+            splash.setImageResource(R.drawable.oportal_bg)
+            splash.setBackgroundResource(R.drawable.oportal_bg)
+            splash.scaleType = ImageView.ScaleType.CENTER_CROP
+            splash.visibility = View.VISIBLE
+            splash.bringToFront()
+        }
 
         ensureDefaultPlaylistProfile()
         initViews()
@@ -1082,6 +1092,24 @@ class MainActivity : AppCompatActivity() {
         loadPlaylist(showErrors = true, autoPlay = true)
         if (!shouldOpenLastChannelOnStart) {
             showDefaultStartupScreen()
+        }
+    }
+
+    private fun dismissLaunchSplash() {
+        val splash = findViewById<View?>(R.id.launchSplashImage) ?: return
+        if (splash.visibility != View.VISIBLE) return
+        // Wait one frame so home/player content is drawn before the poster fades out.
+        splash.post {
+            if (splash.visibility != View.VISIBLE) return@post
+            splash.animate().cancel()
+            splash.animate()
+                .alpha(0f)
+                .setDuration(220L)
+                .withEndAction {
+                    splash.visibility = View.GONE
+                    splash.alpha = 1f
+                }
+                .start()
         }
     }
 
@@ -1740,6 +1768,7 @@ class MainActivity : AppCompatActivity() {
         homePanel.visibility = View.VISIBLE
         homePlaylistTilesPanel.visibility = View.GONE
         homeStartCenterBlock.visibility = View.VISIBLE
+        dismissLaunchSplash()
         tvHomeStartTitle.visibility = View.VISIBLE
         tvHomeStartSubtitle.visibility = View.VISIBLE
         tvHomeAppTitle.visibility = View.VISIBLE
@@ -2058,32 +2087,12 @@ class MainActivity : AppCompatActivity() {
         }.coerceAtLeast(dpToPx(320))
         val availableWidth = panelWidth
         val spacing = resources.getDimensionPixelSize(R.dimen.home_tile_spacing)
-        val minTileHeight = resources.getDimensionPixelSize(R.dimen.home_tile_min_height)
+        // Natural tile height — no vertical growth/cap that cropped the bottom of the services page.
+        val tileHeight = resources.getDimensionPixelSize(R.dimen.home_tile_min_height)
         val tileWidth = if (columns > 1) {
             ((availableWidth - spacing * (columns - 1)) / columns).coerceAtLeast(dpToPx(100))
         } else {
             availableWidth
-        }
-
-        // No fixed height ceiling: grow tiles to fill the services panel when there is room.
-        val panelHeight = when {
-            homePlaylistTilesPanel.height > 0 -> homePlaylistTilesPanel.height
-            homePanel.height > 0 -> (homePanel.height * 0.55f).toInt()
-            else -> 0
-        }
-        val bottomRow = findViewById<View?>(R.id.homeBottomTilesRow)
-        val bottomReserved = if (bottomRow != null && bottomRow.visibility == View.VISIBLE) {
-            minTileHeight + resources.getDimensionPixelSize(R.dimen.home_bottom_row_margin_top)
-        } else {
-            0
-        }
-        val rows = ((itemCount + columns - 1) / columns).coerceAtLeast(1)
-        val tileHeight = if (panelHeight > 0) {
-            val verticalGaps = spacing * (rows - 1).coerceAtLeast(0)
-            val availableForTiles = (panelHeight - bottomReserved - verticalGaps).coerceAtLeast(minTileHeight)
-            (availableForTiles / rows).coerceAtLeast(minTileHeight)
-        } else {
-            minTileHeight
         }
 
         return HomeGridGeometry(
@@ -2448,6 +2457,7 @@ class MainActivity : AppCompatActivity() {
         homeStartCenterBlock.visibility = View.GONE
         hidePlayerChromeFully()
         showPlaylistPageHeader(true)
+        dismissLaunchSplash()
         tvHomeStartTitle.visibility = View.GONE
         tvHomeStartSubtitle.visibility = View.GONE
         tvHomeAppTitle.visibility = View.VISIBLE
@@ -3010,6 +3020,7 @@ class MainActivity : AppCompatActivity() {
         if (::videoLayout.isInitialized) {
             videoLayout.visibility = if (visible) View.VISIBLE else View.GONE
         }
+        if (visible) dismissLaunchSplash()
     }
 
     private fun setPlayerOverlayScrimVisible(visible: Boolean) {

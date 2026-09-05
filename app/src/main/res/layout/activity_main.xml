@@ -11,9 +11,10 @@
         app:use_controller="false"
         app:surface_type="texture_view"
         app:resize_mode="fit"
-        app:shutter_background_color="#000000"
+        app:shutter_background_color="@android:color/transparent"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:visibility="invisible" />
 
     <!-- CSS-like subtitle overlay: left/right 8%, bottom 12%, max-height 28% -->
     <FrameLayout
@@ -790,6 +791,8 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@drawable/bg_home_screen"
+        android:clipChildren="false"
+        android:clipToPadding="false"
         android:visibility="gone">
 
         <TextView
@@ -1203,7 +1206,7 @@
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:visibility="gone"
-            android:fillViewport="true"
+            android:fillViewport="false"
             android:overScrollMode="never"
             android:scrollbars="none"
             android:clipChildren="false"
@@ -1215,22 +1218,23 @@
             app:layout_constraintTop_toBottomOf="@id/homeContentTopBarrier"
             app:layout_constraintBottom_toBottomOf="parent"
             android:layout_marginTop="@dimen/home_grid_margin_top"
-            android:layout_marginBottom="@dimen/home_bottom_margin">
+            android:layout_marginBottom="0dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:clipChildren="true"
-                android:clipToPadding="true">
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:paddingBottom="@dimen/home_bottom_margin">
 
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/rvHomeTiles"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:nestedScrollingEnabled="false"
-                    android:clipChildren="true"
-                    android:clipToPadding="true"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
                     android:paddingBottom="8dp"
                     android:overScrollMode="never"
                     android:scrollbars="none" />
@@ -1395,5 +1399,15 @@
         android:background="#12050505"
         android:visibility="gone" />
 
+    <!-- Topmost launch poster from drawable-sw*-nodpi/oportal_bg.png; hidden once home/player is ready. -->
+    <ImageView
+        android:id="@+id/launchSplashImage"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/oportal_bg"
+        android:contentDescription="@null"
+        android:importantForAccessibility="no"
+        android:scaleType="centerCrop"
+        android:src="@drawable/oportal_bg" />
 
 </FrameLayout>
