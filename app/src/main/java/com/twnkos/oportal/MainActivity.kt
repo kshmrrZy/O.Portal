@@ -176,6 +176,8 @@ class MainActivity : AppCompatActivity() {
     private var playerLoadingUiActive = false
     /** Ignore auto-recovery until this time — prevents reload loops after start/recover. */
     private var stallWatchdogGraceUntilMs = 0L
+    /** Mute STATE_ENDED recovery briefly after a healthy frame (live HLS flickers ENDED around reloads). */
+    private var suppressEndedRecoveryUntilMs = 0L
     private var playbackRecoveryActive = false
     private var playbackRecoveryStartedAtMs = 0L
     private var lastRecoveryAttemptAtMs = 0L
@@ -487,8 +489,8 @@ class MainActivity : AppCompatActivity() {
                 lastProgressWallClockMs = now
                 stuckPositionSinceMs = 0L
                 consecutiveForwardProgressTicks++
-                // Require two healthy ticks before hiding the recovery plate.
-                if (consecutiveForwardProgressTicks >= 2) {
+                // One healthy forward tick is enough to dismiss recovery; avoid reload loops.
+                if (playbackRecoveryActive && consecutiveForwardProgressTicks >= 1) {
                     onPlaybackRecoverySucceeded()
                 }
             }
@@ -506,7 +508,7 @@ class MainActivity : AppCompatActivity() {
                 lastProgressWallClockMs = now
                 stuckPositionSinceMs = 0L
                 consecutiveForwardProgressTicks++
-                if (consecutiveForwardProgressTicks >= 2) {
+                if (playbackRecoveryActive && consecutiveForwardProgressTicks >= 1) {
                     onPlaybackRecoverySucceeded()
                 }
             }
@@ -585,18 +587,36 @@ class MainActivity : AppCompatActivity() {
         val player = mediaPlayer
         if (player != null &&
             player.playWhenReady &&
-            player.isPlaying &&
-            player.playbackState == androidx.media3.common.Player.STATE_READY &&
-            consecutiveForwardProgressTicks >= 2
+            (player.isPlaying || player.playbackState == androidx.media3.common.Player.STATE_READY) &&
+            firstFrameRendered &&
+            consecutiveForwardProgressTicks >= 1
         ) {
+            onPlaybackRecoverySucceeded()
+            return
+        }
+        // Playing with a rendered frame — do not declare failure / keep reloading.
+        if (player != null && player.isPlaying && firstFrameRendered) {
             onPlaybackRecoverySucceeded()
             return
         }
         val elapsed = System.currentTimeMillis() - playbackRecoveryStartedAtMs
         if (elapsed >= PLAYBACK_RECOVERY_WINDOW_MS) {
+            // Stream may have recovered while we were still counting attempts.
+            if (player != null && (player.isPlaying || player.playbackState == androidx.media3.common.Player.STATE_READY) && firstFrameRendered) {
+                onPlaybackRecoverySucceeded()
+                return
+            }
             val reason = lastPlaybackStallReason.ifBlank { "Поток не отвечает" }
             resetPlaybackRecoveryState()
             showPlaybackFreezeFailure(reason)
+            return
+        }
+        // First frame already up after a reload — wait for progress instead of re-arming another reload.
+        if (player != null && firstFrameRendered &&
+            player.playbackState != androidx.media3.common.Player.STATE_ENDED &&
+            player.playbackState != androidx.media3.common.Player.STATE_IDLE
+        ) {
+            schedulePlaybackRecoveryRetry(immediate = false)
             return
         }
         playbackRecoveryAttemptCount++
@@ -619,8 +639,10 @@ class MainActivity : AppCompatActivity() {
     private fun onPlaybackRecoverySucceeded() {
         if (!playbackRecoveryActive) return
         resetPlaybackRecoveryState()
-        stallWatchdogGraceUntilMs =
-            System.currentTimeMillis() + PLAYBACK_STALL_GRACE_AFTER_RECOVERY_MS
+        val now = System.currentTimeMillis()
+        stallWatchdogGraceUntilMs = now + PLAYBACK_STALL_GRACE_AFTER_RECOVERY_MS
+        // Live windows often emit a spurious ENDED right after a successful re-join.
+        suppressEndedRecoveryUntilMs = now + PLAYBACK_STALL_GRACE_AFTER_RECOVERY_MS
         if (tvReloadingStatus.visibility == View.VISIBLE) {
             stopReloadingPlateSpinner()
             tvReloadingStatus.visibility = View.GONE
@@ -639,6 +661,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showPlaybackFreezeFailure(reason: String) {
+        val player = mediaPlayer
+        if (player != null && player.isPlaying && firstFrameRendered) {
+            logDebug("PLAYER_STATE", "skip freeze failure — playback already running reason=$reason")
+            if (::tvReloadingStatus.isInitialized && tvReloadingStatus.visibility == View.VISIBLE) {
+                stopReloadingPlateSpinner()
+                tvReloadingStatus.visibility = View.GONE
+            }
+            hidePlayerLoadingUi()
+            hideUI()
+            return
+        }
         showReloadingStatus(
             title = "Не удалось восстановить трансляцию",
             subtitle = reason,
@@ -802,11 +835,11 @@ class MainActivity : AppCompatActivity() {
     private val timerWarnRunnable = Runnable { showTimerWarning() }
 
     private fun getProgramsForChannel(ch: Channel): List<Program> {
-        val keys = listOfNotNull(
-            ch.tvgId?.lowercase()?.trim()?.takeIf { it.isNotEmpty() },
-            ch.tvgName?.lowercase()?.trim()?.takeIf { it.isNotEmpty() },
-            ch.name.lowercase().trim().takeIf { it.isNotEmpty() }
-        )
+        val keys = linkedSetOf<String>().apply {
+            ch.tvgId?.takeIf { it.isNotBlank() }?.let { addAll(epgKeysForMatch(it)) }
+            ch.tvgName?.takeIf { it.isNotBlank() }?.let { addAll(epgKeysForMatch(it)) }
+            addAll(epgKeysForMatch(ch.name))
+        }
         return synchronized(epgDataLock) {
             for (key in keys) {
                 epgData[key]?.let { return@synchronized it.toList() }
@@ -6175,9 +6208,9 @@ class MainActivity : AppCompatActivity() {
         onProgress(1)
         val playlistKeySet = linkedSetOf<String>()
         playlistChannels.forEach { ch ->
-            ch.tvgId?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { playlistKeySet += it }
-            ch.tvgName?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { playlistKeySet += it }
-            ch.name.lowercase().trim().takeIf { it.isNotEmpty() }?.let { playlistKeySet += it }
+            ch.tvgId?.takeIf { it.isNotBlank() }?.let { playlistKeySet += epgKeysForMatch(it) }
+            ch.tvgName?.takeIf { it.isNotBlank() }?.let { playlistKeySet += epgKeysForMatch(it) }
+            playlistKeySet += epgKeysForMatch(ch.name)
         }
         var wantedXmlIds: MutableSet<String>? = null
         var wantedResolved = false
@@ -6290,11 +6323,17 @@ class MainActivity : AppCompatActivity() {
                             var title = ""
                             // IMPORTANT: wantedXmlIds == null means "not resolved yet".
                             // Empty wanted set must NOT treat every channel as wanted (that loaded every <desc>).
+                            val displayKeys = xmlChannelDisplayNames[chId].orEmpty()
+                                .flatMap { epgKeysForMatch(it) }
+                                .toSet()
+                            val channelKeys = epgKeysForMatch(chId)
                             val maybeWanted = chId.isNotEmpty() && (
                                 wantedXmlIds == null ||
                                     chId in wantedXmlIds.orEmpty() ||
-                                    chId in playlistKeySet ||
-                                    xmlChannelDisplayNames[chId].orEmpty().any { it in playlistKeySet }
+                                    channelKeys.any { it in wantedXmlIds.orEmpty() } ||
+                                    channelKeys.any { it in playlistKeySet } ||
+                                    displayKeys.any { it in playlistKeySet } ||
+                                    playlistKeySet.any { pk -> epgKeysForMatch(pk).any { it in displayKeys || it in channelKeys } }
                                 )
                             while (!(parser.next() == XmlPullParser.END_TAG && parser.name == "programme")) {
                                 if (parser.eventType != XmlPullParser.START_TAG) continue
@@ -6329,11 +6368,10 @@ class MainActivity : AppCompatActivity() {
 
                             if (chId.isEmpty()) {
                                 programmeSkippedEmptyChannel++
-                            } else if (wantedXmlIds != null &&
-                                (wantedXmlIds!!.isEmpty() || chId !in wantedXmlIds!!)
-                            ) {
-                                // Empty wanted = playlist loaded but no XML match, or no playlist:
-                                // never keep the full XMLTV in RAM (causes OOM on ~600MB files).
+                            } else if (!maybeWanted) {
+                                // Keep gate must match title-read gate (maybeWanted), including
+                                // display-name ↔ playlist name hits. Otherwise tvg-id-less
+                                // channels like "ТНТ +4" vs XML "ТНТ (+4)" drop all programmes.
                                 programmeSkippedUnwanted++
                             } else if (stop < windowStart || start > windowEnd) {
                                 programmeSkippedWindow++
@@ -6411,6 +6449,33 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * Normalize EPG / playlist ids and names for fuzzy matching.
+     * Handles common IPTV mismatches: "ТНТ +4" vs "ТНТ (+4)", HD suffixes, punctuation.
+     */
+    private fun normalizeEpgMatchKey(raw: String): String {
+        var s = raw.lowercase().trim().replace('ё', 'е')
+        // Drop parenthetical chunks: "(+4)" → " +4", "(HD)" → " "
+        s = s.replace(Regex("""\(([^)]*)\)"""), " $1 ")
+        s = s.replace(Regex("""(?i)\bhd\b"""), " ")
+        s = s.replace(Regex("""[^\p{L}\p{N}+]+"""), " ")
+        s = s.replace(Regex("""\s+"""), " ").trim()
+        return s
+    }
+
+    private fun epgKeysForMatch(raw: String): Set<String> {
+        val base = raw.lowercase().trim()
+        if (base.isEmpty()) return emptySet()
+        val norm = normalizeEpgMatchKey(base)
+        return buildSet {
+            add(base)
+            if (norm.isNotEmpty()) {
+                add(norm)
+                add(norm.replace(" ", ""))
+            }
+        }
+    }
+
+    /**
      * Pick XMLTV channel ids that 1:1 match playlist channels (same priority as bind).
      * Empty playlist → empty wanted set (caller may keep nothing heavy).
      * Uses hash indexes — O(n) instead of O(n×m) scans that freeze weak TV boxes.
@@ -6424,13 +6489,29 @@ class MainActivity : AppCompatActivity() {
         val wanted = linkedSetOf<String>()
         val boundPlaylistUrls = mutableSetOf<String>()
 
-        val byTvgId = HashMap<String, Channel>(playlistChannels.size)
-        val byTvgName = HashMap<String, Channel>(playlistChannels.size)
-        val byName = HashMap<String, Channel>(playlistChannels.size)
+        val byTvgId = HashMap<String, Channel>(playlistChannels.size * 2)
+        val byTvgName = HashMap<String, Channel>(playlistChannels.size * 2)
+        val byName = HashMap<String, Channel>(playlistChannels.size * 2)
         playlistChannels.forEach { ch ->
-            ch.tvgId?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { byTvgId.putIfAbsent(it, ch) }
-            ch.tvgName?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }?.let { byTvgName.putIfAbsent(it, ch) }
-            ch.name.lowercase().trim().takeIf { it.isNotEmpty() }?.let { byName.putIfAbsent(it, ch) }
+            ch.tvgId?.takeIf { it.isNotBlank() }?.let { raw ->
+                epgKeysForMatch(raw).forEach { byTvgId.putIfAbsent(it, ch) }
+            }
+            ch.tvgName?.takeIf { it.isNotBlank() }?.let { raw ->
+                epgKeysForMatch(raw).forEach { byTvgName.putIfAbsent(it, ch) }
+            }
+            epgKeysForMatch(ch.name).forEach { byName.putIfAbsent(it, ch) }
+        }
+
+        fun lookupPlaylist(vararg keys: String): Channel? {
+            for (key in keys) {
+                if (key.isEmpty()) continue
+                for (k in epgKeysForMatch(key)) {
+                    byTvgId[k]?.let { return it }
+                    byTvgName[k]?.let { return it }
+                    byName[k]?.let { return it }
+                }
+            }
+            return null
         }
 
         fun take(xmlId: String, ch: Channel?) {
@@ -6439,23 +6520,15 @@ class MainActivity : AppCompatActivity() {
             boundPlaylistUrls += ch.url
         }
 
-        xmlIds.forEach { xmlId -> take(xmlId, byTvgId[xmlId]) }
-        xmlIds.forEach { xmlId ->
-            if (xmlId !in wanted) take(xmlId, byTvgName[xmlId])
-        }
+        xmlIds.forEach { xmlId -> take(xmlId, lookupPlaylist(xmlId)) }
         xmlIds.forEach { xmlId ->
             if (xmlId in wanted) return@forEach
             val names = xmlDisplayNames[xmlId].orEmpty()
-            val match = names.firstNotNullOfOrNull { n -> byTvgId[n] ?: byTvgName[n] }
+            val match = names.firstNotNullOfOrNull { n -> lookupPlaylist(n) }
             take(xmlId, match)
         }
-        xmlIds.forEach { xmlId ->
-            if (xmlId in wanted) return@forEach
-            val names = xmlDisplayNames[xmlId].orEmpty() + xmlId
-            val match = names.firstNotNullOfOrNull { n -> byName[n] }
-            take(xmlId, match)
-        }
-        // Always accept programme channel= attributes that equal playlist tvg-id / tvg-name / name.
+        // Always accept programme channel= attributes that equal playlist tvg-id / tvg-name / name
+        // (exact and normalized forms).
         byTvgId.keys.forEach { wanted += it }
         byTvgName.keys.forEach { wanted += it }
         byName.keys.forEach { wanted += it }
@@ -6552,31 +6625,41 @@ class MainActivity : AppCompatActivity() {
 
         val allXmlIds = xmlIds.filter { it.isNotBlank() }.toSet()
 
-        // 1) tvg-id == xml channel id
+        // 1) tvg-id == xml channel id (exact + normalized)
         allXmlIds.forEach { xmlId ->
-            findUnbound { ch -> ch.tvgId?.lowercase()?.trim() == xmlId }?.let { applyBind(xmlId, it) }
-        }
-        // 2) tvg-name == xml channel id
-        allXmlIds.forEach { xmlId ->
-            if (xmlId in boundXmlIds) return@forEach
-            findUnbound { ch -> ch.tvgName?.lowercase()?.trim() == xmlId }?.let { applyBind(xmlId, it) }
-        }
-        // 3) tvg-id / tvg-name == display-name
-        allXmlIds.forEach { xmlId ->
-            if (xmlId in boundXmlIds) return@forEach
-            val names = xmlDisplayNames[xmlId].orEmpty()
-            if (names.isEmpty()) return@forEach
+            val xmlKeys = epgKeysForMatch(xmlId)
             findUnbound { ch ->
-                val tvgId = ch.tvgId?.lowercase()?.trim()
-                val tvgName = ch.tvgName?.lowercase()?.trim()
-                (tvgId != null && tvgId in names) || (tvgName != null && tvgName in names)
+                ch.tvgId?.let { epgKeysForMatch(it).any { k -> k in xmlKeys } } == true
             }?.let { applyBind(xmlId, it) }
         }
-        // 4) channel name == xml id or display-name
+        // 2) tvg-name == xml channel id (exact + normalized)
         allXmlIds.forEach { xmlId ->
             if (xmlId in boundXmlIds) return@forEach
-            val names = xmlDisplayNames[xmlId].orEmpty() + xmlId
-            findUnbound { ch -> ch.name.lowercase().trim() in names }?.let { applyBind(xmlId, it) }
+            val xmlKeys = epgKeysForMatch(xmlId)
+            findUnbound { ch ->
+                ch.tvgName?.let { epgKeysForMatch(it).any { k -> k in xmlKeys } } == true
+            }?.let { applyBind(xmlId, it) }
+        }
+        // 3) tvg-id / tvg-name == display-name (exact + normalized, e.g. "ТНТ +4" ↔ "ТНТ (+4)")
+        allXmlIds.forEach { xmlId ->
+            if (xmlId in boundXmlIds) return@forEach
+            val nameKeys = xmlDisplayNames[xmlId].orEmpty()
+                .flatMap { epgKeysForMatch(it) }
+                .toSet()
+            if (nameKeys.isEmpty()) return@forEach
+            findUnbound { ch ->
+                val tvgKeys = ch.tvgId?.let { epgKeysForMatch(it) }.orEmpty()
+                val tvgNameKeys = ch.tvgName?.let { epgKeysForMatch(it) }.orEmpty()
+                tvgKeys.any { it in nameKeys } || tvgNameKeys.any { it in nameKeys }
+            }?.let { applyBind(xmlId, it) }
+        }
+        // 4) channel name == xml id or display-name (exact + normalized)
+        allXmlIds.forEach { xmlId ->
+            if (xmlId in boundXmlIds) return@forEach
+            val nameKeys = (xmlDisplayNames[xmlId].orEmpty() + xmlId)
+                .flatMap { epgKeysForMatch(it) }
+                .toSet()
+            findUnbound { ch -> epgKeysForMatch(ch.name).any { it in nameKeys } }?.let { applyBind(xmlId, it) }
         }
 
         // Cache icons for unbound xml channels too (future playlist loads).
@@ -6854,7 +6937,14 @@ class MainActivity : AppCompatActivity() {
                 softwareDecoderMode = shouldUseSoftware
             }
             ensurePlayerReadyForPlayback(preferSoftwareDecoder = shouldUseSoftware)
-            mediaPlayer?.stop()
+            // Fully detach the previous HLS period so an old channel cannot keep polling
+            // manifests in parallel (seen as dual cdntv+wink loads in PLAYER_NET logs).
+            mediaPlayer?.let { p ->
+                runCatching {
+                    p.stop()
+                    p.clearMediaItems()
+                }
+            }
             val isQualityOverrideForThisChannel =
                 manualQualityOverrideChannelIndex == currentChannelIndex && manualQualityOverrideUrl != null
             lastRequestedPlaybackUrl = if (isQualityOverrideForThisChannel) {
@@ -6872,6 +6962,7 @@ class MainActivity : AppCompatActivity() {
                         masterBase == null ||
                         masterBase != channelBase
                 if (needFetch) {
+                    qualityFetchToken++ // cancel in-flight probe for previous channel
                     fetchStreamQualityInfo(ch.url)
                 } else {
                     updateCcHdButtons()
@@ -6900,7 +6991,7 @@ class MainActivity : AppCompatActivity() {
 
             val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
             logPathState("STARTUP_PATH before_set_source allowNonIdr=${allowNonIdr || shouldAllowNonIdrForStream(lastRequestedPlaybackUrl)} forcePlay=$forcePlay")
-            player.setMediaSource(buildPlaybackMediaSource(lastRequestedPlaybackUrl, allowNonIdr))
+            player.setMediaSource(buildPlaybackMediaSource(lastRequestedPlaybackUrl, allowNonIdr), /* resetPosition= */ true)
             player.seekToDefaultPosition()
             logPathState("STARTUP_PATH after_seek_default")
             player.prepare()
@@ -6974,12 +7065,13 @@ class MainActivity : AppCompatActivity() {
             builder.setSubtitleConfigurations(subtitleConfigs)
         }
 
-        if (url.contains("/only4/", ignoreCase = true)) {
+        if (lowerUrl.contains(".m3u8") || url.contains("/only4/", ignoreCase = true)) {
+            val targetOffset = if (url.contains("/only4/", ignoreCase = true)) 16_000L else 12_000L
             builder.setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(16_000)
-                    .setMinPlaybackSpeed(0.98f)
-                    .setMaxPlaybackSpeed(1.03f)
+                    .setTargetOffsetMs(targetOffset)
+                    .setMinPlaybackSpeed(0.97f)
+                    .setMaxPlaybackSpeed(1.04f)
                     .build()
             )
         }
@@ -8234,10 +8326,18 @@ class MainActivity : AppCompatActivity() {
                         firstFrameRendered = true
                         startupPlaybackUrlLock = null
                         handler.removeCallbacks(startupSlowStreamRunnable)
-                        // Seed the stall baseline only. A first frame is not recovery success:
-                        // ExoPlayer can paint one frame while currentPosition then freezes or
-                        // slides backwards on a live window.
+                        // Seed the stall baseline only. A first frame is not full recovery success
+                        // (position can still freeze), but it should mute ENDED flicker and hide
+                        // the plate once the watchdog sees forward progress.
                         resetPlaybackProgressBaseline(extendGrace = false)
+                        suppressEndedRecoveryUntilMs =
+                            System.currentTimeMillis() + PLAYBACK_STALL_GRACE_AFTER_RECOVERY_MS
+                        if (playbackRecoveryActive) {
+                            // Keep plate until progress ticks, but don't treat this ENDED-prone
+                            // window as a brand-new failure.
+                            stallWatchdogGraceUntilMs =
+                                System.currentTimeMillis() + PLAYBACK_STALL_GRACE_AFTER_RECOVERY_MS
+                        }
                         armPlaybackFreezeWatchdog(2000L, withStartGrace = false)
                         hideSeekSpinnerIfReady(0L)
                         hidePlayerLoadingUi()
@@ -8294,8 +8394,8 @@ class MainActivity : AppCompatActivity() {
                         ) {
                             hideSeekSpinnerIfReady()
                         }
-                        // Live stream ended unexpectedly — trigger immediate recovery without
-                        // waiting for the watchdog's slow HARD_STOP timer.
+                        // Live stream ended unexpectedly — recover, but respect post-recovery mute
+                        // so a single ENDED flicker after a successful re-join does not loop reloads.
                         if (playbackState == androidx.media3.common.Player.STATE_ENDED &&
                             player.playWhenReady &&
                             firstFrameRendered &&
@@ -8303,10 +8403,22 @@ class MainActivity : AppCompatActivity() {
                             !isArchivePlayback
                         ) {
                             handler.post {
-                                if (!isHomeOrSettingsForeground() && !isPlayerOverlayOpen()) {
-                                    logDebug("PLAYER_STATE", "live stream ENDED — scheduling immediate recovery")
-                                    notifyPlaybackStall("Трансляция завершилась", immediate = true)
+                                if (isHomeOrSettingsForeground() || isPlayerOverlayOpen()) return@post
+                                val nowMs = System.currentTimeMillis()
+                                if (nowMs < suppressEndedRecoveryUntilMs || nowMs < stallWatchdogGraceUntilMs) {
+                                    logDebug("PLAYER_STATE", "live stream ENDED ignored during grace/suppress")
+                                    // Soft nudge back to the live edge instead of a full reload.
+                                    runCatching {
+                                        player.seekToDefaultPosition()
+                                        player.prepare()
+                                        player.playWhenReady = true
+                                        player.play()
+                                    }
+                                    return@post
                                 }
+                                logDebug("PLAYER_STATE", "live stream ENDED — scheduling recovery")
+                                // Do NOT pass immediate=true: that used to bypass grace and loop reloads.
+                                notifyPlaybackStall("Трансляция завершилась", immediate = false)
                             }
                         }
                     }

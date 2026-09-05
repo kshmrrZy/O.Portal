@@ -7,6 +7,21 @@ object M3uParser {
         """(?i)\b((?:https?|udp|rtp|rtsp|mms|mmsh|mmst|rtmp|rtmps|file)://\S+)"""
     )
 
+    private fun extractExtInfAttr(line: String, key: String): String {
+        // Supports tvg-id="x", tvg-id='x', TVG-ID="x", and unquoted tvg-id=x
+        val patterns = listOf(
+            Regex("""(?i)\b${Regex.escape(key)}\s*=\s*"([^"]*)""""),
+            Regex("""(?i)\b${Regex.escape(key)}\s*=\s*'([^']*)'"""),
+            Regex("""(?i)\b${Regex.escape(key)}\s*=\s*([^,\s]+)""")
+        )
+        for (pattern in patterns) {
+            val match = pattern.find(line) ?: continue
+            val value = match.groupValues.getOrNull(1)?.trim().orEmpty()
+            if (value.isNotEmpty()) return value
+        }
+        return ""
+    }
+
     fun parse(m3uText: String): List<Channel> {
         val channels = mutableListOf<Channel>()
 
@@ -76,9 +91,11 @@ object M3uParser {
             } else {
                 afterComma
             }
-            currentLogo = trimmedLine.substringAfter("tvg-logo=\"", "").substringBefore("\"")
-            currentTvgId = trimmedLine.substringAfter("tvg-id=\"", "").substringBefore("\"")
-            currentTvgName = trimmedLine.substringAfter("tvg-name=\"", "").substringBefore("\"")
+            currentLogo = extractExtInfAttr(trimmedLine, "tvg-logo")
+            currentTvgId = extractExtInfAttr(trimmedLine, "tvg-id").ifEmpty {
+                extractExtInfAttr(trimmedLine, "channel-id")
+            }
+            currentTvgName = extractExtInfAttr(trimmedLine, "tvg-name")
             currentCatchupDays = trimmedLine.substringAfter("catchup-days=\"", "").substringBefore("\"")
                 .toIntOrNull()
                 ?: trimmedLine.substringAfter("catchup-days=", "").substringBefore(" ").trim().toIntOrNull()
