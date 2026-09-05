@@ -70,6 +70,7 @@ import android.widget.ToggleButton
 import androidx.activity.addCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.view.GestureDetectorCompat
@@ -907,6 +908,12 @@ class MainActivity : AppCompatActivity() {
     }
     private var pendingSeekDeltaSec: Int = 0
     private var liveTimelineAnchorMs: Long = 0L
+    /** Content time at live pause; after resume, left clock = this + player delta. */
+    private var liveTimelinePausedContentMs = 0L
+    private var liveTimelinePlayerPosAtPauseMs = 0L
+    private var liveTimelineFollowFromPause = false
+    /** Keep system SplashScreen until our gradient overlay has been drawn. */
+    private var keepLaunchSplashOnScreen = true
     private val applySeekDeltaRunnable = Runnable {
         val deltaSec = pendingSeekDeltaSec
         pendingSeekDeltaSec = 0
@@ -1080,8 +1087,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
+        splashScreen.setKeepOnScreenCondition { keepLaunchSplashOnScreen }
         super.onCreate(savedInstanceState)
-        // Match in-app home look; never use oportal_bg posters (they also bled into the player).
+        // Match in-app home look for the first frame after system splash.
         window.setBackgroundDrawableResource(R.drawable.bg_home_screen)
         try {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -1115,15 +1124,30 @@ class MainActivity : AppCompatActivity() {
         splash.visibility = View.VISIBLE
         splash.alpha = 1f
         splash.bringToFront()
+        // Splash already has a bottom spinner — never stack the centered loadingPanel spinner.
+        hideAppLoadingSpinner()
         startCompositeSpinner(findViewById(R.id.launchSplashSpinner))
-        // Header wordmark "O.Portal", ~37% of the shorter screen side.
+        // Wordmark width ≈ 35% of screen width (height-based sizing made it huge).
         splash.post {
-            val shortSide = minOf(splash.width, splash.height).coerceAtLeast(1)
-            logo?.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, shortSide * 0.37f)
+            val targetWidth = (splash.width * 0.35f).coerceAtLeast(1f)
+            var textPx = splash.height * 0.12f
+            logo?.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textPx)
+            logo?.measure(
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+            )
+            val measuredW = (logo?.measuredWidth ?: 0).toFloat().coerceAtLeast(1f)
+            textPx = (textPx * (targetWidth / measuredW)).coerceIn(
+                splash.height * 0.06f,
+                splash.height * 0.16f
+            )
+            logo?.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textPx)
+            keepLaunchSplashOnScreen = false
         }
     }
 
     private fun dismissLaunchSplash() {
+        keepLaunchSplashOnScreen = false
         val splash = findViewById<View?>(R.id.launchSplashOverlay) ?: return
         if (splash.visibility != View.VISIBLE) return
         // Wait one frame so home/player content is drawn before the splash fades out.
@@ -1668,14 +1692,22 @@ class MainActivity : AppCompatActivity() {
                 if (!videoOnlyMinimalMode) handler.postDelayed(startupSlowStreamRunnable, 45_000L)
                 isPlaybackPaused = false
                 if (isArchivePlayback) {
-                    liveTimelineAnchorMs = 0L
+                    clearLiveTimelinePauseClock()
+                } else if (liveTimelinePausedContentMs > 0L) {
+                    // Continue left timestamp from pause point, not wall-clock "now".
+                    liveTimelinePlayerPosAtPauseMs =
+                        mediaPlayer?.currentPosition ?: liveTimelinePlayerPosAtPauseMs
+                    liveTimelineFollowFromPause = true
                 }
                 updateTimelineUi()
             } else {
                 mediaPlayer?.pause()
                 isPlaybackPaused = true
                 if (!isArchivePlayback) {
-                    liveTimelineAnchorMs = System.currentTimeMillis()
+                    liveTimelinePausedContentMs = getLiveTimelinePositionMs()
+                    liveTimelinePlayerPosAtPauseMs = mediaPlayer?.currentPosition ?: 0L
+                    liveTimelineAnchorMs = liveTimelinePausedContentMs
+                    liveTimelineFollowFromPause = true
                     updateTimelineUi()
                 }
             }
@@ -2615,10 +2647,16 @@ class MainActivity : AppCompatActivity() {
         logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS count=${grouped.size}")
         logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS names=${grouped.keys.joinToString(separator = " | ")}")
         bindCategoryTilesOnHome()
+        homePlaylistTilesPanel.post {
+            (homePlaylistTilesPanel as? ContentAwareScrollView)?.updateScrollEnabled()
+        }
     }
 
     private fun bindCategoryTilesOnHome() {
         applyHomeListSearch(etHomeListSearch.text?.toString().orEmpty())
+        homePlaylistTilesPanel.post {
+            (homePlaylistTilesPanel as? ContentAwareScrollView)?.updateScrollEnabled()
+        }
     }
 
     private fun returnToCategoryTilesOnHome() {
@@ -6970,7 +7008,7 @@ class MainActivity : AppCompatActivity() {
             resetPlaybackProgressBaseline(extendGrace = true)
             armPlaybackFreezeWatchdog(4000L, withStartGrace = true)
             isPlaybackPaused = false
-            liveTimelineAnchorMs = 0L
+            clearLiveTimelinePauseClock()
             isArchivePlayback = true
             updateLiveStatusBadge()
             currentArchiveProgram = program
@@ -7222,7 +7260,7 @@ class MainActivity : AppCompatActivity() {
             handler.post(memoryLogRunnable)
             handler.postDelayed(startupSlowStreamRunnable, 45_000L)
             isPlaybackPaused = false
-            liveTimelineAnchorMs = 0L
+            clearLiveTimelinePauseClock()
             isArchivePlayback = false
             currentArchiveProgram = null
             archiveStreamStartMs = 0L
@@ -7458,6 +7496,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun showAppLoadingSpinner() {
         if (tvReloadingStatus.visibility == View.VISIBLE) return
+        // While cold-start splash is up, only the bottom splash spinner should show.
+        val splash = findViewById<View?>(R.id.launchSplashOverlay)
+        if (splash != null && splash.visibility == View.VISIBLE) return
         val panel = findViewById<View>(R.id.loadingPanel) ?: return
         panel.isClickable = true
         panel.isFocusable = true
@@ -8436,7 +8477,7 @@ class MainActivity : AppCompatActivity() {
         isArchivePlayback = false
         currentArchiveProgram = null
         archiveStreamStartMs = 0L
-        liveTimelineAnchorMs = 0L
+        clearLiveTimelinePauseClock()
         isPlaybackPaused = false
         playChannel(forcePlay = true, reason = PlayerOpenReason.LIVE_RETRY)
     }
@@ -9647,7 +9688,7 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer?.play()
             handler.postDelayed(startupSlowStreamRunnable, 45_000L)
             isPlaybackPaused = false
-            liveTimelineAnchorMs = 0L
+            clearLiveTimelinePauseClock()
             updatePlayPauseButton()
         }
         // Returning from background while EPG is open must not leave player chrome visible behind it.
@@ -9715,8 +9756,27 @@ class MainActivity : AppCompatActivity() {
 
     private fun getLiveTimelinePositionMs(): Long {
         if (isArchivePlayback) return System.currentTimeMillis()
+        if (isPlaybackPaused && liveTimelinePausedContentMs > 0L) {
+            return liveTimelinePausedContentMs
+        }
+        if (liveTimelineFollowFromPause && liveTimelinePausedContentMs > 0L) {
+            val player = mediaPlayer
+            val delta = if (player != null) {
+                (player.currentPosition - liveTimelinePlayerPosAtPauseMs).coerceAtLeast(0L)
+            } else {
+                0L
+            }
+            return liveTimelinePausedContentMs + delta
+        }
         if (isPlaybackPaused && liveTimelineAnchorMs > 0L) return liveTimelineAnchorMs
         return System.currentTimeMillis()
+    }
+
+    private fun clearLiveTimelinePauseClock() {
+        liveTimelineFollowFromPause = false
+        liveTimelinePausedContentMs = 0L
+        liveTimelinePlayerPosAtPauseMs = 0L
+        liveTimelineAnchorMs = 0L
     }
 
     private fun maxTimelineProgressForLiveSeek(): Int? {
@@ -9977,7 +10037,7 @@ class MainActivity : AppCompatActivity() {
         videoOnlyMinimalTriedSoftwareDecoder = false
         audioTrackForcedDisabled = false
         isPlaybackPaused = false
-        liveTimelineAnchorMs = 0L
+        clearLiveTimelinePauseClock()
         isArchivePlayback = false
         currentArchiveProgram = null
         archiveStreamStartMs = 0L

@@ -1,9 +1,12 @@
 package com.twnkos.oportal
 
 import android.content.Context
+import android.graphics.Rect
 import android.util.AttributeSet
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.View
+import android.view.View.MeasureSpec
 import android.widget.ScrollView
 
 /**
@@ -20,13 +23,17 @@ class ContentAwareScrollView @JvmOverloads constructor(
 
     fun updateScrollEnabled() {
         val child = getChildAt(0)
-        // Prefer the larger of laid-out / measured height so a wrap_content RecyclerView
-        // that finishes measuring after onLayout still enables scroll (avoids bottom crop).
-        val childH = when (child) {
-            null -> 0
-            else -> maxOf(child.height, child.measuredHeight)
+        if (child == null || width == 0 || height == 0) {
+            scrollingEnabled = false
+            return
         }
-        val needScroll = child != null && height > 0 && childH > height + 1
+        // Remeasure wrap_content children (e.g. RecyclerView) so we do not leave
+        // bottom tiles clipped with scrolling disabled.
+        val widthSpec = MeasureSpec.makeMeasureSpec(width - paddingLeft - paddingRight, MeasureSpec.EXACTLY)
+        val heightSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+        child.measure(widthSpec, heightSpec)
+        val childH = maxOf(child.height, child.measuredHeight)
+        val needScroll = childH > height - paddingTop - paddingBottom + 1
         scrollingEnabled = needScroll
         overScrollMode = if (needScroll) OVER_SCROLL_IF_CONTENT_SCROLLS else OVER_SCROLL_NEVER
         if (!needScroll && scrollY != 0) {
@@ -57,5 +64,15 @@ class ContentAwareScrollView @JvmOverloads constructor(
     override fun executeKeyEvent(event: KeyEvent): Boolean {
         if (!scrollingEnabled) return false
         return super.executeKeyEvent(event)
+    }
+
+    override fun requestChildRectangleOnScreen(
+        child: View,
+        rectangle: Rect,
+        immediate: Boolean
+    ): Boolean {
+        // Always allow focus-driven scroll so D-pad can reach bottom category tiles
+        // even if updateScrollEnabled has not run yet after a layout pass.
+        return super.requestChildRectangleOnScreen(child, rectangle, immediate)
     }
 }
