@@ -789,7 +789,7 @@
         android:id="@+id/homePanel"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@drawable/oportal_bg"
+        android:background="@drawable/bg_home_screen"
         android:visibility="gone">
 
         <TextView
@@ -1203,11 +1203,11 @@
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:visibility="gone"
-            android:fillViewport="false"
+            android:fillViewport="true"
             android:overScrollMode="never"
             android:scrollbars="none"
-            android:clipChildren="true"
-            android:clipToPadding="true"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             android:layout_marginStart="@dimen/home_edge_margin"
