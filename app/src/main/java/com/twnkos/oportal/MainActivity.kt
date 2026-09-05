@@ -911,13 +911,26 @@ class MainActivity : AppCompatActivity() {
         private val SLEEP_TIMER_OPTIONS = intArrayOf(0, 10, 30, 60, 90, 120)
     }
 
+    /** ElapsedRealtime of last OK/L/R while player chrome is up (TV idle auto-hide). */
+    private var lastPlayerChromeInteractionElapsedMs = 0L
+
     private val hideUiRunnable = Runnable {
-        // Don't yank chrome away mid-navigation — otherwise the next L/R opens EPG.
+        // While the user is actively moving across control buttons, keep chrome up.
+        // Idle focus on a button must NOT block auto-hide (TV OK left focus forever).
         if (controlsPanel.visibility == View.VISIBLE && isFocusInPlayerControlsRow()) {
-            scheduleHidePlayerChrome()
-            return@Runnable
+            val sinceNav = android.os.SystemClock.elapsedRealtime() - lastPlayerChromeInteractionElapsedMs
+            if (sinceNav < 2_500L) {
+                scheduleHidePlayerChrome((PLAYER_CHROME_HIDE_MS - sinceNav).coerceAtLeast(500L))
+                return@Runnable
+            }
         }
         hideUI()
+    }
+
+
+    private fun isTelevisionDevice(): Boolean {
+        val uiMode = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK
+        return uiMode == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
     }
 
     private fun scheduleHidePlayerChrome(delayMs: Long = PLAYER_CHROME_HIDE_MS) {
@@ -1891,6 +1904,10 @@ private fun showDefaultStartupScreen() {
                 return true
             }
         })
+        // TV remotes: PlayerView must not steal DPAD_CENTER / OK.
+        videoLayout.isFocusable = false
+        videoLayout.isFocusableInTouchMode = false
+        videoLayout.descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
         // PlayerView eats touches — forward them so chrome can toggle on phone taps.
         videoLayout.isClickable = true
         videoLayout.setOnTouchListener { _, event ->
@@ -2385,7 +2402,10 @@ private fun showDefaultStartupScreen() {
                 !rvHomeTiles.hasFocus() &&
                 !(::etHomeListSearch.isInitialized && etHomeListSearch.hasFocus())
             ) {
-                first?.requestFocus()
+                (homePlaylistTilesPanel as? android.widget.ScrollView)?.scrollTo(0, 0)
+                rvHomeTiles.scrollToPosition(0)
+                val top = rvHomeTiles.findViewHolderForAdapterPosition(0)?.itemView ?: first
+                top?.requestFocus()
             }
         }
     }
@@ -2746,12 +2766,21 @@ private fun showDefaultStartupScreen() {
             .sortedWith(compareBy<Map.Entry<String, List<Channel>>> { categoryGroupOrder(it.key) }
                 .thenBy { it.key.lowercase(Locale.getDefault()) })
             .forEach { (key, value) -> grouped[key] = value }
+        // Always open categories (incl. Избранные) from the top — do not keep prior ScrollView Y.
+        (homePlaylistTilesPanel as? android.widget.ScrollView)?.scrollTo(0, 0)
+        if (::rvHomeTiles.isInitialized) {
+            rvHomeTiles.scrollToPosition(0)
+        }
         cachedCategoryGroups = grouped
         allCategoryNamesForSearch = grouped.keys.toList()
         logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS count=${grouped.size}")
         logDebug("PLAYLIST_FLOW", "CATEGORY_GROUPS names=${grouped.keys.joinToString(separator = " | ")}")
         bindCategoryTilesOnHome()
         homePlaylistTilesPanel.post {
+            (homePlaylistTilesPanel as? android.widget.ScrollView)?.scrollTo(0, 0)
+            if (::rvHomeTiles.isInitialized) {
+                rvHomeTiles.scrollToPosition(0)
+            }
             (homePlaylistTilesPanel as? ContentAwareScrollView)?.updateScrollEnabled()
         }
     }
@@ -3390,6 +3419,8 @@ private fun showDefaultStartupScreen() {
         channelListSearchQuery = ""
         if (::etChannelListSearch.isInitialized) {
             etChannelListSearch.setText("")
+            // Search only on home channel grids — hide in the in-player channel list.
+            etChannelListSearch.visibility = View.GONE
         }
         setPlayerOverlayScrimVisible(true)
         topInfoPanel.visibility = View.GONE
@@ -8715,9 +8746,14 @@ private fun showDefaultStartupScreen() {
                         hideSeekSpinnerIfReady(0L)
                         hidePlayerLoadingUi()
                         if (homePanel.visibility != View.VISIBLE && !isPlayerOverlayOpen()) {
-                            // After tune-in, dismiss chrome — user opens it explicitly.
                             suppressAutoPlayerUiOnce = false
-                            hideUI()
+                            if (isTelevisionDevice()) {
+                                // TV: keep chrome briefly after tune-in, then auto-hide.
+                                // Phone keeps the existing immediate dismiss.
+                                showUI()
+                            } else {
+                                hideUI()
+                            }
                         }
                         layoutPlayerSubtitlesOverlay()
                         logDebug("PLAYER_STATE", "onRenderedFirstFrame videoOnlyMode=$videoOnlyMinimalMode url=$lastRequestedPlaybackUrl")
@@ -9409,6 +9445,7 @@ private fun showDefaultStartupScreen() {
         }
         bindRealPlayerExitButtonListener()
         sbTimeline.isEnabled = true
+        lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
         scheduleHidePlayerChrome()
         updatePlayPauseButton()
         ensurePlayerControlsInteractive()
@@ -9459,6 +9496,8 @@ private fun showDefaultStartupScreen() {
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         sbTimeline.isEnabled = false
+        // Drop focus from now-hidden control buttons so the next TV OK is a clean showUI().
+        currentFocus?.clearFocus()
         layoutPlayerSubtitlesOverlay()
         hideSystemUI()
     }
@@ -9551,6 +9590,24 @@ private fun showDefaultStartupScreen() {
             }
         }
         return false
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Intercept a single OK/Enter before PlayerView or stale focus consumes it.
+        if (event.action == KeyEvent.ACTION_DOWN &&
+            event.repeatCount == 0 &&
+            (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                event.keyCode == KeyEvent.KEYCODE_ENTER ||
+                event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) &&
+            isWatchingChannel() &&
+            controlsPanel.visibility != View.VISIBLE &&
+            (!::epgPanel.isInitialized || epgPanel.visibility != View.VISIBLE) &&
+            (!::channelListPanel.isInitialized || channelListPanel.visibility != View.VISIBLE)
+        ) {
+            showUI()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -9690,6 +9747,7 @@ private fun showDefaultStartupScreen() {
                     if (!isFocusInPlayerControlsRow()) {
                         findViewById<View>(R.id.btnPlayPause)?.requestFocus()
                     }
+                    lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
                     scheduleHidePlayerChrome()
                     return super.onKeyDown(keyCode, event)
                 }

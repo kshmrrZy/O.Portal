@@ -738,6 +738,7 @@
             android:layout_width="match_parent"
             android:layout_height="44dp"
             android:layout_marginTop="12dp"
+            android:visibility="gone"
             android:background="@drawable/bg_epg_url_field"
             android:hint="Поиск канала"
             android:imeOptions="actionSearch"
@@ -766,7 +767,7 @@
             android:descendantFocusability="blocksDescendants"
             android:listSelector="@drawable/grid_item_selector"
             android:drawSelectorOnTop="true"
-            android:nextFocusUp="@id/etChannelListSearch"
+            android:nextFocusUp="@id/tvChannelListTitle"
             android:scrollbars="none" />
 
         <TextView
