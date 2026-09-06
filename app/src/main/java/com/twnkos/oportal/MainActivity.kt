@@ -1140,11 +1140,15 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         setupLaunchSplashOverlay()
 
+        // Android 9 TV: a bloated SharedPreferences XML (legacy EPG/playlist blobs)
+        // can OOM on first prefs access and permanently crash the app.
+        scrubBloatedSharedPreferencesIfNeeded()
         ensureDefaultPlaylistProfile()
         initViews()
         setupInteractions()
         setupBackHandling()
-        loadEpgCache()
+        // EPG disk cache can be tens of MB — never block first frame / service open on it.
+        handler.post { loadEpgCacheSafely() }
         shouldOpenLastChannelOnStart = prefs.getBoolean(PREF_START_LAST_CHANNEL, false)
         startClockUpdater()
         startEpgTicker()
@@ -3024,7 +3028,9 @@ private fun showDefaultStartupScreen() {
                     restoreChannelHeaderAfterNumberInput()
                     return@addCallback
                 }
-                if (controlsPanel.visibility == View.VISIBLE || topInfoPanel.visibility == View.VISIBLE) {
+                // Clock-only / loading top bar must NOT count as chrome — otherwise Back
+                // loops on hideUI() and the user cannot leave the player on TV.
+                if (controlsPanel.visibility == View.VISIBLE) {
                     hideUI()
                     return@addCallback
                 }
@@ -3054,7 +3060,7 @@ private fun showDefaultStartupScreen() {
                     restoreChannelHeaderAfterNumberInput()
                     return@addCallback
                 }
-                if (controlsPanel.visibility == View.VISIBLE || topInfoPanel.visibility == View.VISIBLE) {
+                if (controlsPanel.visibility == View.VISIBLE) {
                     hideUI()
                     return@addCallback
                 }
@@ -3628,10 +3634,31 @@ private fun showDefaultStartupScreen() {
                     renderEpgProgramsForSelectedDate()
                     syncEpgPanelBounds()
                     scrollToSelectedEpgDateChip()
-                    lvEpgPrograms.requestFocus()
+                    // TV: do not auto-highlight the first programme — wait for DPAD_DOWN.
+                    focusEpgDateStripPreferringSelected()
                 }
             }
         }
+    }
+
+
+    private fun focusEpgDateStripPreferringSelected() {
+        if (!::epgDateContainer.isInitialized) return
+        val selected = (0 until epgDateContainer.childCount)
+            .map { epgDateContainer.getChildAt(it) }
+            .firstOrNull { it.isSelected }
+        val target = selected ?: epgDateContainer.getChildAt(0)
+        (target ?: epgDateContainer).post { (target ?: epgDateContainer).requestFocus() }
+    }
+
+    private fun moveEpgFocusToProgramsList(): Boolean {
+        if (!::lvEpgPrograms.isInitialized || lvEpgPrograms.visibility != View.VISIBLE) return false
+        if (lvEpgPrograms.count <= 0) return false
+        lvEpgPrograms.requestFocus()
+        if (lvEpgPrograms.selectedItemPosition < 0) {
+            lvEpgPrograms.setSelection(0)
+        }
+        return true
     }
 
     private fun renderEpgDateChips() {
@@ -3776,9 +3803,12 @@ private fun showDefaultStartupScreen() {
             }
 
         val currentIdx = items.indexOfFirst { now in it.start until it.stop }
-        if (currentIdx >= 0) lvEpgPrograms.post {
+        if (currentIdx >= 0) {
+            // Scroll to current programme without giving the list focus (no highlight yet).
             lvEpgPrograms.setSelection(currentIdx.coerceAtLeast(0))
         }
+        lvEpgPrograms.isFocusable = true
+        lvEpgPrograms.isFocusableInTouchMode = true
     }
 
 
@@ -5880,8 +5910,16 @@ private fun showDefaultStartupScreen() {
 
                 handler.post {
                     hideAppLoadingSpinner()
-                    channels.clear()
-                    channels.addAll(parsedChannels)
+                    try {
+                        channels.clear()
+                        channels.addAll(parsedChannels)
+                    } catch (oom: OutOfMemoryError) {
+                        Log.e("PLAYLIST_FLOW", "OOM applying channel list", oom)
+                        channels.clear()
+                        showAppToast("Недостаточно памяти для плейлиста", 4000L)
+                        showHomeAfterPlaylistFailure()
+                        return@post
+                    }
                     currentPlaylistText = content.orEmpty()
                     lastLoadedPlaylistUrl = playlistUrl
                     availableEpgSources = parsedEpgUrls
@@ -6023,20 +6061,14 @@ private fun showDefaultStartupScreen() {
                 file.delete()
             }
         }
-        return runCatching {
-            val root = JSONObject(prefs.getString(PREF_PLAYLIST_CONTENT_CACHE, "{}") ?: "{}")
-            val body = root.optString(url, "")
-            if (looksLikePlaylistBody(body)) {
-                body
-            } else {
-                // Purge #EXTM3U-only stubs that previously broke Избранные.
-                if (body.isNotBlank()) {
-                    root.remove(url)
-                    prefs.edit().putString(PREF_PLAYLIST_CONTENT_CACHE, root.toString()).apply()
-                }
-                null
+        // Do not fall back to SharedPreferences — Android 9 TVs OOM when the prefs
+        // XML still contains multi‑MB playlist bodies from older builds.
+        runCatching {
+            if (prefs.contains(PREF_PLAYLIST_CONTENT_CACHE)) {
+                prefs.edit().remove(PREF_PLAYLIST_CONTENT_CACHE).apply()
             }
-        }.getOrNull()
+        }
+        return null
     }
 
     private fun saveCachedPlaylistContent(url: String, content: String) {
@@ -6044,15 +6076,11 @@ private fun showDefaultStartupScreen() {
         runCatching {
             playlistCacheFile(url).writeText(content, Charsets.UTF_8)
         }
-        // Keep prefs only for modest playlists; drop stale prefs entry for this URL otherwise.
+        // Never keep playlist bodies in SharedPreferences — Android 9 TVs OOM / crash-loop.
         runCatching {
-            val root = JSONObject(prefs.getString(PREF_PLAYLIST_CONTENT_CACHE, "{}") ?: "{}")
-            if (content.length <= MAX_PREFS_PLAYLIST_CHARS) {
-                root.put(url, content)
-            } else {
-                root.remove(url)
+            if (prefs.contains(PREF_PLAYLIST_CONTENT_CACHE)) {
+                prefs.edit().remove(PREF_PLAYLIST_CONTENT_CACHE).apply()
             }
-            prefs.edit().putString(PREF_PLAYLIST_CONTENT_CACHE, root.toString()).apply()
         }
     }
 
@@ -7386,6 +7414,11 @@ private fun showDefaultStartupScreen() {
             }
             val ch = channels.getOrNull(currentChannelIndex) ?: run {
                 logDebug("PLAYLIST_FLOW", "OPEN_PLAYER_WITHOUT_CHANNEL blocked currentChannelIndex=$currentChannelIndex channelsCount=${channels.size}")
+                // Never tear the player down to the services grid while audio may still be running.
+                if (homePanel.visibility != View.VISIBLE && mediaPlayer != null) {
+                    showAppToast("Канал недоступен", 2500L)
+                    return@runCatching
+                }
                 showPlaylistPageOnHome()
                 return@runCatching
             }
@@ -7887,13 +7920,19 @@ private fun showDefaultStartupScreen() {
             return
         }
         // Dismiss loading chrome when the stream is healthy again.
-        // Full player UI is restored later via showUI() when the user opens controls.
+        // If controls are hidden, keep clock-only top bar (same as hideUI), not a blank GONE bar.
         if (controlsPanel.visibility != View.VISIBLE) {
-            topInfoPanel.visibility = View.GONE
+            topInfoPanel.visibility = View.VISIBLE
             topGradientOverlay.visibility = View.GONE
+            findViewById<View>(R.id.liveStatusBadge)?.visibility = View.INVISIBLE
+            findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.INVISIBLE
+            findViewById<View>(R.id.btnBackToMenu)?.visibility = View.INVISIBLE
+            findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
         } else {
             findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
             findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
+            findViewById<View>(R.id.btnBackToMenu)?.visibility = View.VISIBLE
+            findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
         }
     }
 
@@ -9612,13 +9651,14 @@ private fun showDefaultStartupScreen() {
         if (::tvEpg.isInitialized) {
             tvEpg.visibility = View.GONE
         }
-        // Keep only the wall clock when chrome auto-hides; hide the rest of the top bar.
+        // Keep only the wall clock when chrome auto-hides. Use INVISIBLE (not GONE) for
+        // siblings so the time plate stays in the top-right instead of collapsing left.
         topInfoPanel.visibility = View.VISIBLE
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
-        findViewById<View>(R.id.liveStatusBadge)?.visibility = View.GONE
-        findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.GONE
-        findViewById<View>(R.id.btnBackToMenu)?.visibility = View.GONE
+        findViewById<View>(R.id.liveStatusBadge)?.visibility = View.INVISIBLE
+        findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.INVISIBLE
+        findViewById<View>(R.id.btnBackToMenu)?.visibility = View.INVISIBLE
         findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
         sbTimeline.isEnabled = false
         // Drop focus from now-hidden control buttons so the next TV OK is a clean showUI().
@@ -9701,7 +9741,8 @@ private fun showDefaultStartupScreen() {
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> {
                 if (channels.isNotEmpty()) {
                     currentChannelIndex = (currentChannelIndex + 1) % channels.size
-                    playChannel(forcePlay = true)
+                    // Keep player session alive; use CHANNEL_CLICK so startup-gate allows zap.
+                    playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
                 }
                 return true
             }
@@ -9709,7 +9750,7 @@ private fun showDefaultStartupScreen() {
                 if (channels.isNotEmpty()) {
                     currentChannelIndex =
                         (currentChannelIndex - 1 + channels.size) % channels.size
-                    playChannel(forcePlay = true)
+                    playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
                 }
                 return true
             }
@@ -9857,6 +9898,16 @@ private fun showDefaultStartupScreen() {
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
                     shiftEpgDate(1)
                     return true
+                }
+                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    val focused = currentFocus
+                    val onDateChip = focused != null && (
+                        focused.parent === epgDateContainer ||
+                            focused === epgDateContainer
+                        )
+                    if (onDateChip || focused == null || focused === epgPanel) {
+                        if (moveEpgFocusToProgramsList()) return true
+                    }
                 }
             }
         }
@@ -11198,26 +11249,95 @@ private fun showDefaultStartupScreen() {
         saveEpgStatusCache()
     }
 
+
+    /**
+     * Android 9 / low-RAM TVs crash permanently if SharedPreferences XML grew to many MB
+     * (legacy EPG JSON, playlist bodies, logo maps). Strip known oversized keys by rewriting
+     * the prefs file when it exceeds a safe size — without calling getString on those values.
+     */
+    private fun scrubBloatedSharedPreferencesIfNeeded() {
+        val prefsFile = File(applicationInfo.dataDir, "shared_prefs/oportal_settings.xml")
+        if (!prefsFile.exists()) return
+        val len = prefsFile.length()
+        if (len < 750_000L) {
+            runCatching {
+                getSharedPreferences("oportal_settings", MODE_PRIVATE)
+                    .edit()
+                    .remove(PREF_EPG_CACHE)
+                    .apply()
+            }
+            return
+        }
+        Log.w("CACHE", "Bloated shared_prefs detected size=$len — rewriting without heavy keys")
+        runCatching {
+            val original = prefsFile.readBytes()
+            if (original.size > 12_000_000) {
+                val bak = File(prefsFile.parentFile, "oportal_settings.xml.bloated.bak")
+                if (bak.exists()) bak.delete()
+                prefsFile.renameTo(bak)
+                Log.e("CACHE", "Quarantined bloated prefs (${original.size} bytes) to ${bak.name}")
+                return
+            }
+            var xml = original.toString(Charsets.UTF_8)
+            val heavyKeys = listOf(PREF_EPG_CACHE, PREF_LOGO_CACHE, PREF_PLAYLIST_CONTENT_CACHE)
+            for (key in heavyKeys) {
+                xml = removeSharedPrefsXmlEntry(xml, "string", key)
+                xml = removeSharedPrefsXmlEntry(xml, "set", key)
+            }
+            prefsFile.writeText(xml)
+            Log.w("CACHE", "Rewrote shared_prefs without heavy cache keys (was $len bytes)")
+        }.onFailure { err ->
+            Log.e("CACHE", "Failed to scrub shared_prefs — quarantining", err)
+            runCatching {
+                val bak = File(prefsFile.parentFile, "oportal_settings.xml.bloated.bak")
+                if (bak.exists()) bak.delete()
+                prefsFile.renameTo(bak)
+            }
+        }
+    }
+
+    private fun removeSharedPrefsXmlEntry(xml: String, tag: String, key: String): String {
+        val open = "<$tag name=\"$key\">"
+        val close = "</$tag>"
+        val start = xml.indexOf(open)
+        if (start < 0) {
+            val selfClosing = "<$tag name=\"$key\" />"
+            return xml.replace(selfClosing, "")
+        }
+        val end = xml.indexOf(close, start)
+        if (end < 0) return xml
+        return xml.removeRange(start, end + close.length)
+    }
+
     private fun epgProgramsCacheFile(): File = File(filesDir, "epg_cache/programs.json")
+
+    private fun loadEpgCacheSafely() {
+        runCatching { loadEpgCache() }
+            .onFailure { err ->
+                Log.e("EPG", "loadEpgCache failed (non-fatal)", err)
+                runCatching { System.gc() }
+            }
+    }
 
     private fun loadEpgCache() {
         loadEpgStatusCache()
-        loadLogoCacheFromPrefs()
+        loadLogoCacheFromDiskOrPrefs()
+        // Never touch prefs.getString(PREF_EPG_CACHE) — on Android 9 that can inflate a
+        // multi‑MB binder/string and crash. Legacy key is deleted by scrub on startup.
         val raw = runCatching {
             val file = epgProgramsCacheFile()
             when {
-                file.exists() && file.length() > 2L -> file.readText()
-                else -> {
-                    val legacy = prefs.getString(PREF_EPG_CACHE, null)
-                    if (!legacy.isNullOrBlank() && legacy != "{}") {
-                        runCatching {
-                            file.parentFile?.mkdirs()
-                            file.writeText(legacy)
-                            prefs.edit().remove(PREF_EPG_CACHE).apply()
-                        }
-                        legacy
-                    } else "{}"
+                !file.exists() || file.length() <= 2L -> "{}"
+                // Weak TV boxes (API 28) cannot hold a full EPG JSON object in RAM.
+                isTelevisionDevice() && file.length() > 12L * 1024L * 1024L -> {
+                    Log.w("EPG", "Skip loading oversized EPG cache ${file.length()} bytes on TV")
+                    "{}"
                 }
+                file.length() > 40L * 1024L * 1024L -> {
+                    Log.w("EPG", "Skip loading oversized EPG cache ${file.length()} bytes")
+                    "{}"
+                }
+                else -> file.readText()
             }
         }.getOrDefault("{}")
         try {
@@ -11270,6 +11390,8 @@ private fun showDefaultStartupScreen() {
         }
     }
 
+    private fun logoCacheFile(): File = File(filesDir, "epg_cache/logos.json")
+
     private fun saveLogoCacheToPrefs() {
         val obj = JSONObject()
         channels.forEach { ch ->
@@ -11280,11 +11402,37 @@ private fun showDefaultStartupScreen() {
                 if (normalized.isNotBlank()) obj.put(normalized, logo)
             }
         }
-        prefs.edit().putString(PREF_LOGO_CACHE, obj.toString()).apply()
+        runCatching {
+            val file = logoCacheFile()
+            file.parentFile?.mkdirs()
+            file.writeText(obj.toString())
+            if (prefs.contains(PREF_LOGO_CACHE)) {
+                prefs.edit().remove(PREF_LOGO_CACHE).apply()
+            }
+        }.onFailure { Log.e("EPG", "logo cache disk write failed", it) }
     }
 
-    private fun loadLogoCacheFromPrefs() {
-        val raw = prefs.getString(PREF_LOGO_CACHE, "{}") ?: "{}"
+    private fun loadLogoCacheFromDiskOrPrefs() {
+        val raw = runCatching {
+            val file = logoCacheFile()
+            when {
+                file.exists() && file.length() > 2L -> file.readText()
+                else -> {
+                    // Prefer delete-without-read when possible; only migrate tiny leftovers.
+                    if (prefs.contains(PREF_LOGO_CACHE)) {
+                        val legacy = runCatching { prefs.getString(PREF_LOGO_CACHE, null) }.getOrNull()
+                        prefs.edit().remove(PREF_LOGO_CACHE).apply()
+                        if (!legacy.isNullOrBlank() && legacy.length < 400_000) {
+                            runCatching {
+                                file.parentFile?.mkdirs()
+                                file.writeText(legacy)
+                            }
+                            legacy
+                        } else "{}"
+                    } else "{}"
+                }
+            }
+        }.getOrDefault("{}")
         try {
             val obj = JSONObject(raw)
             cachedLogos.clear()
