@@ -13,7 +13,9 @@
 
     <style name="Theme.O_portal_OTT.Main" parent="Base.Theme.O_portal_OTT" />
 
-    <!-- Cold start: keep system splash until activity draws our gradient overlay. -->
+    <!-- Cold start: keep system splash until activity draws our gradient overlay.
+         Android SplashScreen API cannot host a TextView — icon must be a drawable.
+         In-app launchSplashLogo TextView mirrors the same wordmark size. -->
     <style name="Theme.O_portal_OTT" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/oportal_splash_bg</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/splash_wordmark_icon</item>

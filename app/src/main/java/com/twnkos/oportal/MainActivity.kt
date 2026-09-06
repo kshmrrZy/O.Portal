@@ -1101,7 +1101,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun getCurrentProgramTitleForChannelList(ch: Channel): String {
         val now = System.currentTimeMillis()
-        getProgramsForChannel(ch).find { now in it.start until it.stop }?.title?.let { return it }
+        val real = getProgramsForChannel(ch)
+        val programs = if (real.isNotEmpty()) real else buildArchivePlaceholderPrograms(ch)
+        programs.find { now in it.start until it.stop }?.title?.let { return it }
         return epgUnavailableMessage()
     }
 
@@ -1946,6 +1948,14 @@ private fun showDefaultStartupScreen() {
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         updateHomeHeaderActions()
+        // TV: never let framework focus steal OK from homeActionIndex routing.
+        listOf(ivHomeProfile, ivHomeSettings, ivHomePower).forEach { icon ->
+            icon.isFocusable = false
+            icon.isFocusableInTouchMode = false
+            icon.isClickable = true
+        }
+        homeActionIndex = 0
+        applyHomeStartActionHighlight()
     }
 
     private fun isOnUnauthorizedStartPage(): Boolean {
@@ -1986,6 +1996,19 @@ private fun showDefaultStartupScreen() {
             } else {
                 showSettingsDialog()
             }
+        }
+    }
+
+    private fun applyHomeStartActionHighlight() {
+        val icons = listOf(ivHomeProfile, ivHomeSettings, ivHomePower)
+            .filter { it.visibility == View.VISIBLE }
+        if (icons.isEmpty()) return
+        if (homeActionIndex !in icons.indices) homeActionIndex = 0
+        icons.forEachIndexed { index, icon ->
+            val selected = index == homeActionIndex
+            icon.alpha = if (selected) 1f else 0.5f
+            icon.scaleX = if (selected) 1.25f else 1f
+            icon.scaleY = if (selected) 1.25f else 1f
         }
     }
 
@@ -3361,7 +3384,9 @@ private fun showDefaultStartupScreen() {
                     else R.drawable.channel_grid_tile_bg
                 )
 
-                holder.tvCurrentProgram.text = channelListProgramTitles[realIndex].orEmpty()
+                holder.tvCurrentProgram.text =
+                    channelListProgramTitles[realIndex]
+                        ?: getCurrentProgramTitleForChannelList(channel)
                 holder.tvCurrentProgram.visibility = View.VISIBLE
                 holder.archiveBadge.visibility =
                     if (channel.catchupDays > 0 && !channel.catchupSource.isNullOrBlank()) {
@@ -3429,8 +3454,8 @@ private fun showDefaultStartupScreen() {
         handler.removeCallbacks(hideUiRunnable)
         pausePlaybackStallWatchdogForOverlay()
         channelListPanel.visibility = View.VISIBLE
-        // Show cached channels immediately (offline-safe); EPG titles fill in asynchronously.
-        channelListProgramTitles = emptyMap()
+        // Seed program lines from in-memory EPG immediately (same as home list); refresh async.
+        channelListProgramTitles = channels.mapIndexed { index, ch -> index to getCurrentProgramTitleForChannelList(ch) }.toMap()
         bindChannelListPanelAdapter()
         channelListPanel.post {
             thread(name = "channel-list-prep") {
@@ -3980,6 +4005,8 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun openProfileAuthScreen() {
+        setSettingsAuthFieldsFocusable(true)
+
         if (settingsOpenedFromPlayer) return
         val settingsRows = listOf(
             findViewById<View>(R.id.btnPlaylistSettings),
@@ -4009,6 +4036,8 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun showSettingsDialog() {
+        setSettingsAuthFieldsFocusable(true)
+
         findViewById<View>(R.id.userProfileHeaderCard).visibility = View.VISIBLE
         updateProfileHeaderCard()
         restoreSettingsProfileHeaderInteractivity()
@@ -4155,6 +4184,7 @@ private fun showDefaultStartupScreen() {
         epgSettingsPanel.visibility = View.GONE
         userSettingsPanel.visibility = View.GONE
         settingsRows.forEach { it.visibility = View.VISIBLE }
+        setSettingsAuthFieldsFocusable(true)
         val authorized = isAuthorizedUser()
         btnRefreshServices.visibility = if (authorized) View.VISIBLE else View.GONE
         btnLogoutProfile.visibility = if (authorized) View.VISIBLE else View.GONE
@@ -4441,6 +4471,16 @@ private fun showDefaultStartupScreen() {
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "О приложении")
 
         configureBackButtonsForSettings("showAppInfoScreen")
+    }
+
+
+    private fun setSettingsAuthFieldsFocusable(enabled: Boolean) {
+        listOf(R.id.etUserLoginInline, R.id.etUserTokenInline, R.id.etUserLogin, R.id.etUserToken).forEach { id ->
+            findViewById<View>(id)?.let { field ->
+                field.isFocusable = enabled
+                field.isFocusableInTouchMode = enabled
+            }
+        }
     }
 
     private fun openEpgSettingsScreen() {
@@ -4760,13 +4800,45 @@ private fun showDefaultStartupScreen() {
         tbInterval.setOnClickListener {
             val idx = refreshModes.indexOf(refreshMode).let { if (it < 0) 0 else it }
             val next = refreshModes[(idx + 1) % refreshModes.size]
-            if (next == EPG_REFRESH_CUSTOM) {
+            // Cycle weekly → daily → custom without requiring a date first.
+            // Open the date picker only when custom is already selected (second press).
+            if (next == EPG_REFRESH_CUSTOM && refreshMode == EPG_REFRESH_CUSTOM) {
                 pickCustomRefreshDateTime()
             } else {
                 refreshMode = next
                 prefs.edit().putString(PREF_EPG_REFRESH_MODE, refreshMode).apply()
                 updateRefreshModeUi()
-                scheduleEpgRefreshAlarm()
+                if (refreshMode != EPG_REFRESH_CUSTOM ||
+                    prefs.getLong(PREF_EPG_REFRESH_CUSTOM_AT, 0L) > System.currentTimeMillis()
+                ) {
+                    scheduleEpgRefreshAlarm()
+                }
+            }
+        }
+        tbInterval.setOnLongClickListener {
+            refreshMode = EPG_REFRESH_CUSTOM
+            prefs.edit().putString(PREF_EPG_REFRESH_MODE, refreshMode).apply()
+            updateRefreshModeUi()
+            pickCustomRefreshDateTime()
+            true
+        }
+        tbInterval.setOnKeyListener { _, keyCode, event ->
+            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    val idx = refreshModes.indexOf(refreshMode).let { if (it < 0) 0 else it }
+                    val delta = if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) 1 else -1
+                    refreshMode = refreshModes[(idx + delta + refreshModes.size) % refreshModes.size]
+                    prefs.edit().putString(PREF_EPG_REFRESH_MODE, refreshMode).apply()
+                    updateRefreshModeUi()
+                    if (refreshMode != EPG_REFRESH_CUSTOM ||
+                        prefs.getLong(PREF_EPG_REFRESH_CUSTOM_AT, 0L) > System.currentTimeMillis()
+                    ) {
+                        scheduleEpgRefreshAlarm()
+                    }
+                    true
+                }
+                else -> false
             }
         }
 
@@ -4907,6 +4979,23 @@ private fun showDefaultStartupScreen() {
         )
         syncToggleSizeToUrlField()
 
+        
+        // TV: profile token/login fields sit in the parent settings chrome and steal DPAD
+        // when scrolling the EPG form — keep them non-focusable while this sub-screen is open.
+        setSettingsAuthFieldsFocusable(false)
+        listOf(R.id.etUserLoginInline, R.id.etUserTokenInline, R.id.etUserLogin, R.id.etUserToken)
+            .forEach { id -> findViewById<View>(id)?.clearFocus() }
+        // Prefer navigating URL toggles / interval / actions, not EditTexts, with the remote.
+        urls.forEach { et ->
+            et.isFocusable = false
+            et.isFocusableInTouchMode = false
+            et.setOnClickListener {
+                et.isFocusableInTouchMode = true
+                et.isFocusable = true
+                et.requestFocus()
+            }
+        }
+
         tbSourceMode.post { tbSourceMode.requestFocus() }
         configureBackButtonsForSettings("openEpgSettingsScreen")
         applySettingsViewportLayout()
@@ -4979,7 +5068,13 @@ private fun showDefaultStartupScreen() {
                     val existing = getPlaylistProfiles().filter { it.name !in known }
                     savePlaylistProfiles((portal + existing).distinctBy { it.name })
                     logDebug("PLAYLIST_FLOW", "SERVICES_SYNCED count=${portal.size} fromCache=$fromCache")
-                    if (homePlaylistTilesPanel.visibility == View.VISIBLE) {
+                    // Child views can remain VISIBLE while homePanel is GONE (during playback).
+                    // Never bounce categories / channel list / player back to the services grid.
+                    if (homePanel.visibility == View.VISIBLE &&
+                        homePlaylistTilesPanel.visibility == View.VISIBLE &&
+                        homeCategoryBackHandler == null &&
+                        (!::gvHomeChannelList.isInitialized || gvHomeChannelList.visibility != View.VISIBLE)
+                    ) {
                         showPlaylistPageOnHome()
                     }
                 }
@@ -4987,7 +5082,16 @@ private fun showDefaultStartupScreen() {
             // Prefer fresh network, fall back to cached services JSON.
             runCatching { JSONObject(URL(url).readText()) }
                 .onSuccess { json ->
-                    prefs.edit().putString(PREF_SERVICES_CACHE, json.toString()).apply()
+                    runCatching {
+                        val payload = json.toString()
+                        if (payload.length > 512_000) {
+                            logDebug("PLAYLIST_FLOW", "SERVICES_CACHE_SKIP size=${payload.length}")
+                        } else {
+                            prefs.edit().putString(PREF_SERVICES_CACHE, payload).apply()
+                        }
+                    }.onFailure { err ->
+                        logDebug("PLAYLIST_FLOW", "SERVICES_CACHE_WRITE_FAIL ${err.message}")
+                    }
                     applyServicesJson(json, fromCache = false)
                 }
                 .onFailure { e ->
@@ -5270,6 +5374,8 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun bindInlineUserSettings(panel: View) {
+        setSettingsAuthFieldsFocusable(true)
+
         val tvState = panel.findViewById<TextView>(R.id.tvUserSectionState)
         val etLogin = panel.findViewById<EditText>(R.id.etUserLoginInline)
         val etToken = panel.findViewById<EditText>(R.id.etUserTokenInline)
@@ -7827,8 +7933,8 @@ private fun showDefaultStartupScreen() {
         }
     }
 
-    private fun epgUnavailableMessage(): String =
-        if (epgFetchInProgress) "Выполняется обновление программы передач"
+        private fun epgUnavailableMessage(): String =
+        if (epgFetchInProgress && isEpgDataEmpty()) "Выполняется обновление программы передач"
         else "Программа передач недоступна"
 
     private fun updateEpgLoadStatusUi() {
@@ -8849,6 +8955,20 @@ private fun showDefaultStartupScreen() {
                             videoRendererPossiblyBroken = true
                             logDebug("PLAYER_LIFECYCLE", "PLAYER_ERROR_SOURCE marked_renderer_tainted=true errorCode=${error.errorCode} codeName=${error.errorCodeName}")
                         }
+                        if (isTelevisionDevice() && preferGpuDecoding && !softwareDecoderMode) {
+                            // Texture/Surface + HW decoder glitches on some TV SoCs (e.g. Only4).
+                            // Fall back to software once for this session.
+                            logDebug("PLAYER_LIFECYCLE", "TV_HW_GLITCH_FALLBACK switching to software decoder")
+                            preferGpuDecoding = false
+                            softwareDecoderMode = true
+                            prefs.edit().putBoolean(PREF_USE_GPU_DECODER, false).apply()
+                            handler.post {
+                                if (isFinishing || isDestroyed) return@post
+                                setupPlayer(preferSoftwareDecoder = true)
+                                playChannel(forcePlay = true, reason = PlayerOpenReason.RECOVERY)
+                            }
+                            return
+                        }
                         handler.post {
                             if (isFinishing || isDestroyed) return@post
                             handler.removeCallbacks(startupSlowStreamRunnable)
@@ -9489,12 +9609,17 @@ private fun showDefaultStartupScreen() {
         playerLoadingUiActive = false
         findViewById<View>(R.id.playerLoadingSpinner)?.visibility = View.GONE
         stopCompositeSpinner(findViewById(R.id.playerLoadingSpinnerInner))
-        if (::tvEpg.isInitialized && inputNumber.isEmpty()) {
-            tvEpg.visibility = View.VISIBLE
+        if (::tvEpg.isInitialized) {
+            tvEpg.visibility = View.GONE
         }
-        topInfoPanel.visibility = View.GONE
+        // Keep only the wall clock when chrome auto-hides; hide the rest of the top bar.
+        topInfoPanel.visibility = View.VISIBLE
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
+        findViewById<View>(R.id.liveStatusBadge)?.visibility = View.GONE
+        findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.GONE
+        findViewById<View>(R.id.btnBackToMenu)?.visibility = View.GONE
+        findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
         sbTimeline.isEnabled = false
         // Drop focus from now-hidden control buttons so the next TV OK is a clean showUI().
         currentFocus?.clearFocus()
@@ -11058,15 +11183,43 @@ private fun showDefaultStartupScreen() {
                 cache.put(channelId, arr)
             }
         }
-        prefs.edit().putString(PREF_EPG_CACHE, cache.toString()).apply()
+        runCatching {
+            val file = epgProgramsCacheFile()
+            file.parentFile?.mkdirs()
+            file.writeText(cache.toString())
+            // Drop legacy SharedPreferences blob that OOMs weak TV binders.
+            if (prefs.contains(PREF_EPG_CACHE)) {
+                prefs.edit().remove(PREF_EPG_CACHE).apply()
+            }
+        }.onFailure { err ->
+            Log.e("EPG", "Failed to persist EPG cache to disk", err)
+        }
         saveLogoCacheToPrefs()
         saveEpgStatusCache()
     }
 
+    private fun epgProgramsCacheFile(): File = File(filesDir, "epg_cache/programs.json")
+
     private fun loadEpgCache() {
         loadEpgStatusCache()
         loadLogoCacheFromPrefs()
-        val raw = prefs.getString(PREF_EPG_CACHE, "{}") ?: "{}"
+        val raw = runCatching {
+            val file = epgProgramsCacheFile()
+            when {
+                file.exists() && file.length() > 2L -> file.readText()
+                else -> {
+                    val legacy = prefs.getString(PREF_EPG_CACHE, null)
+                    if (!legacy.isNullOrBlank() && legacy != "{}") {
+                        runCatching {
+                            file.parentFile?.mkdirs()
+                            file.writeText(legacy)
+                            prefs.edit().remove(PREF_EPG_CACHE).apply()
+                        }
+                        legacy
+                    } else "{}"
+                }
+            }
+        }.getOrDefault("{}")
         try {
             val obj = JSONObject(raw)
             synchronized(epgDataLock) { epgData.clear() }

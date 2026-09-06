@@ -63,6 +63,32 @@ class ContentAwareScrollView @JvmOverloads constructor(
 
     override fun executeKeyEvent(event: KeyEvent): Boolean {
         if (!scrollingEnabled) return false
+        // When a deeply nested focusable (e.g. EditText) consumes DPAD_DOWN without
+        // moving, still scroll the page so TV users are not trapped mid-form.
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    if (!canScrollVertically(1)) return false
+                    val before = scrollY
+                    val handled = super.executeKeyEvent(event)
+                    if (scrollY == before) {
+                        arrowScroll(FOCUS_DOWN)
+                        return scrollY != before
+                    }
+                    return handled
+                }
+                KeyEvent.KEYCODE_DPAD_UP -> {
+                    if (!canScrollVertically(-1)) return false
+                    val before = scrollY
+                    val handled = super.executeKeyEvent(event)
+                    if (scrollY == before) {
+                        arrowScroll(FOCUS_UP)
+                        return scrollY != before
+                    }
+                    return handled
+                }
+            }
+        }
         return super.executeKeyEvent(event)
     }
 
