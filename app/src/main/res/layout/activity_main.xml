@@ -366,8 +366,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="16dp"
                 android:layout_marginTop="@dimen/player_timeline_time_gap"
+                android:background="@drawable/player_timeline_track_bg"
                 android:clickable="true"
-                android:focusable="false">
+                android:focusable="false"
+                android:defaultFocusHighlightEnabled="false"
+                android:nextFocusDown="@id/btnPlayPause">
                 <View
                     android:id="@+id/viewTimelineStripe"
                     android:layout_width="match_parent"
