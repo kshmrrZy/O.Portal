@@ -1400,7 +1400,10 @@ private fun showDefaultStartupScreen() {
         tvHomeBreadcrumbPill2.setOnClickListener { onCategoryBreadcrumbClick() }
         tvHomeAppTitle.text = SpannableString("O.Portal").apply {
             setSpan(StyleSpan(Typeface.BOLD), 2, length, 0)
-            tvHomeAppTitle.typeface = Typeface.create(tvHomeAppTitle.typeface, 800, false)
+            tvHomeAppTitle.typeface = golosWeight(800)
+                ?: golosTypefaceExtraBold
+                ?: golosTypefaceBold
+                ?: tvHomeAppTitle.typeface
         }
         tvHomeStartTitle = findViewById(R.id.tvHomeStartTitle)
         tvHomeStartSubtitle = findViewById(R.id.tvHomeStartSubtitle)
