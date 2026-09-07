@@ -1008,6 +1008,12 @@ class MainActivity : AppCompatActivity() {
         handler.postDelayed(hideUiRunnable, delayMs)
     }
     private var pendingSeekDeltaSec: Int = 0
+    /** Absolute content time when the current TV/phone scrub gesture started. */
+    private var seekGestureBaseAbsMs: Long = 0L
+    /** Target absolute time shown while scrubbing / until archive seek settles. */
+    private var pendingSeekTargetAbsMs: Long = 0L
+    /** Seek into archive after the new media item becomes READY (replaces fragile delay). */
+    private var pendingArchiveSeekTargetMs: Long = 0L
     private var liveTimelineAnchorMs: Long = 0L
     /** Content time at live pause; after resume, left clock = this + player delta. */
     private var liveTimelinePausedContentMs = 0L
@@ -1023,11 +1029,23 @@ class MainActivity : AppCompatActivity() {
         val deltaSec = pendingSeekDeltaSec
         pendingSeekDeltaSec = 0
         if (deltaSec == 0) {
-            timelineUserSeeking = false
+            clearSeekGesturePreview(commitTimeline = true)
             return@Runnable
         }
-        applyRelativeSeekSeconds(deltaSec)
-        timelineUserSeeking = false
+        val base = seekGestureBaseAbsMs
+        val targetAbs = if (base > 0L) {
+            base + deltaSec * 1000L
+        } else {
+            val currentAbs = currentTimelineSeekableProgram()?.third ?: run {
+                clearSeekGesturePreview(commitTimeline = true)
+                return@Runnable
+            }
+            currentAbs + deltaSec * 1000L
+        }
+        pendingSeekTargetAbsMs = targetAbs
+        timelineUserSeeking = true
+        applyAbsoluteSeekTarget(targetAbs, deltaSecForStatus = deltaSec)
+        // Keep preview clock until player reports the new position / spinner hides.
     }
     private val channelSwitchRunnable = Runnable { processChannelNumberInput() }
     private val restoreEpgRunnable = Runnable { updateEpgDisplay() }
@@ -1505,6 +1523,34 @@ private fun showDefaultStartupScreen() {
         btnPlayPause.alpha = 1.0f
     }
 
+    /** Shared play/pause for the button and TV remote OK. */
+    private fun togglePlayPausePlayback() {
+        if (isPlaybackPaused) {
+            mediaPlayer?.play()
+            if (!videoOnlyMinimalMode) handler.postDelayed(startupSlowStreamRunnable, 45_000L)
+            isPlaybackPaused = false
+            if (isArchivePlayback) {
+                clearLiveTimelinePauseClock()
+            } else if (liveTimelinePausedContentMs > 0L) {
+                liveTimelinePlayerPosAtPauseMs =
+                    mediaPlayer?.currentPosition ?: liveTimelinePlayerPosAtPauseMs
+                liveTimelineFollowFromPause = true
+            }
+            updateTimelineUi()
+        } else {
+            mediaPlayer?.pause()
+            isPlaybackPaused = true
+            if (!isArchivePlayback) {
+                liveTimelinePausedContentMs = getLiveTimelinePositionMs()
+                liveTimelinePlayerPosAtPauseMs = mediaPlayer?.currentPosition ?: 0L
+                liveTimelineAnchorMs = liveTimelinePausedContentMs
+                liveTimelineFollowFromPause = true
+                updateTimelineUi()
+            }
+        }
+        updatePlayPauseButton()
+    }
+
     /** TV: OK with chrome hidden — pause stream, then showUI focuses play/pause for resume. */
     private fun pausePlaybackForTvOkReveal() {
         if (isPlaybackPaused) return
@@ -1890,31 +1936,7 @@ private fun showDefaultStartupScreen() {
         btnSleepTimer.setOnClickListener { showTimerDialog() }
 
         btnPlayPause.setOnClickListener {
-            if (isPlaybackPaused) {
-                mediaPlayer?.play()
-                if (!videoOnlyMinimalMode) handler.postDelayed(startupSlowStreamRunnable, 45_000L)
-                isPlaybackPaused = false
-                if (isArchivePlayback) {
-                    clearLiveTimelinePauseClock()
-                } else if (liveTimelinePausedContentMs > 0L) {
-                    // Continue left timestamp from pause point, not wall-clock "now".
-                    liveTimelinePlayerPosAtPauseMs =
-                        mediaPlayer?.currentPosition ?: liveTimelinePlayerPosAtPauseMs
-                    liveTimelineFollowFromPause = true
-                }
-                updateTimelineUi()
-            } else {
-                mediaPlayer?.pause()
-                isPlaybackPaused = true
-                if (!isArchivePlayback) {
-                    liveTimelinePausedContentMs = getLiveTimelinePositionMs()
-                    liveTimelinePlayerPosAtPauseMs = mediaPlayer?.currentPosition ?: 0L
-                    liveTimelineAnchorMs = liveTimelinePausedContentMs
-                    liveTimelineFollowFromPause = true
-                    updateTimelineUi()
-                }
-            }
-            updatePlayPauseButton()
+            togglePlayPausePlayback()
             showUI(preferFocus = btnPlayPause)
         }
 
@@ -7777,7 +7799,11 @@ private fun showDefaultStartupScreen() {
         findViewById<PlayerView>(R.id.videoLayout).player = mediaPlayer
     }
 
-    private fun playArchiveProgram(channel: Channel, program: Program) {
+    private fun playArchiveProgram(
+        channel: Channel,
+        program: Program,
+        startAtMs: Long = program.start
+    ) {
         val archiveUrl = buildArchiveUrl(channel, program)
         if (archiveUrl.isNullOrBlank()) {
             showAppToast("Не удалось сформировать ссылку архива")
@@ -7801,8 +7827,8 @@ private fun showDefaultStartupScreen() {
             logHlsManifestPreview(archiveUrl)
             player.setMediaItem(buildMediaItem(archiveUrl))
             player.prepare()
-            player.playWhenReady = true
-            player.play()
+            player.playWhenReady = !isPlaybackPaused
+            if (!isPlaybackPaused) player.play()
             logMemoryStats("play_archive_start")
             handler.removeCallbacks(memoryLogRunnable)
             handler.post(memoryLogRunnable)
@@ -7811,19 +7837,27 @@ private fun showDefaultStartupScreen() {
             lastProgressWallClockMs = System.currentTimeMillis()
             resetPlaybackProgressBaseline(extendGrace = true)
             armPlaybackFreezeWatchdog(4000L, withStartGrace = true)
-            isPlaybackPaused = false
-            clearLiveTimelinePauseClock()
+            if (!isPlaybackPaused) {
+                clearLiveTimelinePauseClock()
+            }
             isArchivePlayback = true
             updateLiveStatusBadge()
             currentArchiveProgram = program
             archiveStreamStartMs = program.start
+            val seekTarget = startAtMs.coerceIn(program.start, (program.stop - 1_000L).coerceAtLeast(program.start))
+            // Apply exact playhead when READY — fixed 450ms delay often missed on Android TV.
+            pendingArchiveSeekTargetMs =
+                if (seekTarget > program.start + 1_500L) seekTarget else 0L
+            pendingSeekTargetAbsMs = seekTarget
+            timelineUserSeeking = true
             updatePlayPauseButton()
             tvChannelName.text = "${currentChannelIndex + 1}. ${channel.name}"
             val stamp = SimpleDateFormat(
                 "dd.MM.yyyy HH:mm",
                 Locale.getDefault()
-            ).format(Date(program.start))
+            ).format(Date(seekTarget))
             tvEpg.text = "Архив от $stamp - ${program.title}"
+            updateTimelineUi()
             showUI()
         }.onFailure { e ->
             showPlaybackFailureAndReturn(archiveUrl, e.message ?: e.javaClass.simpleName)
@@ -8396,6 +8430,10 @@ private fun showDefaultStartupScreen() {
                 isClickable = true
                 isFocusable = true
                 setBackgroundColor(Color.parseColor("#99000000"))
+            }
+            // Seek settled — release preview clock so archive timestamp tracks the player again.
+            if (pendingArchiveSeekTargetMs <= 0L) {
+                clearSeekGesturePreview(commitTimeline = true)
             }
         }
         hideSeekSpinnerRunnable = hide
@@ -9197,6 +9235,10 @@ private fun showDefaultStartupScreen() {
                 if (v.visibility != View.VISIBLE) return@let
                 v.isEnabled = true
                 v.isClickable = true
+                if (isTelevisionDevice()) {
+                    v.isFocusable = true
+                    v.isFocusableInTouchMode = false
+                }
             }
         }
         if (::timelineTrack.isInitialized && isTelevisionDevice()) {
@@ -9519,9 +9561,14 @@ private fun showDefaultStartupScreen() {
                         if (homePanel.visibility != View.VISIBLE && !isPlayerOverlayOpen()) {
                             suppressAutoPlayerUiOnce = false
                             if (isTelevisionDevice()) {
-                                // TV: keep chrome briefly after tune-in, then auto-hide.
+                                // TV: keep chrome briefly after tune-in so pause is reachable, then auto-hide.
                                 // Phone keeps the existing immediate dismiss.
-                                showUI()
+                                showUI(preferFocus = btnPlayPause)
+                                btnPlayPause.post {
+                                    if (controlsPanel.visibility == View.VISIBLE) {
+                                        btnPlayPause.requestFocus()
+                                    }
+                                }
                             } else {
                                 hideUI()
                             }
@@ -9569,6 +9616,9 @@ private fun showDefaultStartupScreen() {
                             playbackState == androidx.media3.common.Player.STATE_ENDED ||
                             playbackState == androidx.media3.common.Player.STATE_IDLE
                         ) {
+                            if (playbackState == androidx.media3.common.Player.STATE_READY) {
+                                flushPendingArchiveSeekIfNeeded()
+                            }
                             hideSeekSpinnerIfReady()
                         }
                         // Live stream ended unexpectedly — recover, but respect post-recovery mute
@@ -10468,12 +10518,11 @@ private fun showDefaultStartupScreen() {
             return false
         }
 
-        // Hold on seek buttons: continuous seek without trapping single L/R navigation.
+        // Hold on seek buttons: single press = ±1 min; hold continues seeking.
+        // L/R toward the other seek button still moves focus (opposite direction).
         if ((onSeekLeft || onSeekRight) &&
             (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)
         ) {
-            val repeat = event?.repeatCount ?: 0
-            if (repeat == 0) return false
             val wantLeft = keyCode == KeyEvent.KEYCODE_DPAD_LEFT
             if (onSeekLeft && !wantLeft) return false
             if (onSeekRight && wantLeft) return false
@@ -10481,11 +10530,12 @@ private fun showDefaultStartupScreen() {
                 showAppToast("Перемотка вперёд недоступна в прямом эфире")
                 return true
             }
-            val stepSec = if (repeat < 6) 60 else 180
+            val repeat = event?.repeatCount ?: 0
+            val stepSec = if (repeat == 0 || repeat < 6) 60 else 180
             queueSeekDeltaSeconds(
                 if (wantLeft) -stepSec else stepSec,
                 fromUser = true,
-                commitDelayMs = 350L
+                commitDelayMs = if (repeat > 0) 350L else 500L
             )
             lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
             scheduleHidePlayerChrome()
@@ -10502,17 +10552,19 @@ private fun showDefaultStartupScreen() {
                 return true
             }
             KeyEvent.KEYCODE_DPAD_DOWN -> {
-                pendingSeekDeltaSec = 0
                 handler.removeCallbacks(applySeekDeltaRunnable)
-                timelineUserSeeking = false
-                updateTimelineUi()
+                clearSeekGesturePreview(commitTimeline = true)
                 btnPlayPause.requestFocus()
                 lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
                 scheduleHidePlayerChrome()
                 return true
             }
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                // OK on the bar does not toggle an arm mode — scrub is focus-driven.
+                // OK on the bar toggles pause so the user can pause after tune-in / while scrubbing.
+                if ((event?.repeatCount ?: 0) == 0) {
+                    togglePlayPausePlayback()
+                    showUI(preferFocus = btnPlayPause)
+                }
                 return true
             }
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
@@ -10529,6 +10581,7 @@ private fun showDefaultStartupScreen() {
                     return true
                 }
                 val repeat = event?.repeatCount ?: 0
+                // Single press = exactly 1 minute; hold accelerates after a few repeats.
                 val stepSec = when {
                     repeat == 0 -> 60
                     repeat < 6 -> 60
@@ -10537,7 +10590,7 @@ private fun showDefaultStartupScreen() {
                 queueSeekDeltaSeconds(
                     if (isLeft) -stepSec else stepSec,
                     fromUser = true,
-                    commitDelayMs = if (repeat > 0) 350L else 700L
+                    commitDelayMs = if (repeat > 0) 350L else 500L
                 )
                 lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
                 scheduleHidePlayerChrome()
@@ -10564,7 +10617,7 @@ private fun showDefaultStartupScreen() {
     private fun queueSeekDeltaSeconds(
         deltaSec: Int,
         fromUser: Boolean,
-        commitDelayMs: Long = 900L
+        commitDelayMs: Long = 500L
     ): Boolean {
         if (deltaSec == 0) return false
         if (deltaSec > 0 && !isArchivePlayback) {
@@ -10575,7 +10628,12 @@ private fun showDefaultStartupScreen() {
             showAppToast("Архив недоступен")
             return false
         }
+        if (pendingSeekDeltaSec == 0) {
+            seekGestureBaseAbsMs = currentTimelineSeekableProgram()?.third ?: return false
+        }
         pendingSeekDeltaSec += deltaSec
+        val targetAbs = seekGestureBaseAbsMs + pendingSeekDeltaSec * 1000L
+        pendingSeekTargetAbsMs = targetAbs
         tvEpg.text =
             "Перематываем передачу на ${formatMinutesRu(kotlin.math.abs(pendingSeekDeltaSec) / 60)}"
         seekStatusHoldUntilMs = System.currentTimeMillis() + 2200L
@@ -10587,8 +10645,10 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun previewPendingSeekOnTimeline() {
-        val (programStart, programStop, currentAbsoluteMs) = currentTimelineSeekableProgram() ?: return
-        val targetAbs = currentAbsoluteMs + pendingSeekDeltaSec * 1000L
+        val (programStart, programStop, _) = currentTimelineSeekableProgram() ?: return
+        val base = if (seekGestureBaseAbsMs > 0L) seekGestureBaseAbsMs else return
+        val targetAbs = base + pendingSeekDeltaSec * 1000L
+        pendingSeekTargetAbsMs = targetAbs
         val duration = (programStop - programStart).coerceAtLeast(1L)
         val progress = (((targetAbs - programStart).toDouble() / duration) * 1000.0)
             .toInt().coerceIn(0, 1000)
@@ -10596,6 +10656,11 @@ private fun showDefaultStartupScreen() {
         timelineUserSeeking = true
         sbTimeline.progress = clamped
         previewTimelineProgress(clamped)
+        if (::tvCurrentTime.isInitialized) {
+            val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+            tvCurrentTime.visibility = View.VISIBLE
+            tvCurrentTime.text = fmt.format(Date(targetAbs.coerceIn(programStart, programStop)))
+        }
     }
 
     /** Thumb + left timestamp while scrubbing (TV remote queue and phone touch). */
@@ -10925,9 +10990,24 @@ private fun showDefaultStartupScreen() {
             // Active player chrome: L/R move between control buttons (seek / EPG / …).
             // Side panels open only when chrome is hidden. UP moves to progress bar on TV.
             when (keyCode) {
-                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
                 KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    if ((event?.repeatCount ?: 0) > 0) return true
+                    val focused = currentFocus
+                    val onActionButton = focused != null && isFocusInPlayerControlsRow() &&
+                        focused !== timelineTrack &&
+                        focused.id != R.id.btnBackToMenu
+                    if (!onActionButton) {
+                        // After channel load PlayerView / empty focus often steals OK — still allow pause.
+                        togglePlayPausePlayback()
+                        showUI(preferFocus = btnPlayPause)
+                        return true
+                    }
+                    lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
+                    scheduleHidePlayerChrome()
+                    return super.onKeyDown(keyCode, event)
+                }
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
                     if (!isFocusInPlayerControlsRow()) {
                         findViewById<View>(R.id.btnPlayPause)?.requestFocus()
                     }
@@ -11126,6 +11206,18 @@ private fun showDefaultStartupScreen() {
         tvCurrentTime.visibility = View.VISIBLE
         tvProgramEndTime.visibility = View.VISIBLE
         tvProgramEndTime.text = fmt.format(Date(p.stop))
+        // While scrubbing / pending archive seek, keep the preview archive clock — never flash live "now".
+        if (timelineUserSeeking && pendingSeekTargetAbsMs > 0L) {
+            val previewMs = pendingSeekTargetAbsMs.coerceIn(p.start, p.stop)
+            tvCurrentTime.text = fmt.format(Date(previewMs))
+            val progress = (((previewMs - p.start).toDouble() /
+                (p.stop - p.start).coerceAtLeast(1L).toDouble()) * 1000.0)
+                .toInt().coerceIn(0, 1000)
+            val clamped = clampTimelineProgress(progress)
+            sbTimeline.progress = clamped
+            applyTimelineProgressUi(clamped)
+            return
+        }
         val currentMs =
             if (isArchivePlayback) {
                 archiveStreamStartMs + (mediaPlayer?.currentPosition ?: 0L)
@@ -11273,6 +11365,7 @@ private fun showDefaultStartupScreen() {
         val ch = channels.getOrNull(currentChannelIndex) ?: return
         val now = System.currentTimeMillis()
         if (targetMs >= now - 2_000L) {
+            clearSeekGesturePreview(commitTimeline = true)
             switchToLivePlayback()
             return
         }
@@ -11282,50 +11375,60 @@ private fun showDefaultStartupScreen() {
             ?: return
         if (!isArchiveAvailable(ch, targetProgram)) {
             showAppToast("Архив недоступен")
+            clearSeekGesturePreview(commitTimeline = true)
             return
         }
+        pendingSeekTargetAbsMs = targetMs
+        timelineUserSeeking = true
         if (isArchivePlayback && currentArchiveProgram?.start == targetProgram.start) {
             seekArchiveTo(targetMs)
             return
         }
-        playArchiveProgram(ch, targetProgram)
-        handler.postDelayed({ seekArchiveTo(targetMs) }, 450L)
+        playArchiveProgram(ch, targetProgram, startAtMs = targetMs)
     }
 
-    private fun applyRelativeSeekSeconds(deltaSec: Int) {
-        if (deltaSec == 0) return
-        val deltaMin = kotlin.math.abs(deltaSec) / 60
+    private fun applyAbsoluteSeekTarget(targetAbsMs: Long, deltaSecForStatus: Int) {
+        val deltaMin = kotlin.math.abs(deltaSecForStatus) / 60
         tvEpg.text = "Перематываем передачу на ${formatMinutesRu(deltaMin)}"
         seekStatusHoldUntilMs = System.currentTimeMillis() + 2200L
         handler.removeCallbacks(restoreEpgRunnable)
         handler.postDelayed(restoreEpgRunnable, 2200L)
 
-        if (!isArchivePlayback && deltaSec > 0) {
+        if (!isArchivePlayback && targetAbsMs >= System.currentTimeMillis() - 2_000L && deltaSecForStatus > 0) {
             showAppToast("Перемотка вперёд недоступна в прямом эфире")
+            clearSeekGesturePreview(commitTimeline = true)
             return
         }
         if (!channelSupportsArchiveSeek()) {
             showAppToast("Архив недоступен")
-            updateTimelineUi()
+            clearSeekGesturePreview(commitTimeline = true)
             return
         }
 
-        val currentAbs = if (isArchivePlayback) {
-            val p = currentArchiveProgram ?: return
-            p.start + (mediaPlayer?.currentPosition ?: 0L)
-        } else {
-            getLiveTimelinePositionMs()
-        }
-        val targetAbs = currentAbs + deltaSec * 1000L
-        seekToAbsoluteTime(targetAbs)
+        seekToAbsoluteTime(targetAbsMs)
         showSeekSpinner()
         val prefer = when {
             isTelevisionDevice() && ::timelineTrack.isInitialized &&
                 currentFocus === timelineTrack -> timelineTrack
-            deltaSec < 0 -> btnBackLeft
+            deltaSecForStatus < 0 -> btnBackLeft
             else -> btnBackRight
         }
         showUI(preferFocus = prefer)
+    }
+
+    private fun applyRelativeSeekSeconds(deltaSec: Int) {
+        if (deltaSec == 0) return
+        if (pendingSeekDeltaSec == 0 && seekGestureBaseAbsMs <= 0L) {
+            seekGestureBaseAbsMs = currentTimelineSeekableProgram()?.third ?: return
+        }
+        val base = if (seekGestureBaseAbsMs > 0L) {
+            seekGestureBaseAbsMs
+        } else {
+            currentTimelineSeekableProgram()?.third ?: return
+        }
+        pendingSeekTargetAbsMs = base + deltaSec * 1000L
+        timelineUserSeeking = true
+        applyAbsoluteSeekTarget(pendingSeekTargetAbsMs, deltaSecForStatus = deltaSec)
     }
 
     private fun applyTimelineSeekFromProgress(progress: Int) {
@@ -11376,11 +11479,14 @@ private fun showDefaultStartupScreen() {
 
     private fun seekArchiveTo(targetProgramTimeMs: Long) {
         val p = currentArchiveProgram ?: return
-        val previous = mediaPlayer?.currentPosition ?: 0L
-        val offset = (targetProgramTimeMs - p.start).coerceAtLeast(0L)
+        val previousAbs = archiveStreamStartMs + (mediaPlayer?.currentPosition ?: 0L)
+        val target = targetProgramTimeMs.coerceIn(p.start, (p.stop - 1_000L).coerceAtLeast(p.start))
+        val offset = (target - archiveStreamStartMs).coerceAtLeast(0L)
+        pendingSeekTargetAbsMs = target
+        timelineUserSeeking = true
         showSeekSpinner()
         mediaPlayer?.seekTo(offset)
-        val deltaMin = kotlin.math.abs(((offset - previous) / 60_000L).toInt())
+        val deltaMin = kotlin.math.abs(((target - previousAbs) / 60_000L).toInt())
         tvEpg.text = "Перематываем передачу на ${formatMinutesRu(deltaMin)}"
         seekStatusHoldUntilMs = System.currentTimeMillis() + 2200L
         handler.removeCallbacks(restoreEpgRunnable)
@@ -11388,6 +11494,21 @@ private fun showDefaultStartupScreen() {
         updateTimelineUi()
         // If seek is already ready (no buffer stall), still hide after a short beat.
         handler.postDelayed({ hideSeekSpinnerIfReady() }, 300L)
+    }
+
+    private fun flushPendingArchiveSeekIfNeeded() {
+        val target = pendingArchiveSeekTargetMs
+        if (target <= 0L || !isArchivePlayback) return
+        pendingArchiveSeekTargetMs = 0L
+        seekArchiveTo(target)
+    }
+
+    private fun clearSeekGesturePreview(commitTimeline: Boolean) {
+        pendingSeekDeltaSec = 0
+        seekGestureBaseAbsMs = 0L
+        pendingSeekTargetAbsMs = 0L
+        timelineUserSeeking = false
+        if (commitTimeline) updateTimelineUi()
     }
 
     private fun startEpgTicker() {
