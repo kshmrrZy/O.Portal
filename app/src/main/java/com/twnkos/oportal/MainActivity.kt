@@ -710,6 +710,8 @@ class MainActivity : AppCompatActivity() {
             resetPlaybackRecoveryState()
             showPlaybackFreezeFailure("Ошибка буферизации")
             // Stop further auto play attempts for this stall episode.
+            // Mark intentional pause so the freeze watchdog does not keep re-arming stall UI.
+            isPlaybackPaused = true
             runCatching { mediaPlayer?.pause() }
             return
         }
@@ -775,6 +777,8 @@ class MainActivity : AppCompatActivity() {
             hideUI()
             return
         }
+        clearStallSpinnerTimer()
+        hidePlayerLoadingUi()
         showReloadingStatus(
             title = "Ошибка буферизации",
             subtitle = if (reason.isBlank() || reason == "Ошибка буферизации") {
@@ -784,6 +788,15 @@ class MainActivity : AppCompatActivity() {
             },
             isError = true
         )
+        // Keep LIVE / Back reachable; do not trap focus on the error plate.
+        ensurePlayerControlsInteractive()
+        bindRealPlayerExitButtonListener()
+        findViewById<View>(R.id.btnBackToMenu)?.apply {
+            visibility = View.VISIBLE
+            isEnabled = true
+            isClickable = true
+            isFocusable = true
+        }
         suppressReloadOverlayUntilMs = System.currentTimeMillis() + 12_000L
         handler.postDelayed({
             if (::tvReloadingStatus.isInitialized &&
@@ -3049,6 +3062,7 @@ private fun showDefaultStartupScreen() {
             // Stuck playback (audio-only / bare spinner / recovery plate): Back must always leave player.
             val inPlayer = homePanel.visibility != View.VISIBLE &&
                 (mediaPlayer != null || playerLoadingUiActive || playbackRecoveryActive ||
+                    playbackRecoveryExhausted ||
                     (::tvReloadingStatus.isInitialized && tvReloadingStatus.visibility == View.VISIBLE))
             if (inPlayer) {
                 if (inputNumber.isNotEmpty()) {
@@ -3056,6 +3070,15 @@ private fun showDefaultStartupScreen() {
                     handler.removeCallbacks(channelSwitchRunnable)
                     seekStatusHoldUntilMs = 0L
                     restoreChannelHeaderAfterNumberInput()
+                    return@addCallback
+                }
+                // Stall / recovery / error plate keep controls visible and re-show them on each
+                // reload attempt — hideUI()-first Back loops forever. Exit immediately.
+                if (isStallNavigationLockActive() ||
+                    playbackRecoveryExhausted ||
+                    (::tvReloadingStatus.isInitialized && tvReloadingStatus.visibility == View.VISIBLE)
+                ) {
+                    exitPlayerToPlaylist()
                     return@addCallback
                 }
                 // Clock-only / loading top bar must NOT count as chrome — otherwise Back
@@ -7775,6 +7798,14 @@ private fun showDefaultStartupScreen() {
                     hidePlayerLoadingUi()
                 }
             }
+            // Recovery must retune the channel master URL. A persisted HD preference can point
+            // at a demuxed only4/cdntv video-only variant (tracks-v1a1/mono.m3u8), which drops
+            // audio groups and still fails under TV ladder caps.
+            if (reason == PlayerOpenReason.RECOVERY) {
+                manualQualityOverrideUrl = null
+                manualQualityOverrideChannelIndex = -1
+                currentQualityIndex = -1
+            }
             logDebug("NAV", "open_player")
             dismissHomeForPlayback()
             ensurePlayerControlsInteractive()
@@ -8635,12 +8666,27 @@ private fun showDefaultStartupScreen() {
         if (preferHeight > 0 && availableQualities.isNotEmpty()) {
             val idx = availableQualities.indexOfFirst { it.height == preferHeight }
             if (idx >= 0) {
-                currentQualityIndex = idx
                 val targetUrl = availableQualities[idx].url
-                manualQualityOverrideUrl = targetUrl
-                manualQualityOverrideChannelIndex = currentChannelIndex
-                if (lastRequestedPlaybackUrl.isNotBlank() && lastRequestedPlaybackUrl != targetUrl) {
-                    qualityRestartNeeded = true
+                // Demuxed HLS (only4/cdntv): STREAM-INF points at video-only media playlists.
+                // Auto-switching there loses AUDIO groups → black screen / audio-only recovery loop.
+                val demuxedVideoOnly = targetUrl.contains("/tracks-v", ignoreCase = true) ||
+                    (targetUrl.contains("mono.m3u8", ignoreCase = true) &&
+                        !targetUrl.contains("/play/", ignoreCase = true))
+                if (demuxedVideoOnly) {
+                    logDebug(
+                        "PLAYER_QUALITY",
+                        "skip demuxed video-only quality override height=$preferHeight url=$targetUrl"
+                    )
+                    currentQualityIndex = -1
+                    manualQualityOverrideUrl = null
+                    manualQualityOverrideChannelIndex = -1
+                } else {
+                    currentQualityIndex = idx
+                    manualQualityOverrideUrl = targetUrl
+                    manualQualityOverrideChannelIndex = currentChannelIndex
+                    if (lastRequestedPlaybackUrl.isNotBlank() && lastRequestedPlaybackUrl != targetUrl) {
+                        qualityRestartNeeded = true
+                    }
                 }
             } else {
                 currentQualityIndex = -1
@@ -9844,7 +9890,7 @@ private fun showDefaultStartupScreen() {
         handler.postDelayed(noFrameRunnable, 25_000L)
     }
 
-    /** TV: hard-cap adaptive ladder at 720p / ~4.5 Mbps. Phone: no size/bitrate ceiling. */
+    /** TV: prefer ≤720p / ~4.5 Mbps when a ladder exists; still allow sole HD rung. */
     private fun applyDefaultVideoConstraints(
         selector: DefaultTrackSelector? = trackSelector
     ) {
@@ -9853,12 +9899,15 @@ private fun showDefaultStartupScreen() {
         val maxH = if (tvCaps) 720 else Int.MAX_VALUE
         val maxW = if (tvCaps) 1280 else Int.MAX_VALUE
         val maxBr = if (tvCaps) 4_500_000 else Int.MAX_VALUE
+        // exceed=true: if the ONLY video rung is above the cap (only4/cdntv single HD),
+        // still select it — exceed=false caused black screen + audio (no video track).
+        // When a 720p rung exists (Wink ladder), ExoPlayer still prefers within-cap tracks.
+        val exceedIfNecessary = true
         sel.setParameters(
             sel.buildUponParameters()
                 .setMaxVideoSize(maxW, maxH)
                 .setMaxVideoBitrate(maxBr)
-                // On TV do not fall back to 1080p when a 720p rung exists.
-                .setExceedVideoConstraintsIfNecessary(!tvCaps)
+                .setExceedVideoConstraintsIfNecessary(exceedIfNecessary)
                 .setForceHighestSupportedBitrate(false)
                 .setForceLowestBitrate(false)
                 .setAllowVideoMixedMimeTypeAdaptiveness(true)
@@ -9866,7 +9915,7 @@ private fun showDefaultStartupScreen() {
         )
         logDebug(
             "PLAYER_STATE",
-            "video_constraints tv=$tvCaps max=${maxW}x$maxH maxBr=$maxBr exceed=${!tvCaps}"
+            "video_constraints tv=$tvCaps max=${maxW}x$maxH maxBr=$maxBr exceed=$exceedIfNecessary"
         )
     }
 
