@@ -12601,6 +12601,7 @@ private fun showDefaultStartupScreen() {
     @Suppress("DEPRECATION")
     private fun publicOPortalDir(): File {
         val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        if (!downloads.exists()) downloads.mkdirs()
         return File(downloads, PUBLIC_LOG_DIR_NAME)
     }
 
