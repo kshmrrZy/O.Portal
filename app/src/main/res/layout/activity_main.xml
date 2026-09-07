@@ -1359,12 +1359,31 @@
         android:elevation="40dp"
         android:visibility="gone">
 
-        <include
-            android:id="@+id/loadingSpinner"
-            layout="@layout/view_loading_spinner"
-            android:layout_width="@dimen/portal_spinner_size"
-            android:layout_height="@dimen/portal_spinner_size"
-            android:layout_gravity="center" />
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <include
+                android:id="@+id/loadingSpinner"
+                layout="@layout/view_loading_spinner"
+                android:layout_width="@dimen/portal_spinner_size"
+                android:layout_height="@dimen/portal_spinner_size" />
+
+            <TextView
+                android:id="@+id/tvLoadingProgress"
+                style="@style/AppGolosText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:includeFontPadding="false"
+                android:text="Загрузка (0%)"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:visibility="gone" />
+        </LinearLayout>
     </FrameLayout>
 
     <FrameLayout

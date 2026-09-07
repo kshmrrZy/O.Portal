@@ -370,7 +370,8 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <ScrollView
+        <com.twnkos.oportal.ContentAwareScrollView
+            android:id="@+id/epgSettingsScroll"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
@@ -496,7 +497,7 @@
                     android:textSize="@dimen/settings_sub_panel_subtitle_size"/>
 
             </LinearLayout>
-        </ScrollView>
+        </com.twnkos.oportal.ContentAwareScrollView>
 
         <LinearLayout
             android:id="@+id/epgSettingsActions"

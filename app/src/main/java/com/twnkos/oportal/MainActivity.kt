@@ -471,7 +471,7 @@ class MainActivity : AppCompatActivity() {
                 if (bufferingSinceMs == 0L) bufferingSinceMs = now
                 val bufferingFor = now - bufferingSinceMs
                 // Any freeze / silence: spinner immediately, then reload.
-                if (!inGrace && bufferingFor > PLAYBACK_STALL_SPINNER_BUFFERING_MS &&
+                if (!inGrace && bufferingFor > stallSpinnerBufferingThresholdMs() &&
                     tvReloadingStatus.visibility != View.VISIBLE &&
                     homePanel.visibility != View.VISIBLE
                 ) {
@@ -505,7 +505,7 @@ class MainActivity : AppCompatActivity() {
                 // READY + !isPlaying (audio/video gap): treat as stall quickly.
                 if (bufferingSinceMs == 0L) bufferingSinceMs = now
                 val gapFor = now - bufferingSinceMs
-                if (!inGrace && gapFor > PLAYBACK_STALL_SPINNER_BUFFERING_MS &&
+                if (!inGrace && gapFor > stallSpinnerBufferingThresholdMs() &&
                     tvReloadingStatus.visibility != View.VISIBLE &&
                     homePanel.visibility != View.VISIBLE
                 ) {
@@ -531,9 +531,13 @@ class MainActivity : AppCompatActivity() {
         // or spinner↔frozen-frame loops forever without reaching recovery.
         val loadingSpinner = findViewById<View>(R.id.playerLoadingSpinner)
         if (loadingSpinner?.visibility == View.VISIBLE && !playbackRecoveryActive) {
-            if (consecutiveForwardProgressTicks >= 3) {
+            if (consecutiveForwardProgressTicks >= 1) {
                 clearStallSpinnerTimer()
                 hidePlayerLoadingUi()
+                if (::tvReloadingStatus.isInitialized && tvReloadingStatus.visibility == View.VISIBLE) {
+                    stopReloadingPlateSpinner()
+                    tvReloadingStatus.visibility = View.GONE
+                }
                 if (controlsPanel.visibility != View.VISIBLE) {
                     hideUI()
                 }
@@ -582,7 +586,7 @@ class MainActivity : AppCompatActivity() {
         val stuckNow = stuckFor >= PLAYBACK_STALL_STUCK_POS_MS
         val slidingTooLong = noForwardFor > PLAYBACK_STALL_PROGRESS_MS
         // Frozen picture while isPlaying=true: spinner as soon as position stops moving.
-        if (!inGrace && stuckFor > PLAYBACK_STALL_SPINNER_BUFFERING_MS &&
+        if (!inGrace && stuckFor > stallSpinnerBufferingThresholdMs() &&
             stuckFor < PLAYBACK_STALL_STUCK_POS_MS &&
             tvReloadingStatus.visibility != View.VISIBLE &&
             homePanel.visibility != View.VISIBLE
@@ -622,15 +626,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun clearStallSpinnerTimer() {
-        // When stall ends, continue the left clock from the frozen moment (not wall-clock jump).
-        val frozen = liveTimelineFrozenForStallMs
+        // Drop stall freeze; live edge uses wall-clock again (pause/seek keep their own anchors).
         stallSpinnerShownAtMs = 0L
         liveTimelineFrozenForStallMs = 0L
-        if (frozen > 0L && !isArchivePlayback) {
-            liveTimelinePausedContentMs = frozen
-            liveTimelinePlayerPosAtPauseMs = mediaPlayer?.currentPosition ?: 0L
-            liveTimelineFollowFromPause = true
-            liveTimelineAnchorMs = frozen
+        if (!isArchivePlayback && !isPlaybackPaused) {
+            clearLiveTimelinePauseClock()
         }
     }
 
@@ -723,6 +723,9 @@ class MainActivity : AppCompatActivity() {
         if (!playbackRecoveryActive && stallSpinnerShownAtMs == 0L) return
         resetPlaybackRecoveryState()
         clearStallSpinnerTimer()
+        if (!isArchivePlayback && !isPlaybackPaused) {
+            clearLiveTimelinePauseClock()
+        }
         playbackRecoveryExhausted = false
         val now = System.currentTimeMillis()
         stallWatchdogGraceUntilMs = now + PLAYBACK_STALL_GRACE_AFTER_RECOVERY_MS
@@ -732,6 +735,7 @@ class MainActivity : AppCompatActivity() {
             tvReloadingStatus.visibility = View.GONE
         }
         hidePlayerLoadingUi()
+        updateTimelineUi()
         // Recovery used showUI() for the reload plate — clear spinner and top/controls overlay.
         hideUI()
     }
@@ -820,6 +824,7 @@ class MainActivity : AppCompatActivity() {
         private const val PLAYBACK_STALL_WATCHDOG_MS = 500L
         /** Show spinner after this much continuous buffering/freeze. */
         private const val PLAYBACK_STALL_SPINNER_BUFFERING_MS = 1_500L
+        private const val PLAYBACK_STALL_SPINNER_BUFFERING_TV_MS = 2_500L
         /** Recovery / alerts only after spinner has been visible this long while still stalled. */
         private const val PLAYBACK_STALL_SPINNER_BEFORE_RECOVERY_MS = 10_000L
         private const val PLAYBACK_STALL_BUFFERING_MS = 10_000L
@@ -838,7 +843,7 @@ class MainActivity : AppCompatActivity() {
         // Audio can start while video never paints after a zap — escalate before spinner-only limbo.
         private const val PLAYBACK_AUDIO_WITHOUT_VIDEO_MS = 2_000L
         // Keep player buttons reachable; short hide made L/R open EPG instead of LIVE.
-        private const val PLAYER_CHROME_HIDE_MS = 12_000L
+        private const val PLAYER_CHROME_HIDE_MS = 6_000L
         private const val PREF_EPG_CACHE = "epg_cache"
         private const val PREF_EPG_STATUS = "epg_status"
         private const val PREF_EPG_LAST_REFRESH = "epg_last_refresh"
@@ -856,6 +861,7 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_LOGO_CACHE = "logo_cache"
         private const val PREF_PLAYLIST_CONTENT_CACHE = "playlist_content_cache"
         private const val PREF_PLAYLIST_HEADER_CACHE = "playlist_header_cache"
+        private const val PREF_PLAYLISTS_DISK_READY = "pref_playlists_disk_ready"
         /** Soft cap for SharedPreferences playlist bodies — larger ones go to disk. */
         private const val MAX_PREFS_PLAYLIST_CHARS = 200_000
         private const val PREF_START_LAST_CHANNEL = "pref_start_last_channel"
@@ -933,6 +939,10 @@ class MainActivity : AppCompatActivity() {
         return uiMode == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
     }
 
+    private fun stallSpinnerBufferingThresholdMs(): Long =
+        if (isTelevisionDevice()) PLAYBACK_STALL_SPINNER_BUFFERING_TV_MS
+        else PLAYBACK_STALL_SPINNER_BUFFERING_MS
+
     private fun scheduleHidePlayerChrome(delayMs: Long = PLAYER_CHROME_HIDE_MS) {
         handler.removeCallbacks(hideUiRunnable)
         // Stall/recovery plate: keep LIVE reachable until recovery ends.
@@ -995,7 +1005,7 @@ class MainActivity : AppCompatActivity() {
     private fun buildPlaceholderPrograms(
         pastDays: Int = EPG_PANEL_PAST_DAYS,
         futureDays: Int = EPG_PANEL_FUTURE_DAYS,
-        title: String = "Программа передач недоступна"
+        title: String = epgUnavailableMessage()
     ): List<Program> {
         val result = mutableListOf<Program>()
         val cal = Calendar.getInstance().apply {
@@ -1020,7 +1030,10 @@ class MainActivity : AppCompatActivity() {
         return result
     }
 
-    private fun buildHourlyUnavailableProgramsForDate(dateKey: String): List<Program> {
+    private fun buildHourlyUnavailableProgramsForDate(
+        dateKey: String,
+        title: String = epgUnavailableMessage()
+    ): List<Program> {
         val dateFmt = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
         val dayStart = dateFmt.parse(dateKey)?.time ?: return emptyList()
         val cal = Calendar.getInstance().apply { timeInMillis = dayStart }
@@ -1028,12 +1041,15 @@ class MainActivity : AppCompatActivity() {
         repeat(24) {
             val start = cal.timeInMillis
             cal.add(Calendar.HOUR_OF_DAY, 1)
-            result += Program("Программа передач недоступна", start, cal.timeInMillis)
+            result += Program(title, start, cal.timeInMillis)
         }
         return result
     }
 
-    private fun buildEpgPanelDateModel(realPrograms: List<Program>): Pair<List<String>, Map<String, List<Program>>> {
+    private fun buildEpgPanelDateModel(
+        realPrograms: List<Program>,
+        emptyTitle: String = epgUnavailableMessage()
+    ): Pair<List<String>, Map<String, List<Program>>> {
         val dateFmt = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
         val programsByDate = realPrograms
             .distinctBy { Triple(it.title.trim(), it.start, it.stop) }
@@ -1056,7 +1072,8 @@ class MainActivity : AppCompatActivity() {
         }
         val enriched = dateKeys.associateWith { key ->
             val dayPrograms = programsByDate[key].orEmpty()
-            if (dayPrograms.isNotEmpty()) dayPrograms else buildHourlyUnavailableProgramsForDate(key)
+            if (dayPrograms.isNotEmpty()) dayPrograms
+            else buildHourlyUnavailableProgramsForDate(key, emptyTitle)
         }
         return dateKeys to enriched
     }
@@ -1083,7 +1100,7 @@ class MainActivity : AppCompatActivity() {
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
-        val title = "Программа канала ${ch.name}"
+        val title = epgUnavailableMessage(ch.name)
         while (cal.timeInMillis < end) {
             val start = cal.timeInMillis
             cal.add(Calendar.HOUR_OF_DAY, 1)
@@ -1104,12 +1121,13 @@ class MainActivity : AppCompatActivity() {
         val real = getProgramsForChannel(ch)
         val programs = if (real.isNotEmpty()) real else buildArchivePlaceholderPrograms(ch)
         programs.find { now in it.start until it.stop }?.title?.let { return it }
-        return epgUnavailableMessage()
+        return epgUnavailableMessage(ch.name)
     }
 
     private fun getProgramsForDisplay(ch: Channel): List<Program> {
         val real = getProgramsForChannel(ch)
-        return if (real.isNotEmpty()) real else buildPlaceholderPrograms()
+        return if (real.isNotEmpty()) real
+        else buildPlaceholderPrograms(title = epgUnavailableMessage(ch.name))
     }
 
     private fun isEpgDataEmpty(): Boolean = synchronized(epgDataLock) { epgData.isEmpty() }
@@ -1154,9 +1172,26 @@ class MainActivity : AppCompatActivity() {
         startEpgTicker()
         scheduleEpgRefreshAlarm()
         applyLockButtonVisibility()
-        loadPlaylist(showErrors = true, autoPlay = true)
-        if (!shouldOpenLastChannelOnStart) {
-            showDefaultStartupScreen()
+        val needsServiceCache =
+            (isAuthorizedUser() || hasEnabledThirdPartyPlaylists()) &&
+                !playlistsDiskCacheComplete()
+        if (needsServiceCache) {
+            ensurePlaylistsPrecached(force = false) {
+                loadPlaylist(showErrors = true, autoPlay = true)
+                if (!shouldOpenLastChannelOnStart) {
+                    showDefaultStartupScreen()
+                }
+            }
+        } else {
+            if ((isAuthorizedUser() || hasEnabledThirdPartyPlaylists()) &&
+                playlistsDiskCacheComplete()
+            ) {
+                markPlaylistsDiskReady(true)
+            }
+            loadPlaylist(showErrors = true, autoPlay = true)
+            if (!shouldOpenLastChannelOnStart) {
+                showDefaultStartupScreen()
+            }
         }
     }
 
@@ -2907,7 +2942,7 @@ private fun showDefaultStartupScreen() {
                     tvCurrent.text = cur.title
                     tvCurrent.visibility = View.VISIBLE
                 } else {
-                    tvCurrent.text = epgUnavailableMessage()
+                    tvCurrent.text = epgUnavailableMessage(channel.name)
                     tvCurrent.visibility = View.VISIBLE
                 }
 
@@ -3607,15 +3642,17 @@ private fun showDefaultStartupScreen() {
 
         epgPanel.post {
             thread(name = "epg-panel-prep") {
+                val emptyTitle = epgUnavailableMessage(ch.name)
                 val realPrograms = getProgramsForChannel(ch)
                 val programsSource = when {
                     realPrograms.isNotEmpty() -> realPrograms
                     else -> {
                         val archive = buildArchivePlaceholderPrograms(ch)
-                        if (archive.isNotEmpty()) archive else buildPlaceholderPrograms()
+                        if (archive.isNotEmpty()) archive
+                        else buildPlaceholderPrograms(title = emptyTitle)
                     }
                 }
-                val (dateKeys, programsByDate) = buildEpgPanelDateModel(programsSource)
+                val (dateKeys, programsByDate) = buildEpgPanelDateModel(programsSource, emptyTitle)
                 val selectedDate = if (epgPanelSelectedDate.isEmpty() || !dateKeys.contains(epgPanelSelectedDate)) {
                     resolveEpgDefaultDateKey(dateKeys)
                 } else {
@@ -3853,6 +3890,9 @@ private fun showDefaultStartupScreen() {
     private fun returnToSettingsRowList() {
         findViewById<View>(R.id.userProfileHeaderCard).visibility = View.VISIBLE
         restoreSettingsProfileHeaderInteractivity()
+        findViewById<ContentAwareScrollView>(R.id.epgSettingsScroll)?.forceDpadPaging = false
+        setProfileHeaderRemoteFocusable(true)
+        updateProfileHeaderCard()
         findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
@@ -4335,30 +4375,30 @@ private fun showDefaultStartupScreen() {
             showAppToast("Сначала авторизуйтесь")
             return
         }
-        showAppLoadingSpinner()
+        showAppLoadingSpinner(0)
         clearPlaylistContentCache()
+        markPlaylistsDiskReady(false)
         cachedCategoryGroups = emptyMap()
         lastChannelListCategory = null
         settingsOpenedFromHomeChannelList = false
-        syncPortalPlaylistsForAuthorizedUser(token)
-        // После обновления — только главный экран сервисов, без входа в категории.
-        handler.postDelayed({
-            hideAppLoadingSpinner()
-            isSettingsModalVisible = false
-            settingsOpenedAsAuthOnly = false
-            settingsOpenedFromPlayer = false
-            homeSettingsScreen.visibility = View.GONE
-            findViewById<View>(R.id.settingsMainPanel).visibility = View.GONE
-            findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
-            findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
-            findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
-            findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
-            findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
-            applyHomeAppTitleStyle(settingsMode = false)
-            showPlaylistPageHeader(showWelcome = false, showTitle = false)
-            showPlaylistPageOnHome(source = "refresh_services")
-            showAppToast("Сервисы обновлены")
-        }, 1500L)
+        syncPortalPlaylistsForAuthorizedUser(token) {
+            ensurePlaylistsPrecached(force = true) {
+                isSettingsModalVisible = false
+                settingsOpenedAsAuthOnly = false
+                settingsOpenedFromPlayer = false
+                homeSettingsScreen.visibility = View.GONE
+                findViewById<View>(R.id.settingsMainPanel).visibility = View.GONE
+                findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
+                findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
+                findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
+                findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
+                findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
+                applyHomeAppTitleStyle(settingsMode = false)
+                showPlaylistPageHeader(showWelcome = false, showTitle = false)
+                showPlaylistPageOnHome(source = "refresh_services")
+                showAppToast("Сервисы обновлены")
+            }
+        }
     }
 
     private fun formatSleepTimerValue(minutes: Int): String =
@@ -4464,7 +4504,10 @@ private fun showDefaultStartupScreen() {
                 PlaylistProfile(deriveNameFromUrl(url), "url", url, states[i])
             }
             saveThirdPartyPlaylistProfiles(items)
-            showAppToast("Сторонние плейлисты сохранены")
+            markPlaylistsDiskReady(false)
+            ensurePlaylistsPrecached(force = true) {
+                showAppToast("Сторонние плейлисты сохранены")
+            }
         }
         findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener {
             handleSettingsBackPress()
@@ -4509,6 +4552,42 @@ private fun showDefaultStartupScreen() {
             findViewById<View>(id)?.let { field ->
                 field.isFocusable = enabled
                 field.isFocusableInTouchMode = enabled
+            }
+        }
+    }
+
+    /** Profile token TextView is focusable for long-press copy — disable while EPG/playlist forms scroll. */
+    private fun setProfileHeaderRemoteFocusable(enabled: Boolean) {
+        val card = findViewById<View>(R.id.userProfileHeaderCard) ?: return
+        card.isFocusable = false
+        card.isFocusableInTouchMode = false
+        card.isClickable = false
+        listOf(
+            R.id.tvProfileName, R.id.tvProfileNickname,
+            R.id.tvProfileTokenLabel, R.id.tvProfileTokenValue, R.id.profileAvatarFrame
+        ).forEach { id ->
+            findViewById<View>(id)?.let { v ->
+                if (id == R.id.tvProfileTokenValue) {
+                    // Keep long-press copy when enabled; never steal DPAD while forms are open.
+                    v.isFocusable = enabled
+                    v.isFocusableInTouchMode = false
+                    v.isClickable = enabled
+                } else {
+                    v.isFocusable = false
+                    v.isFocusableInTouchMode = false
+                }
+            }
+        }
+        // Parent settings ScrollView must not steal DPAD from the nested EPG form.
+        (homeSettingsScreen as? android.widget.ScrollView)?.let { sv ->
+            if (!enabled) {
+                sv.scrollTo(0, 0)
+                sv.isFocusable = false
+                sv.isFocusableInTouchMode = false
+                sv.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+            } else {
+                sv.isFocusable = false
+                sv.isFocusableInTouchMode = false
             }
         }
     }
@@ -5013,8 +5092,10 @@ private fun showDefaultStartupScreen() {
         // TV: profile token/login fields sit in the parent settings chrome and steal DPAD
         // when scrolling the EPG form — keep them non-focusable while this sub-screen is open.
         setSettingsAuthFieldsFocusable(false)
+        setProfileHeaderRemoteFocusable(false)
         listOf(R.id.etUserLoginInline, R.id.etUserTokenInline, R.id.etUserLogin, R.id.etUserToken)
             .forEach { id -> findViewById<View>(id)?.clearFocus() }
+        findViewById<View>(R.id.tvProfileTokenValue)?.clearFocus()
         // Prefer navigating URL toggles / interval / actions, not EditTexts, with the remote.
         urls.forEach { et ->
             et.isFocusable = false
@@ -5026,6 +5107,10 @@ private fun showDefaultStartupScreen() {
             }
         }
 
+        findViewById<ContentAwareScrollView>(R.id.epgSettingsScroll)?.let { scroll ->
+            scroll.forceDpadPaging = true
+            scroll.post { scroll.updateScrollEnabled() }
+        }
         tbSourceMode.post { tbSourceMode.requestFocus() }
         configureBackButtonsForSettings("openEpgSettingsScreen")
         applySettingsViewportLayout()
@@ -5046,9 +5131,15 @@ private fun showDefaultStartupScreen() {
     }
 
 
-    private fun syncPortalPlaylistsForAuthorizedUser(token: String) {
+    private fun syncPortalPlaylistsForAuthorizedUser(
+        token: String,
+        onComplete: (() -> Unit)? = null
+    ) {
         val cleanToken = token.trim()
-        if (cleanToken.isBlank()) return
+        if (cleanToken.isBlank()) {
+            handler.post { onComplete?.invoke() }
+            return
+        }
         val login = prefs.getString(PREF_USER_LOGIN, "") ?: ""
         thread {
             val url = "https://o.avff.pw/api.php?module=app&action=services&token=${
@@ -5122,6 +5213,7 @@ private fun showDefaultStartupScreen() {
                     }.onFailure { err ->
                         logDebug("PLAYLIST_FLOW", "SERVICES_CACHE_WRITE_FAIL ${err.message}")
                     }
+                    markPlaylistsDiskReady(false)
                     applyServicesJson(json, fromCache = false)
                 }
                 .onFailure { e ->
@@ -5139,6 +5231,14 @@ private fun showDefaultStartupScreen() {
                         }
                     }
                 }
+            handler.post {
+                if (onComplete != null) {
+                    onComplete.invoke()
+                } else {
+                    // First auth / background sync: fill disk cache once with progress UI.
+                    ensurePlaylistsPrecached(force = false)
+                }
+            }
         }
     }
 
@@ -5831,7 +5931,9 @@ private fun showDefaultStartupScreen() {
         showErrors: Boolean = false,
         autoPlay: Boolean = true
     ) {
-        handler.post { showAppLoadingSpinner() }
+        // Category / channel open: spinner without «Загрузка (N%)».
+        // Percent progress is reserved for ensurePlaylistsPrecached (cold start / refresh).
+        handler.post { showAppLoadingSpinner(progressPercent = null) }
         thread(name = "playlist-load") {
             try {
                 val playlistUrl = resolveCurrentPlaylistUrl()
@@ -6029,7 +6131,10 @@ private fun showDefaultStartupScreen() {
         return File(playlistCacheDir(), "$key.m3u")
     }
 
-    private fun fetchPlaylistBodyText(playlistUrl: String): String {
+    private fun fetchPlaylistBodyText(
+        playlistUrl: String,
+        onProgress: ((Int) -> Unit)? = null
+    ): String {
         val conn = (URL(playlistUrl).openConnection() as HttpURLConnection).apply {
             connectTimeout = 12_000
             readTimeout = 45_000
@@ -6043,9 +6148,133 @@ private fun showDefaultStartupScreen() {
             if (code !in 200..299) {
                 throw IOException("HTTP $code for playlist")
             }
-            return conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val total = conn.contentLengthLong.coerceAtLeast(0L)
+            val out = java.io.ByteArrayOutputStream()
+            val buf = ByteArray(64 * 1024)
+            var readTotal = 0L
+            var lastPct = -1
+            onProgress?.invoke(0)
+            conn.inputStream.use { input ->
+                while (true) {
+                    val n = input.read(buf)
+                    if (n <= 0) break
+                    out.write(buf, 0, n)
+                    readTotal += n
+                    if (onProgress != null && total > 0L) {
+                        val pct = ((readTotal * 100L) / total).toInt().coerceIn(0, 100)
+                        if (pct != lastPct) {
+                            lastPct = pct
+                            onProgress(pct)
+                        }
+                    }
+                }
+            }
+            onProgress?.invoke(100)
+            return out.toString(Charsets.UTF_8.name())
         } finally {
             conn.disconnect()
+        }
+    }
+
+    private fun markPlaylistsDiskReady(ready: Boolean) {
+        prefs.edit().putBoolean(PREF_PLAYLISTS_DISK_READY, ready).apply()
+    }
+
+    private fun arePlaylistsDiskReady(): Boolean =
+        prefs.getBoolean(PREF_PLAYLISTS_DISK_READY, false)
+
+    private fun resolvePlaylistProfileUrl(profile: PlaylistProfile): String =
+        when (profile.type) {
+            "token" -> {
+                val token = profile.value.trim()
+                if (token.isBlank()) "" else "$TOKEN_PREFIX$token$TOKEN_SUFFIX"
+            }
+            "url" -> profile.value.trim()
+            else -> ""
+        }
+
+    private fun enabledPlaylistCacheTargets(): List<Pair<String, String>> =
+        getPlaylistProfiles()
+            .filter { it.enabled && it.value.isNotBlank() }
+            .mapNotNull { p ->
+                val url = resolvePlaylistProfileUrl(p)
+                if (url.isBlank()) null else p.name to url
+            }
+            .distinctBy { it.second }
+
+    private fun playlistsDiskCacheComplete(): Boolean {
+        val targets = enabledPlaylistCacheTargets()
+        if (targets.isEmpty()) return true
+        return targets.all { (_, url) -> looksLikePlaylistBody(getCachedPlaylistContent(url)) }
+    }
+
+    /**
+     * Download every enabled service / favorites / third-party playlist to app-private disk
+     * with «Загрузка (N%)». Categories/channel open must NOT call this — only cold start,
+     * first auth, and «Обновить сервисы».
+     */
+    private fun ensurePlaylistsPrecached(
+        force: Boolean = false,
+        onDone: (() -> Unit)? = null
+    ) {
+        if (!force && (arePlaylistsDiskReady() || playlistsDiskCacheComplete())) {
+            if (playlistsDiskCacheComplete()) markPlaylistsDiskReady(true)
+            handler.post {
+                hideAppLoadingSpinner()
+                onDone?.invoke()
+            }
+            return
+        }
+        thread(name = "playlist-precache") {
+            val targets = enabledPlaylistCacheTargets()
+            if (targets.isEmpty()) {
+                markPlaylistsDiskReady(true)
+                handler.post {
+                    hideAppLoadingSpinner()
+                    onDone?.invoke()
+                }
+                return@thread
+            }
+            handler.post { showAppLoadingSpinner(0) }
+            val total = targets.size
+            var failed = 0
+            targets.forEachIndexed { index, (name, url) ->
+                try {
+                    if (!force && looksLikePlaylistBody(getCachedPlaylistContent(url))) {
+                        val overall = (((index + 1) * 100) / total).coerceIn(0, 100)
+                        handler.post { showAppLoadingSpinner(overall) }
+                        return@forEachIndexed
+                    }
+                    logDebug("PLAYLIST_FLOW", "PRECACHE_START name=$name")
+                    val body = fetchPlaylistBodyText(url) { partPct ->
+                        val overall = ((index * 100) + partPct) / total
+                        handler.post { showAppLoadingSpinner(overall.coerceIn(0, 100)) }
+                    }
+                    if (looksLikePlaylistBody(body)) {
+                        saveCachedPlaylistContent(url, body)
+                    } else {
+                        failed++
+                        logDebug("PLAYLIST_FLOW", "PRECACHE_EMPTY name=$name len=${body.length}")
+                    }
+                    // Release large M3U before the next service — critical on Android 9 TV.
+                    if (isTelevisionDevice()) {
+                        runCatching { System.gc() }
+                    }
+                } catch (t: Throwable) {
+                    failed++
+                    logDebug("PLAYLIST_FLOW", "PRECACHE_FAIL name=$name ${t.message}")
+                }
+                val overall = (((index + 1) * 100) / total).coerceIn(0, 100)
+                handler.post { showAppLoadingSpinner(overall) }
+            }
+            markPlaylistsDiskReady(playlistsDiskCacheComplete())
+            handler.post {
+                hideAppLoadingSpinner()
+                if (failed > 0 && !playlistsDiskCacheComplete()) {
+                    showAppToast("Часть сервисов не закэширована ($failed)", 3200L)
+                }
+                onDone?.invoke()
+            }
         }
     }
 
@@ -6088,6 +6317,7 @@ private fun showDefaultStartupScreen() {
         prefs.edit()
             .remove(PREF_PLAYLIST_CONTENT_CACHE)
             .remove(PREF_PLAYLIST_HEADER_CACHE)
+            .putBoolean(PREF_PLAYLISTS_DISK_READY, false)
             .apply()
         runCatching {
             playlistCacheDir().listFiles()?.forEach { it.delete() }
@@ -6403,28 +6633,17 @@ private fun showDefaultStartupScreen() {
         onParseMessage: ((String) -> Unit)? = null,
         forceDownload: Boolean = true
     ) {
-        // App-private cache only (no external storage required for HTTP EPG):
-        //   filesDir/epg_cache/<hash>.download — raw HTTP body (gzip or xml)
-        // Weak TV boxes (e.g. Tanix W2): do NOT write a second full XML copy to slow eMMC —
-        // stream-parse GZIP→XML in one pass. «Чтение» is driven by XML parse phases, not by
-        // compressed-byte % (channel catalog is <<1% of a 76MB gz and looked «stuck at 0%»).
+        // App-private cache only (no external storage / permission dialogs):
+        //   <hash>.download — raw HTTP body (gzip or xml)
+        //   <hash>.xml      — fully unpacked XML, then parsed (never interleaved)
         val cacheKey = Integer.toHexString(url.trim().lowercase().hashCode())
         val dir = epgCacheDir()
         val downloadFile = File(dir, "$cacheKey.download")
-        // Drop legacy full-XML copies that previously filled flash and stalled «Чтение».
-        dir.listFiles()
-            ?.asSequence()
-            ?.filter { it.isFile && it.name.endsWith(".xml", ignoreCase = true) }
-            ?.forEach { legacy ->
-                logDebug(
-                    "EPG_DEBUG",
-                    "EPG_DELETE_LEGACY_XML ${legacy.absolutePath} (${legacy.length()} bytes)"
-                )
-                runCatching { legacy.delete() }
-            }
+        val xmlFile = File(dir, "$cacheKey.xml")
 
         val needDownload = forceDownload || !downloadFile.exists() || downloadFile.length() < 64L
         if (needDownload) {
+            runCatching { xmlFile.delete() }
             if (isLocalEpgUrl(url)) {
                 onDownload(0)
                 copyLocalEpgToCache(url, downloadFile, onDownload)
@@ -6466,7 +6685,7 @@ private fun showDefaultStartupScreen() {
                 if (n < 1) throw IOException("Пустой ответ EPG")
             }
         } catch (se: SecurityException) {
-            throw IOException("Нет доступа к файлу EPG (нужно разрешение на файлы)", se)
+            throw IOException("Нет доступа к файлу EPG", se)
         }
         val b1 = header[0].toInt() and 0xFF
         val b2 = if (downloadFile.length() > 1L) header[1].toInt() and 0xFF else -1
@@ -6476,34 +6695,54 @@ private fun showDefaultStartupScreen() {
             throw IOException("Ответ не похож на EPG XML/GZIP")
         }
 
-        logDebug(
-            "EPG_DEBUG",
-            "EPG_FILES download=${downloadFile.absolutePath} (${downloadFile.length()} bytes) gzip=$isGzip streamParse=true"
-        )
-
-        onUnpack(if (isGzip) 0 else 100)
-        onParseMessage?.invoke("Каталог каналов…") ?: onParse(0)
-        try {
-            downloadFile.inputStream().buffered(256 * 1024).use { raw ->
-                if (isGzip) {
-                    // Unpack % = compressed bytes. Do NOT also drive «Чтение» from this —
-                    // catalog is tiny vs archive size and UI stayed at 0% for minutes.
+        // Phase 1: full unpack (or reuse existing XML). No «Чтение» callbacks yet.
+        val needUnpack = forceDownload || !xmlFile.exists() || xmlFile.length() < 64L
+        if (needUnpack) {
+            onUnpack(0)
+            if (isGzip) {
+                downloadFile.inputStream().buffered(256 * 1024).use { raw ->
                     val progress = ProgressInputStream(raw, downloadFile.length(), onUnpack)
                     GZIPInputStream(progress, 64 * 1024).use { gzip ->
                         val limited = SizeLimitedInputStream(gzip, MAX_EPG_UNPACKED_BYTES)
-                        parseEpgXml(limited, -1, onParse, onParseMessage)
+                        xmlFile.outputStream().buffered(256 * 1024).use { out ->
+                            limited.copyTo(out, 256 * 1024)
+                        }
                     }
-                    onUnpack(100)
-                } else {
-                    onUnpack(100)
-                    val limited = SizeLimitedInputStream(raw, MAX_EPG_UNPACKED_BYTES)
-                    parseEpgXml(
-                        limited,
-                        downloadFile.length().toInt().coerceAtLeast(1),
-                        onParse,
-                        onParseMessage
-                    )
                 }
+            } else {
+                // Plain XML — copy into the stable .xml slot so parse always reads one path.
+                downloadFile.inputStream().buffered(256 * 1024).use { raw ->
+                    val progress = ProgressInputStream(raw, downloadFile.length(), onUnpack)
+                    xmlFile.outputStream().buffered(256 * 1024).use { out ->
+                        progress.copyTo(out, 256 * 1024)
+                    }
+                }
+            }
+            onUnpack(100)
+            logDebug(
+                "EPG_DEBUG",
+                "EPG_UNPACK_DONE xml=${xmlFile.absolutePath} (${xmlFile.length()} bytes) gzip=$isGzip"
+            )
+        } else {
+            onUnpack(100)
+            logDebug("EPG_DEBUG", "EPG_REUSE_XML ${xmlFile.absolutePath} (${xmlFile.length()} bytes)")
+        }
+
+        if (!xmlFile.exists() || xmlFile.length() < 1L) {
+            throw IOException("Распакованный EPG XML недоступен: ${xmlFile.absolutePath}")
+        }
+
+        // Phase 2: read/parse only after unpack reached 100%.
+        onParseMessage?.invoke("Каталог каналов…") ?: onParse(0)
+        try {
+            xmlFile.inputStream().buffered(256 * 1024).use { raw ->
+                val limited = SizeLimitedInputStream(raw, MAX_EPG_UNPACKED_BYTES)
+                parseEpgXml(
+                    limited,
+                    xmlFile.length().toInt().coerceAtLeast(1),
+                    onParse,
+                    onParseMessage
+                )
             }
             onParse(100)
         } catch (cancelled: EpgParseCancelled) {
@@ -6513,7 +6752,7 @@ private fun showDefaultStartupScreen() {
             System.gc()
             throw IOException("Файл EPG слишком большой для памяти устройства", oom)
         } catch (se: SecurityException) {
-            throw IOException("Нет доступа при чтении EPG (нужно разрешение на файлы)", se)
+            throw IOException("Нет доступа при чтении EPG", se)
         }
     }
 
@@ -7776,22 +8015,36 @@ private fun showDefaultStartupScreen() {
         spinner.rotation = 0f
     }
 
-    private fun showAppLoadingSpinner() {
+    private fun showAppLoadingSpinner(progressPercent: Int? = null) {
         if (tvReloadingStatus.visibility == View.VISIBLE) return
-        // While cold-start splash is up, only the bottom splash spinner should show.
+        // While cold-start splash is up, only the bottom splash spinner should show —
+        // except when we intentionally show service-cache progress under the splash.
         val splash = findViewById<View?>(R.id.launchSplashOverlay)
-        if (splash != null && splash.visibility == View.VISIBLE) return
+        val splashUp = splash != null && splash.visibility == View.VISIBLE
+        if (splashUp && progressPercent == null) return
         val panel = findViewById<View>(R.id.loadingPanel) ?: return
         panel.isClickable = true
         panel.isFocusable = true
         panel.visibility = View.VISIBLE
         panel.bringToFront()
         startCompositeSpinner(findViewById(R.id.loadingSpinner))
+        updateAppLoadingProgress(progressPercent)
+    }
+
+    private fun updateAppLoadingProgress(progressPercent: Int?) {
+        val tv = findViewById<TextView>(R.id.tvLoadingProgress) ?: return
+        if (progressPercent == null) {
+            tv.visibility = View.GONE
+            return
+        }
+        tv.visibility = View.VISIBLE
+        tv.text = "Загрузка (${progressPercent.coerceIn(0, 100)}%)"
     }
 
     private fun hideAppLoadingSpinner() {
         val panel = findViewById<View>(R.id.loadingPanel) ?: return
         stopCompositeSpinner(findViewById(R.id.loadingSpinner))
+        updateAppLoadingProgress(null)
         panel.visibility = View.GONE
         panel.isClickable = false
         panel.isFocusable = false
@@ -7972,9 +8225,13 @@ private fun showDefaultStartupScreen() {
         }
     }
 
-        private fun epgUnavailableMessage(): String =
-        if (epgFetchInProgress && isEpgDataEmpty()) "Выполняется обновление программы передач"
-        else "Программа передач недоступна"
+    private fun epgUnavailableMessage(channelName: String? = null): String {
+        if (epgFetchInProgress) return "Программа передач обновляется"
+        val name = channelName?.trim().orEmpty()
+            .ifBlank { channels.getOrNull(currentChannelIndex)?.name?.trim().orEmpty() }
+        return if (name.isNotBlank()) "Программа передач канала ($name)"
+        else "Программа передач обновляется"
+    }
 
     private fun updateEpgLoadStatusUi() {
         val statusView = tvEpgLoadStatus ?: findViewById(R.id.tvEpgLoadStatus) ?: return
@@ -8021,61 +8278,13 @@ private fun showDefaultStartupScreen() {
 
     private fun epgCacheDir(): File = File(filesDir, "epg_cache").also { if (!it.exists()) it.mkdirs() }
 
-    /** Ask for Files access with an explicit dialog — Tanix/TV often ignores silent settings intents. */
+    /**
+     * HTTP EPG uses app-private cache only — never prompt for storage permission.
+     * Local file:/content: sources still need the system picker grant the user already gave.
+     */
     private fun ensureEpgStorageAccess(then: () -> Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (Environment.isExternalStorageManager()) {
-                then()
-                return
-            }
-            AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
-                .setTitle("Доступ к файлам")
-                .setMessage(
-                    "На приставках (Tanix и др.) EPG по ссылке читается из памяти приложения и обычно " +
-                        "не требует доступа к файлам.\n\n" +
-                        "Если в настройках ТВ написано, что приложение не запрашивало разрешение — " +
-                        "нажмите «Открыть настройки», включите доступ ко всем файлам, вернитесь и " +
-                        "снова нажмите «Сохранить».\n\n" +
-                        "Можно продолжить без доступа: загрузка EPG по URL всё равно запустится."
-                )
-                .setPositiveButton("Открыть настройки") { _, _ ->
-                    pendingAfterStoragePermission = then
-                    runCatching {
-                        startActivity(
-                            Intent(
-                                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                                Uri.parse("package:$packageName")
-                            )
-                        )
-                    }.recoverCatching {
-                        startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-                    }.onFailure {
-                        Log.w("EPG", "Cannot open file-access settings", it)
-                        showAppToast(
-                            "Откройте Настройки → Приложения → O.Portal → Разрешения → Файлы",
-                            5000L
-                        )
-                        pendingAfterStoragePermission = null
-                        then()
-                    }
-                }
-                .setNegativeButton("Продолжить") { _, _ -> then() }
-                .setNeutralButton("Отмена", null)
-                .show()
-            return
-        }
-        val read = Manifest.permission.READ_EXTERNAL_STORAGE
-        if (checkSelfPermission(read) == PackageManager.PERMISSION_GRANTED) {
-            then()
-            return
-        }
-        pendingAfterStoragePermission = then
-        val perms = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
-            arrayOf(read, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-        } else {
-            arrayOf(read)
-        }
-        requestPermissions(perms, REQ_EPG_STORAGE_PERMISSION)
+        pendingAfterStoragePermission = null
+        then()
     }
 
     override fun onRequestPermissionsResult(
@@ -8806,15 +9015,25 @@ private fun showDefaultStartupScreen() {
             )
 
         val allocator = DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE)
+        // TV boxes often drop HD when the buffer is too lean; phones stay on the snappier path.
+        val minBuf: Int
+        val maxBuf: Int
+        val playBuf: Int
+        val rebuf: Int
+        if (isTelevisionDevice()) {
+            minBuf = 8_000
+            maxBuf = 40_000
+            playBuf = 2_000
+            rebuf = 4_000
+        } else {
+            minBuf = 3_500
+            maxBuf = 18_000
+            playBuf = 750
+            rebuf = 1_500
+        }
         val loadControl = DefaultLoadControl.Builder()
             .setAllocator(allocator)
-            .setBufferDurationsMs(
-                // Slightly leaner startup buffers — first frame sooner on weak TV boxes.
-                3_500,
-                18_000,
-                750,
-                1_500
-            )
+            .setBufferDurationsMs(minBuf, maxBuf, playBuf, rebuf)
             .setTargetBufferBytes(C.LENGTH_UNSET)
             .setBackBuffer(0, false)
             .build()
@@ -8876,20 +9095,21 @@ private fun showDefaultStartupScreen() {
                         startupPlaybackUrlLock = null
                         handler.removeCallbacks(startupSlowStreamRunnable)
                         // Seed the stall baseline only. A first frame is not full recovery success
-                        // (position can still freeze), but it should mute ENDED flicker and hide
-                        // the plate once the watchdog sees forward progress.
+                        // (position can still freeze), but dismiss spinner/alert immediately so TV
+                        // does not keep the stall chrome after the picture is back.
                         resetPlaybackProgressBaseline(extendGrace = false)
                         suppressEndedRecoveryUntilMs =
                             System.currentTimeMillis() + PLAYBACK_STALL_GRACE_AFTER_RECOVERY_MS
-                        if (playbackRecoveryActive) {
-                            // Keep plate until progress ticks, but don't treat this ENDED-prone
-                            // window as a brand-new failure.
-                            stallWatchdogGraceUntilMs =
-                                System.currentTimeMillis() + PLAYBACK_STALL_GRACE_AFTER_RECOVERY_MS
+                        if (playbackRecoveryActive || stallSpinnerShownAtMs > 0L) {
+                            onPlaybackRecoverySucceeded()
                         }
                         armPlaybackFreezeWatchdog(2000L, withStartGrace = false)
                         hideSeekSpinnerIfReady(0L)
                         hidePlayerLoadingUi()
+                        if (!isArchivePlayback && !isPlaybackPaused) {
+                            clearLiveTimelinePauseClock()
+                            updateTimelineUi()
+                        }
                         if (homePanel.visibility != View.VISIBLE && !isPlayerOverlayOpen()) {
                             suppressAutoPlayerUiOnce = false
                             if (isTelevisionDevice()) {
@@ -10102,7 +10322,14 @@ private fun showDefaultStartupScreen() {
             } else {
                 getLiveTimelinePositionMs()
             }
-        tvCurrentTime.text = fmt.format(Date(currentMs.coerceIn(p.start, p.stop)))
+        // Never clamp a healthy live clock down to the programme start — that looked like
+        // a stuck "start time" on TV after stall recovery.
+        val displayMs = if (!isArchivePlayback && !isPlaybackPaused && !liveTimelineFollowFromPause) {
+            currentMs.coerceAtMost(p.stop)
+        } else {
+            currentMs.coerceIn(p.start, p.stop)
+        }
+        tvCurrentTime.text = fmt.format(Date(displayMs))
         if (!timelineUserSeeking) {
             val progress = (((currentMs - p.start).toDouble() / (p.stop - p.start).coerceAtLeast(1L)
                 .toDouble()) * 1000.0).toInt().coerceIn(0, 1000)
