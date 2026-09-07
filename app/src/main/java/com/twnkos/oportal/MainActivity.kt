@@ -833,11 +833,20 @@ class MainActivity : AppCompatActivity() {
         ResourcesCompat.getFont(this, R.font.golostext_extrabold)
     }
     private val golosTypefaceSemiBold: Typeface? by lazy {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            Typeface.create(golosTypeface, 600, false)
-        } else {
-            golosTypefaceBold ?: golosTypefaceExtraBold
+        golosWeight(600) ?: golosTypefaceBold ?: golosTypefaceExtraBold
+    }
+
+    /** API-28+ weight synth can crash on some Android 9 TV SoCs — fall back safely. */
+    private fun golosWeight(weight: Int): Typeface? {
+        val base = golosTypeface ?: return null
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            return when {
+                weight >= 700 -> golosTypefaceBold ?: Typeface.create(base, Typeface.BOLD)
+                else -> base
+            }
         }
+        return runCatching { Typeface.create(base, weight, false) }.getOrNull()
+            ?: if (weight >= 700) golosTypefaceBold ?: Typeface.create(base, Typeface.BOLD) else base
     }
 
     companion object {
@@ -985,10 +994,6 @@ class MainActivity : AppCompatActivity() {
         handler.postDelayed(hideUiRunnable, delayMs)
     }
     private var pendingSeekDeltaSec: Int = 0
-    /** TV: OK on progress bar arms scrub; L/R then seek. Cleared when leaving the bar. */
-    private var timelineScrubArmed = false
-    /** True if user moved seek while scrub was armed (Back/OK exit without seek cancels pending). */
-    private var timelineScrubDidSeek = false
     private var liveTimelineAnchorMs: Long = 0L
     /** Content time at live pause; after resume, left clock = this + player delta. */
     private var liveTimelinePausedContentMs = 0L
@@ -1395,7 +1400,10 @@ private fun showDefaultStartupScreen() {
         tvHomeBreadcrumbPill2.setOnClickListener { onCategoryBreadcrumbClick() }
         tvHomeAppTitle.text = SpannableString("O.Portal").apply {
             setSpan(StyleSpan(Typeface.BOLD), 2, length, 0)
-            tvHomeAppTitle.typeface = Typeface.create(tvHomeAppTitle.typeface, 800, false)
+            tvHomeAppTitle.typeface = golosWeight(800)
+                ?: golosTypefaceExtraBold
+                ?: golosTypefaceBold
+                ?: tvHomeAppTitle.typeface
         }
         tvHomeStartTitle = findViewById(R.id.tvHomeStartTitle)
         tvHomeStartSubtitle = findViewById(R.id.tvHomeStartSubtitle)
@@ -1473,21 +1481,28 @@ private fun showDefaultStartupScreen() {
         btnPlayPause.alpha = 1.0f
     }
 
+    /** TV: OK with chrome hidden — pause stream, then showUI focuses play/pause for resume. */
+    private fun pausePlaybackForTvOkReveal() {
+        if (isPlaybackPaused) return
+        mediaPlayer?.pause()
+        isPlaybackPaused = true
+        if (!isArchivePlayback) {
+            liveTimelinePausedContentMs = getLiveTimelinePositionMs()
+            liveTimelinePlayerPosAtPauseMs = mediaPlayer?.currentPosition ?: 0L
+            liveTimelineAnchorMs = liveTimelinePausedContentMs
+            liveTimelineFollowFromPause = true
+            updateTimelineUi()
+        }
+        updatePlayPauseButton()
+    }
+
     private fun buildPortalWordmarkSpan(): CharSequence {
         val logo = SpannableString("O.Portal")
         // "O." Medium (500) — fall back to regular Golos file when weight synth is unavailable.
-        val medium = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            Typeface.create(golosTypeface ?: Typeface.DEFAULT, 500, false)
-        } else {
-            golosTypeface
-        }
+        val medium = golosWeight(500) ?: golosTypeface
         // "Portal" Bold (700) — heavier than O. Medium, lighter than ExtraBold 800.
-        val portalFace = golosTypefaceBold
-            ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                Typeface.create(golosTypeface ?: Typeface.DEFAULT_BOLD, 700, false)
-            } else {
-                Typeface.create(golosTypeface, Typeface.BOLD)
-            }
+        val portalFace = golosTypefaceBold ?: golosWeight(700)
+            ?: Typeface.create(golosTypeface, Typeface.BOLD)
         if (medium != null) {
             logo.setSpan(CustomTypefaceSpan(medium), 0, 2, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
@@ -3128,11 +3143,6 @@ private fun showDefaultStartupScreen() {
                     restoreChannelHeaderAfterNumberInput()
                     return@addCallback
                 }
-                // Scrub mode on the progress bar: Back exits scrub, keeps chrome / player open.
-                if (timelineScrubArmed) {
-                    disarmTimelineScrub(moveFocusToControls = true, cancelPendingIfIdle = true)
-                    return@addCallback
-                }
                 // Stall / recovery / error plate keep controls visible and re-show them on each
                 // reload attempt — hideUI()-first Back loops forever. Exit immediately.
                 if (isStallNavigationLockActive() ||
@@ -3493,7 +3503,7 @@ private fun showDefaultStartupScreen() {
                 holder.tvNumber.text = (realIndex + 1).toString()
                 holder.tvName.text = channel.name
                 holder.tvName.isSelected = true
-                golosTypeface?.let { holder.tvName.typeface = Typeface.create(it, 500, false) }
+                golosTypeface?.let { holder.tvName.typeface = golosWeight(500) ?: it }
                 loadLogoWithGlide(
                     channel.logoFromEpg ?: channel.logoFromPlaylist,
                     holder.ivLogo
@@ -3544,6 +3554,11 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun showChannelListPanel() {
+        // Hard mutex with EPG — never stack both overlays (Android 9 TV crashes / focus loss).
+        if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
+            logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=epg_open")
+            return
+        }
         if (channels.isEmpty()) {
             // Offline / after process quirks: restore last cached playlist for the current URL.
             val url = lastLoadedPlaylistUrl.ifBlank { resolveCurrentPlaylistUrl() }
@@ -3564,38 +3579,44 @@ private fun showDefaultStartupScreen() {
                 }
             }
         }
-        if (channels.isEmpty()) return
-        if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
-            hideEpgPanel(restorePlayerUi = false)
+        if (channels.isEmpty()) {
+            logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=empty_channels")
+            return
         }
-        tvChannelListTitle.text = "Список каналов: ${getSelectedPlaylistName()}"
-        channelListSearchQuery = ""
-        if (::etChannelListSearch.isInitialized) {
-            etChannelListSearch.setText("")
-            // Search only on home channel grids — hide in the in-player channel list.
-            etChannelListSearch.visibility = View.GONE
-        }
-        setPlayerOverlayScrimVisible(true)
-        topInfoPanel.visibility = View.GONE
-        topGradientOverlay.visibility = View.GONE
-        controlsPanel.visibility = View.GONE
-        handler.removeCallbacks(hideUiRunnable)
-        pausePlaybackStallWatchdogForOverlay()
-        channelListPanel.visibility = View.VISIBLE
-        // Seed program lines from in-memory EPG immediately (same as home list); refresh async.
-        channelListProgramTitles = channels.mapIndexed { index, ch -> index to getCurrentProgramTitleForChannelList(ch) }.toMap()
-        bindChannelListPanelAdapter()
-        channelListPanel.post {
-            thread(name = "channel-list-prep") {
-                val titles = channels.mapIndexed { index, ch ->
-                    index to getCurrentProgramTitleForChannelList(ch)
-                }.toMap()
-                handler.post {
-                    if (channelListPanel.visibility != View.VISIBLE) return@post
-                    channelListProgramTitles = titles
-                    bindChannelListPanelAdapter()
+        runCatching {
+            tvChannelListTitle.text = "Список каналов: ${getSelectedPlaylistName()}"
+            channelListSearchQuery = ""
+            if (::etChannelListSearch.isInitialized) {
+                etChannelListSearch.setText("")
+                // Search only on home channel grids — hide in the in-player channel list.
+                etChannelListSearch.visibility = View.GONE
+            }
+            setPlayerOverlayScrimVisible(true)
+            topInfoPanel.visibility = View.GONE
+            topGradientOverlay.visibility = View.GONE
+            controlsPanel.visibility = View.GONE
+            handler.removeCallbacks(hideUiRunnable)
+            pausePlaybackStallWatchdogForOverlay()
+            channelListPanel.visibility = View.VISIBLE
+            // Seed program lines from in-memory EPG immediately (same as home list); refresh async.
+            channelListProgramTitles =
+                channels.mapIndexed { index, ch -> index to getCurrentProgramTitleForChannelList(ch) }.toMap()
+            bindChannelListPanelAdapter()
+            channelListPanel.post {
+                thread(name = "channel-list-prep") {
+                    val titles = channels.mapIndexed { index, ch ->
+                        index to getCurrentProgramTitleForChannelList(ch)
+                    }.toMap()
+                    handler.post {
+                        if (channelListPanel.visibility != View.VISIBLE) return@post
+                        channelListProgramTitles = titles
+                        bindChannelListPanelAdapter()
+                    }
                 }
             }
+        }.onFailure { err ->
+            logDebug("NAV", "CHANNEL_LIST_OPEN_FAIL ${err.message}")
+            hideChannelListPanel()
         }
     }
 
@@ -3708,60 +3729,72 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun showEpgPanel() {
-        logMemoryStats("epg_panel_show_start")
+        // Hard mutex with channel list — never stack both overlays.
         if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
-            channelListPanel.visibility = View.GONE
-            gvChannelListPanel.adapter = null
+            logDebug("NAV", "EPG_BLOCKED reason=channel_list_open")
+            return
         }
+        logMemoryStats("epg_panel_show_start")
         val ch = channels.getOrNull(currentChannelIndex) ?: return
         epgPanelChannel = ch
         if (!epgDatePickedByUser) {
             epgPanelSelectedDate = ""
         }
 
-        if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.VISIBLE
-        epgPanel.visibility = View.VISIBLE
-        topInfoPanel.visibility = View.GONE
-        topGradientOverlay.visibility = View.GONE
-        controlsPanel.visibility = View.GONE
-        handler.removeCallbacks(hideUiRunnable)
-        pausePlaybackStallWatchdogForOverlay()
+        runCatching {
+            if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.VISIBLE
+            epgPanel.visibility = View.VISIBLE
+            topInfoPanel.visibility = View.GONE
+            topGradientOverlay.visibility = View.GONE
+            controlsPanel.visibility = View.GONE
+            handler.removeCallbacks(hideUiRunnable)
+            pausePlaybackStallWatchdogForOverlay()
 
-        epgPanel.post {
-            thread(name = "epg-panel-prep") {
-                val emptyTitle = epgUnavailableMessage(ch.name)
-                val realPrograms = getProgramsForChannel(ch)
-                val programsSource = when {
-                    realPrograms.isNotEmpty() -> realPrograms
-                    else -> {
-                        val archive = buildArchivePlaceholderPrograms(ch)
-                        if (archive.isNotEmpty()) archive
-                        else buildPlaceholderPrograms(title = emptyTitle)
+            epgPanel.post {
+                thread(name = "epg-panel-prep") {
+                    val emptyTitle = epgUnavailableMessage(ch.name)
+                    val realPrograms = getProgramsForChannel(ch)
+                    val programsSource = when {
+                        realPrograms.isNotEmpty() -> realPrograms
+                        else -> {
+                            val archive = buildArchivePlaceholderPrograms(ch)
+                            if (archive.isNotEmpty()) archive
+                            else buildPlaceholderPrograms(title = emptyTitle)
+                        }
+                    }
+                    val (dateKeys, programsByDate) = buildEpgPanelDateModel(programsSource, emptyTitle)
+                    val selectedDate =
+                        if (epgPanelSelectedDate.isEmpty() || !dateKeys.contains(epgPanelSelectedDate)) {
+                            resolveEpgDefaultDateKey(dateKeys)
+                        } else {
+                            epgPanelSelectedDate
+                        }
+
+                    handler.post {
+                        if (epgPanel.visibility != View.VISIBLE) return@post
+                        runCatching {
+                            tvEpgEmptyState.visibility = View.GONE
+                            epgDateRow.visibility = View.VISIBLE
+                            lvEpgPrograms.visibility = View.VISIBLE
+                            epgPanelProgramsByDate = programsByDate
+                            epgPanelDateKeys = dateKeys
+                            epgPanelSelectedDate = selectedDate
+                            renderEpgDateChips()
+                            renderEpgProgramsForSelectedDate()
+                            syncEpgPanelBounds()
+                            scrollToSelectedEpgDateChip()
+                            // TV: do not auto-highlight the first programme — wait for DPAD_DOWN.
+                            focusEpgDateStripPreferringSelected()
+                        }.onFailure { err ->
+                            logDebug("NAV", "EPG_BIND_FAIL ${err.message}")
+                            hideEpgPanel()
+                        }
                     }
                 }
-                val (dateKeys, programsByDate) = buildEpgPanelDateModel(programsSource, emptyTitle)
-                val selectedDate = if (epgPanelSelectedDate.isEmpty() || !dateKeys.contains(epgPanelSelectedDate)) {
-                    resolveEpgDefaultDateKey(dateKeys)
-                } else {
-                    epgPanelSelectedDate
-                }
-
-                handler.post {
-                    if (epgPanel.visibility != View.VISIBLE) return@post
-                    tvEpgEmptyState.visibility = View.GONE
-                    epgDateRow.visibility = View.VISIBLE
-                    lvEpgPrograms.visibility = View.VISIBLE
-                    epgPanelProgramsByDate = programsByDate
-                    epgPanelDateKeys = dateKeys
-                    epgPanelSelectedDate = selectedDate
-                    renderEpgDateChips()
-                    renderEpgProgramsForSelectedDate()
-                    syncEpgPanelBounds()
-                    scrollToSelectedEpgDateChip()
-                    // TV: do not auto-highlight the first programme — wait for DPAD_DOWN.
-                    focusEpgDateStripPreferringSelected()
-                }
             }
+        }.onFailure { err ->
+            logDebug("NAV", "EPG_OPEN_FAIL ${err.message}")
+            hideEpgPanel()
         }
     }
 
@@ -3894,9 +3927,9 @@ private fun showDefaultStartupScreen() {
                 holder.tvTitle.text = item.title
                 holder.tvTitle.isSelected = true
                 golosTypeface?.let {
-                    holder.tvTitle.typeface = Typeface.create(it, 500, false)
-                    holder.tvTime.typeface = Typeface.create(it, 500, false)
-                    holder.tvDesc.typeface = Typeface.create(it, 400, false)
+                    holder.tvTitle.typeface = golosWeight(500) ?: it
+                    holder.tvTime.typeface = golosWeight(500) ?: it
+                    holder.tvDesc.typeface = it
                 }
                 if (item.desc.isNotBlank()) {
                     holder.tvDesc.text = item.desc
@@ -8908,7 +8941,7 @@ private fun showDefaultStartupScreen() {
         }
         btnLiveReload.nextFocusLeftId = chain.lastOrNull() ?: R.id.btnAspectRatio
 
-        // TV: progress bar + Back are focus targets. Scrub after OK on the bar.
+        // TV: progress bar + Back are focus targets. Scrub while the bar has focus (L/R).
         // L/R on control buttons stay for focus navigation (lock is GONE on TV).
         if (::timelineTrack.isInitialized && isTelevisionDevice()) {
             timelineTrack.isFocusable = true
@@ -8932,21 +8965,17 @@ private fun showDefaultStartupScreen() {
             timelineTrack.nextFocusLeftId = View.NO_ID
             timelineTrack.nextFocusRightId = View.NO_ID
             timelineTrack.setOnFocusChangeListener { _, hasFocus ->
-                if (!hasFocus) {
-                    disarmTimelineScrub(moveFocusToControls = false, cancelPendingIfIdle = false)
-                } else if (timelineScrubArmed) {
-                    viewTimelineThumb.scaleX = 1.45f
-                    viewTimelineThumb.scaleY = 1.45f
+                if (hasFocus) {
+                    viewTimelineThumb.scaleX = 1.35f
+                    viewTimelineThumb.scaleY = 1.35f
                 } else {
-                    viewTimelineThumb.scaleX = 1.2f
-                    viewTimelineThumb.scaleY = 1.2f
+                    viewTimelineThumb.scaleX = 1f
+                    viewTimelineThumb.scaleY = 1f
                 }
             }
         } else if (::timelineTrack.isInitialized) {
             timelineTrack.isFocusable = false
             timelineTrack.onFocusChangeListener = null
-            timelineScrubArmed = false
-            timelineScrubDidSeek = false
             findViewById<View>(R.id.btnBackToMenu)?.isFocusable = false
         }
     }
@@ -10231,8 +10260,6 @@ private fun showDefaultStartupScreen() {
 
     private fun hideUI() {
         dismissPlayerTrackMenu()
-        timelineScrubArmed = false
-        timelineScrubDidSeek = false
         if (::viewTimelineThumb.isInitialized) {
             viewTimelineThumb.scaleX = 1f
             viewTimelineThumb.scaleY = 1f
@@ -10368,10 +10395,8 @@ private fun showDefaultStartupScreen() {
     }
 
     /**
-     * TV timeline scrub:
-     * - Focus progress bar → OK arms scrub → ←/→ seek (thumb + left time update live).
-     * - OK again (even without seek) or Back → disarm; player controls usable again.
-     * - Seek buttons: CENTER click / hold ←→ while focused.
+     * TV timeline scrub: while the progress bar has focus, ←/→ seek.
+     * Leaving the bar (other controls / Back) stops scrub. No OK-arm step.
      */
     private fun handleTvRemoteSeekKeys(keyCode: Int, event: KeyEvent?): Boolean {
         if (!isTelevisionDevice() || !::controlsPanel.isInitialized) return false
@@ -10389,6 +10414,10 @@ private fun showDefaultStartupScreen() {
                     lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
                     scheduleHidePlayerChrome()
                     return true
+                }
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> {
+                    // Edge of chrome focus chain → channel zap while controls stay up.
+                    return false
                 }
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                     if ((event?.repeatCount ?: 0) == 0) focused.performClick()
@@ -10431,43 +10460,23 @@ private fun showDefaultStartupScreen() {
                 scheduleHidePlayerChrome()
                 return true
             }
-            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                if ((event?.repeatCount ?: 0) > 0) return true
-                if (timelineScrubArmed) {
-                    // Second OK (with or without seek) leaves scrub mode.
-                    disarmTimelineScrub(moveFocusToControls = true, cancelPendingIfIdle = !timelineScrubDidSeek)
-                    return true
-                }
-                if (!channelSupportsArchiveSeek()) {
-                    showAppToast("Архив недоступен")
-                    return true
-                }
-                timelineScrubArmed = true
-                timelineScrubDidSeek = false
-                viewTimelineThumb.scaleX = 1.45f
-                viewTimelineThumb.scaleY = 1.45f
-                tvEpg.text = "Перемотка: ← / →"
-                seekStatusHoldUntilMs = System.currentTimeMillis() + 1800L
-                handler.removeCallbacks(restoreEpgRunnable)
-                handler.postDelayed(restoreEpgRunnable, 1800L)
+            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                pendingSeekDeltaSec = 0
+                handler.removeCallbacks(applySeekDeltaRunnable)
+                timelineUserSeeking = false
+                updateTimelineUi()
+                btnPlayPause.requestFocus()
                 lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
                 scheduleHidePlayerChrome()
                 return true
             }
-            KeyEvent.KEYCODE_DPAD_DOWN -> {
-                disarmTimelineScrub(moveFocusToControls = true, cancelPendingIfIdle = !timelineScrubDidSeek)
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                // OK on the bar does not toggle an arm mode — scrub is focus-driven.
                 return true
             }
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                if (!timelineScrubArmed) {
-                    val target = if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                        btnPlayPause
-                    } else {
-                        btnLiveReload.takeIf { it.visibility == View.VISIBLE } ?: btnAspectRatio
-                    }
-                    target.requestFocus()
-                    lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
-                    scheduleHidePlayerChrome()
+                if (!channelSupportsArchiveSeek()) {
+                    if ((event?.repeatCount ?: 0) == 0) showAppToast("Архив недоступен")
                     return true
                 }
                 val isLeft = keyCode == KeyEvent.KEYCODE_DPAD_LEFT
@@ -10476,8 +10485,6 @@ private fun showDefaultStartupScreen() {
                     if ((event?.repeatCount ?: 0) == 0) {
                         showAppToast("Перемотка вперёд недоступна в прямом эфире")
                     }
-                    lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
-                    scheduleHidePlayerChrome()
                     return true
                 }
                 val repeat = event?.repeatCount ?: 0
@@ -10486,43 +10493,17 @@ private fun showDefaultStartupScreen() {
                     repeat < 6 -> 60
                     else -> 180
                 }
-                val delta = if (isLeft) -stepSec else stepSec
-                if (queueSeekDeltaSeconds(delta, fromUser = true, commitDelayMs = if (repeat > 0) 350L else 700L)) {
-                    timelineScrubDidSeek = true
-                }
+                queueSeekDeltaSeconds(
+                    if (isLeft) -stepSec else stepSec,
+                    fromUser = true,
+                    commitDelayMs = if (repeat > 0) 350L else 700L
+                )
                 lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
                 scheduleHidePlayerChrome()
                 return true
             }
         }
         return false
-    }
-
-    private fun disarmTimelineScrub(
-        moveFocusToControls: Boolean,
-        cancelPendingIfIdle: Boolean
-    ) {
-        val wasArmed = timelineScrubArmed
-        timelineScrubArmed = false
-        if (::viewTimelineThumb.isInitialized) {
-            viewTimelineThumb.scaleX = if (currentFocus === timelineTrack) 1.2f else 1f
-            viewTimelineThumb.scaleY = if (currentFocus === timelineTrack) 1.2f else 1f
-        }
-        if (cancelPendingIfIdle && !timelineScrubDidSeek) {
-            pendingSeekDeltaSec = 0
-            handler.removeCallbacks(applySeekDeltaRunnable)
-            timelineUserSeeking = false
-            updateTimelineUi()
-            if (::tvEpg.isInitialized) updateEpgDisplay()
-        }
-        timelineScrubDidSeek = false
-        if (wasArmed || moveFocusToControls) {
-            lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
-            scheduleHidePlayerChrome()
-        }
-        if (moveFocusToControls && ::btnPlayPause.isInitialized) {
-            btnPlayPause.requestFocus()
-        }
     }
 
     private fun channelSupportsArchiveSeek(channel: Channel? = channels.getOrNull(currentChannelIndex)): Boolean {
@@ -10613,13 +10594,15 @@ private fun showDefaultStartupScreen() {
                 return true
             }
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> {
-                // While player chrome is up, DPAD_UP must move focus (timeline / Back),
-                // not zap channels — that made bottom controls unreachable on TV.
+                // Chrome visible: DPAD_UP zaps only at the top of the focus chain (Back),
+                // so mid-row ↑ still reaches the timeline / Back. CHANNEL_UP always zaps.
                 if (keyCode == KeyEvent.KEYCODE_DPAD_UP &&
                     ::controlsPanel.isInitialized &&
                     controlsPanel.visibility == View.VISIBLE
                 ) {
-                    return false
+                    val focused = currentFocus
+                    val onBack = focused?.id == R.id.btnBackToMenu
+                    if (!onBack && isFocusInPlayerControlsRow()) return false
                 }
                 if (channels.isNotEmpty()) {
                     currentChannelIndex = (currentChannelIndex + 1) % channels.size
@@ -10629,11 +10612,17 @@ private fun showDefaultStartupScreen() {
                 return true
             }
             KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                // Chrome visible: DPAD_DOWN zaps on the bottom control row; from Back/timeline
+                // ↓ still moves focus into controls. CHANNEL_DOWN always zaps.
                 if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
                     ::controlsPanel.isInitialized &&
                     controlsPanel.visibility == View.VISIBLE
                 ) {
-                    return false
+                    val focused = currentFocus
+                    val onBack = focused?.id == R.id.btnBackToMenu
+                    val onTimeline = ::timelineTrack.isInitialized && focused === timelineTrack
+                    if (onBack || onTimeline) return false
+                    if (!isFocusInPlayerControlsRow()) return false
                 }
                 if (channels.isNotEmpty()) {
                     currentChannelIndex =
@@ -10647,7 +10636,8 @@ private fun showDefaultStartupScreen() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        // Intercept a single OK/Enter before PlayerView or stale focus consumes it.
+        // Chrome hidden: OK pauses playback and reveals controls (focus play/pause).
+        // Second OK on play/pause resumes via the button listener; chrome auto-hides on timer.
         if (event.action == KeyEvent.ACTION_DOWN &&
             event.repeatCount == 0 &&
             (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
@@ -10658,7 +10648,8 @@ private fun showDefaultStartupScreen() {
             (!::epgPanel.isInitialized || epgPanel.visibility != View.VISIBLE) &&
             (!::channelListPanel.isInitialized || channelListPanel.visibility != View.VISIBLE)
         ) {
-            showUI()
+            pausePlaybackForTvOkReveal()
+            showUI(preferFocus = if (::btnPlayPause.isInitialized) btnPlayPause else null)
             return true
         }
         return super.dispatchKeyEvent(event)
@@ -10949,7 +10940,9 @@ private fun showDefaultStartupScreen() {
         when {
             keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER ||
                 keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                showUI()
+                // Fallback if dispatchKeyEvent did not run (some Android 9 TV remotes).
+                pausePlaybackForTvOkReveal()
+                showUI(preferFocus = if (::btnPlayPause.isInitialized) btnPlayPause else null)
                 return true
             }
 
@@ -11277,7 +11270,7 @@ private fun showDefaultStartupScreen() {
         showSeekSpinner()
         val prefer = when {
             isTelevisionDevice() && ::timelineTrack.isInitialized &&
-                (currentFocus === timelineTrack || timelineScrubArmed) -> timelineTrack
+                currentFocus === timelineTrack -> timelineTrack
             deltaSec < 0 -> btnBackLeft
             else -> btnBackRight
         }
