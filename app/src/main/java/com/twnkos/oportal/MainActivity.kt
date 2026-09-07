@@ -297,6 +297,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var timelineArea: View
     private lateinit var btnBackLeft: ImageButton
     private lateinit var btnBackRight: ImageButton
+    /** Chrome-hidden double DPAD L/R → seek; single → channel list / EPG. */
+    private var lastChromeHiddenDpadLeftElapsedMs = 0L
+    private var lastChromeHiddenDpadRightElapsedMs = 0L
+    private var pendingChromeHiddenLeftRunnable: Runnable? = null
+    private var pendingChromeHiddenRightRunnable: Runnable? = null
+    private val chromeHiddenDoubleTapMs = 420L
+    /** Last fully parsed playlist kept in RAM to skip slow re-parse on reopen. */
+    private var memCachedPlaylistUrl: String = ""
+    private var memCachedChannels: List<Channel> = emptyList()
     private lateinit var btnEpgPlayer: ImageButton
     private lateinit var epgPanel: View
     private lateinit var epgDismissScrim: View
@@ -2037,6 +2046,33 @@ private fun showDefaultStartupScreen() {
                 if (controlsPanel.visibility == View.VISIBLE) hideUI() else showUI()
                 return true
             }
+
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                if (homePanel.visibility == View.VISIBLE) return false
+                if (isLocked) {
+                    showLockedMessage()
+                    return true
+                }
+                if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) return false
+                if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) return false
+                // Phone: double-tap left/right half of the screen seeks ±1 min.
+                val seekBack = e.x < (videoLayout.width / 2f)
+                if (!seekBack && !isArchivePlayback) {
+                    showAppToast("Перемотка вперёд недоступна в прямом эфире")
+                    return true
+                }
+                if (!channelSupportsArchiveSeek()) {
+                    showAppToast("Архив недоступен")
+                    return true
+                }
+                queueSeekDeltaSeconds(if (seekBack) -60 else 60, fromUser = true)
+                showUI(
+                    preferFocus = if (isTelevisionDevice() && ::timelineTrack.isInitialized) {
+                        timelineTrack
+                    } else if (seekBack) btnBackLeft else btnBackRight
+                )
+                return true
+            }
         })
         // TV remotes: PlayerView must not steal DPAD_CENTER / OK.
         videoLayout.isFocusable = false
@@ -3518,12 +3554,15 @@ private fun showDefaultStartupScreen() {
 
     private fun bindChannelListPanelAdapter() {
         val q = channelListSearchQuery.trim()
-        val visibleChannels = if (q.isBlank()) {
-            channels.toList()
+        data class Row(val channel: Channel, val realIndex: Int)
+        val rows: List<Row> = if (q.isBlank()) {
+            channels.mapIndexed { index, ch -> Row(ch, index) }
         } else {
-            channels.filter { it.name.contains(q, ignoreCase = true) }
+            channels.mapIndexedNotNull { index, ch ->
+                if (ch.name.contains(q, ignoreCase = true)) Row(ch, index) else null
+            }
         }
-        gvChannelListPanel.adapter = object : ArrayAdapter<Channel>(this@MainActivity, 0, visibleChannels) {
+        gvChannelListPanel.adapter = object : ArrayAdapter<Row>(this@MainActivity, 0, rows) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val holder: ChannelGridItemViewHolder
                 val itemView: View
@@ -3542,14 +3581,18 @@ private fun showDefaultStartupScreen() {
                     holder = convertView.tag as ChannelGridItemViewHolder
                 }
 
-                val channel = visibleChannels[position]
-                val realIndex = channels.indexOfFirst {
-                    it.url == channel.url && it.name == channel.name
-                }.takeIf { it >= 0 } ?: position
+                val row = rows[position]
+                val channel = row.channel
+                val realIndex = row.realIndex
                 holder.tvNumber.text = (realIndex + 1).toString()
                 holder.tvName.text = channel.name
                 holder.tvName.isSelected = true
-                golosTypeface?.let { holder.tvName.typeface = golosWeight(500) ?: it }
+                // Android 9 TV: skip weight synth in getView (OOM / SoC crash with large lists).
+                if (golosTypeface != null && Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
+                    holder.tvName.typeface = golosWeight(500) ?: golosTypeface
+                } else {
+                    golosTypeface?.let { holder.tvName.typeface = it }
+                }
                 loadLogoWithGlide(
                     channel.logoFromEpg ?: channel.logoFromPlaylist,
                     holder.ivLogo
@@ -3560,10 +3603,9 @@ private fun showDefaultStartupScreen() {
                     else R.drawable.channel_grid_tile_bg
                 )
 
-                holder.tvCurrentProgram.text =
-                    channelListProgramTitles[realIndex]
-                        ?: getCurrentProgramTitleForChannelList(channel)
-                holder.tvCurrentProgram.visibility = View.VISIBLE
+                holder.tvCurrentProgram.text = channelListProgramTitles[realIndex].orEmpty()
+                holder.tvCurrentProgram.visibility =
+                    if (holder.tvCurrentProgram.text.isNullOrBlank()) View.GONE else View.VISIBLE
                 holder.archiveBadge.visibility =
                     if (channel.catchupDays > 0 && !channel.catchupSource.isNullOrBlank()) {
                         View.VISIBLE
@@ -3589,12 +3631,9 @@ private fun showDefaultStartupScreen() {
                 view.performClick()
             }
         syncChannelListPanelBounds()
-        val focusIdx = visibleChannels.indexOfFirst { ch ->
-            val realIndex = channels.indexOfFirst { it.url == ch.url && it.name == ch.name }
-            realIndex == currentChannelIndex
-        }.takeIf { it >= 0 } ?: 0
-        if (visibleChannels.isNotEmpty()) {
-            gvChannelListPanel.setSelection(focusIdx.coerceAtMost(visibleChannels.lastIndex))
+        val focusIdx = rows.indexOfFirst { it.realIndex == currentChannelIndex }.takeIf { it >= 0 } ?: 0
+        if (rows.isNotEmpty()) {
+            gvChannelListPanel.setSelection(focusIdx.coerceAtMost(rows.lastIndex))
             gvChannelListPanel.requestFocus()
         }
     }
@@ -3630,6 +3669,7 @@ private fun showDefaultStartupScreen() {
             return
         }
         runCatching {
+            logMemoryStats("channel_list_open_start count=${channels.size}")
             tvChannelListTitle.text = "Список каналов: ${getSelectedPlaylistName()}"
             channelListSearchQuery = ""
             if (::etChannelListSearch.isInitialized) {
@@ -3644,19 +3684,22 @@ private fun showDefaultStartupScreen() {
             handler.removeCallbacks(hideUiRunnable)
             pausePlaybackStallWatchdogForOverlay()
             channelListPanel.visibility = View.VISIBLE
-            // Seed program lines from in-memory EPG immediately (same as home list); refresh async.
-            channelListProgramTitles =
-                channels.mapIndexed { index, ch -> index to getCurrentProgramTitleForChannelList(ch) }.toMap()
+            // Do NOT build titles for all channels on the main thread (Android 9 OOM with 2k+).
+            channelListProgramTitles = emptyMap()
             bindChannelListPanelAdapter()
             channelListPanel.post {
+                val snapshot = channels.toList()
                 thread(name = "channel-list-prep") {
-                    val titles = channels.mapIndexed { index, ch ->
-                        index to getCurrentProgramTitleForChannelList(ch)
-                    }.toMap()
+                    val titles = LinkedHashMap<Int, String>(snapshot.size)
+                    snapshot.forEachIndexed { index, ch ->
+                        titles[index] = getCurrentProgramTitleForChannelList(ch)
+                    }
                     handler.post {
                         if (channelListPanel.visibility != View.VISIBLE) return@post
                         channelListProgramTitles = titles
-                        bindChannelListPanelAdapter()
+                        // Refresh visible rows without rebuilding the whole adapter when possible.
+                        (gvChannelListPanel.adapter as? BaseAdapter)?.notifyDataSetChanged()
+                            ?: bindChannelListPanelAdapter()
                     }
                 }
             }
@@ -5261,15 +5304,11 @@ private fun showDefaultStartupScreen() {
         listOf(R.id.etUserLoginInline, R.id.etUserTokenInline, R.id.etUserLogin, R.id.etUserToken)
             .forEach { id -> findViewById<View>(id)?.clearFocus() }
         findViewById<View>(R.id.tvProfileTokenValue)?.clearFocus()
-        // Prefer navigating URL toggles / interval / actions, not EditTexts, with the remote.
+        // Same vertical remote flow as playlist settings: URL fields stay focusable top→bottom.
         urls.forEach { et ->
-            et.isFocusable = false
+            et.isFocusable = true
             et.isFocusableInTouchMode = false
-            et.setOnClickListener {
-                et.isFocusableInTouchMode = true
-                et.isFocusable = true
-                et.requestFocus()
-            }
+            et.setOnClickListener(null)
         }
 
         findViewById<ContentAwareScrollView>(R.id.epgSettingsScroll)?.let { scroll ->
@@ -5277,9 +5316,10 @@ private fun showDefaultStartupScreen() {
             scroll.forceDpadPaging = false
             scroll.post { scroll.updateScrollEnabled() }
         }
-        // Start at the first URL toggle (top), not the bottom source-mode button.
-        findViewById<View>(R.id.ivEpgToggle1)?.post {
-            findViewById<View>(R.id.ivEpgToggle1)?.requestFocus()
+        // Start at the first URL field / toggle (top), not the bottom source-mode button.
+        findViewById<View>(R.id.etEpgUrl1)?.post {
+            findViewById<View>(R.id.etEpgUrl1)?.requestFocus()
+                ?: findViewById<View>(R.id.ivEpgToggle1)?.requestFocus()
                 ?: findViewById<View>(R.id.itemEpgRefreshMode)?.requestFocus()
                 ?: tbSourceMode.requestFocus()
         }
@@ -6101,8 +6141,29 @@ private fun showDefaultStartupScreen() {
         showDownloadProgress: Boolean = true
     ) {
         // Percent under spinner only while fetching/caching the selected service.
-        // Free previous service before allocating another large list (Android 9 TV).
         playlistOpenInProgress = !autoPlay
+        val playlistUrlEarly = resolveCurrentPlaylistUrl()
+        // Fast path: same service already parsed in RAM — skip disk re-parse / network.
+        val memHit = !forceReload &&
+            playlistUrlEarly.isNotBlank() &&
+            playlistUrlEarly == memCachedPlaylistUrl &&
+            memCachedChannels.isNotEmpty()
+        if (memHit) {
+            logDebug(
+                "PLAYLIST_FLOW",
+                "PLAYLIST_MEM_CACHE_HIT count=${memCachedChannels.size} urlHash=${playlistUrlEarly.hashCode()}"
+            )
+            applyParsedPlaylist(
+                playlistUrl = playlistUrlEarly,
+                parsedChannels = memCachedChannels,
+                headerText = currentPlaylistText,
+                parsedEpgUrls = availableEpgSources,
+                autoPlay = autoPlay,
+                showErrors = showErrors
+            )
+            return
+        }
+        // Free previous service before allocating another large list (Android 9 TV).
         channels.clear()
         cachedCategoryGroups = emptyMap()
         currentPlaylistText = ""
@@ -6111,7 +6172,7 @@ private fun showDefaultStartupScreen() {
         }
         thread(name = "playlist-load") {
             try {
-                val playlistUrl = resolveCurrentPlaylistUrl()
+                val playlistUrl = playlistUrlEarly.ifBlank { resolveCurrentPlaylistUrl() }
                 if (playlistUrl.isBlank()) {
                     handler.post {
                         playlistOpenInProgress = false
@@ -6293,6 +6354,9 @@ private fun showDefaultStartupScreen() {
             // Keep only a tiny header in RAM for Built-in EPG forms.
             currentPlaylistText = headerText.take(16 * 1024)
             lastLoadedPlaylistUrl = playlistUrl
+            // One in-memory playlist for instant reopen (avoids multi-second re-parse).
+            memCachedPlaylistUrl = playlistUrl
+            memCachedChannels = channels.toList()
             availableEpgSources = parsedEpgUrls
             val savedSelection = getSelectedEpgSources()
             selectedEpgSources = savedSelection.toMutableSet()
@@ -6611,6 +6675,8 @@ private fun showDefaultStartupScreen() {
             .remove(PREF_PLAYLIST_HEADER_CACHE)
             .putBoolean(PREF_PLAYLISTS_DISK_READY, false)
             .apply()
+        memCachedPlaylistUrl = ""
+        memCachedChannels = emptyList()
         runCatching {
             playlistCacheDir().listFiles()?.forEach { it.delete() }
         }
@@ -6869,7 +6935,7 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun ensureEpgLoadedLazy() {
-        // Downloads start only after Save in EPG settings. Keep using in-memory/prefs cache here.
+        // After a crash, in-memory EPG is empty even if disk/local downloads exist.
         if (selectedEpgSources.isEmpty()) return
         logDebug(
             "EPG_DEBUG",
@@ -6878,6 +6944,25 @@ private fun showDefaultStartupScreen() {
                 "currentFingerprint=${buildEpgSourceFingerprint(selectedEpgSources.toList())} " +
                 "selectedEpgSources=$selectedEpgSources fetchInProgress=$epgFetchInProgress"
         )
+        if (epgFetchInProgress) return
+        if (!isEpgDataEmpty()) return
+        handler.post {
+            if (!isEpgDataEmpty() || epgFetchInProgress) return@post
+            loadEpgCacheSafely()
+            if (!isEpgDataEmpty()) {
+                logDebug("EPG_DEBUG", "ensureEpgLoadedLazy restored from disk cache")
+                refreshOpenOverlayPanelsAfterEpgUpdate()
+                updateEpgDisplay()
+                return@post
+            }
+            // Still empty — reuse local downloads when possible (forceDownload=false).
+            logDebug("EPG_DEBUG", "ensureEpgLoadedLazy starting fetch forceDownload=false")
+            fetchEpgSources(
+                selectedEpgSources.toList(),
+                force = false,
+                forceDownload = false
+            )
+        }
     }
 
     private fun openEpgHttpConnection(url: String): HttpURLConnection {
@@ -7751,21 +7836,27 @@ private fun showDefaultStartupScreen() {
         return program.start in 1..now && (now - program.start) <= maxDepthMs
     }
 
-    private fun buildArchiveUrl(channel: Channel, program: Program): String? {
+    private fun buildArchiveUrl(
+        channel: Channel,
+        program: Program,
+        playFromMs: Long = program.start
+    ): String? {
         val source = channel.catchupSource?.trim().orEmpty()
         if (source.isBlank()) return null
-        val startUnix = (program.start / 1000L).coerceAtLeast(0L)
+        val playFrom = playFromMs.coerceIn(
+            program.start,
+            (program.stop - 1_000L).coerceAtLeast(program.start)
+        )
+        // Open the catchup window at the requested playhead (not only at programme start),
+        // so 23:00 → 22:59 does not land on 22:00 and wait for a deferred seek.
+        val startUnix = (playFrom / 1000L).coerceAtLeast(0L)
         val nowUnix = System.currentTimeMillis() / 1000L
-        // Archive window must match the programme length from EPG (or 1 hour for hourly
-        // placeholders when EPG is missing). Never stretch utcend to "now + N hours" —
-        // that made Wink/others request a multi-hour chunk starting at utcstart.
         val endUnix = if (program.stop > program.start) {
             (program.stop / 1000L).coerceAtLeast(startUnix + 1L)
         } else {
             startUnix + 3_600L
         }
         val duration = (endUnix - startUnix).coerceAtLeast(0L)
-        // offset в секундах назад: текущее unix-время минус unix-время начала программы
         val offset = (nowUnix - startUnix).coerceAtLeast(0L)
         var resolved = source
         val replacements = mapOf(
@@ -7804,7 +7895,11 @@ private fun showDefaultStartupScreen() {
         program: Program,
         startAtMs: Long = program.start
     ) {
-        val archiveUrl = buildArchiveUrl(channel, program)
+        val seekTarget = startAtMs.coerceIn(
+            program.start,
+            (program.stop - 1_000L).coerceAtLeast(program.start)
+        )
+        val archiveUrl = buildArchiveUrl(channel, program, playFromMs = seekTarget)
         if (archiveUrl.isNullOrBlank()) {
             showAppToast("Не удалось сформировать ссылку архива")
             return
@@ -7843,11 +7938,9 @@ private fun showDefaultStartupScreen() {
             isArchivePlayback = true
             updateLiveStatusBadge()
             currentArchiveProgram = program
-            archiveStreamStartMs = program.start
-            val seekTarget = startAtMs.coerceIn(program.start, (program.stop - 1_000L).coerceAtLeast(program.start))
-            // Apply exact playhead when READY — fixed 450ms delay often missed on Android TV.
-            pendingArchiveSeekTargetMs =
-                if (seekTarget > program.start + 1_500L) seekTarget else 0L
+            // Stream opens at seekTarget — position 0 maps to that absolute time.
+            archiveStreamStartMs = seekTarget
+            pendingArchiveSeekTargetMs = 0L
             pendingSeekTargetAbsMs = seekTarget
             timelineUserSeeking = true
             updatePlayPauseButton()
@@ -10518,28 +10611,12 @@ private fun showDefaultStartupScreen() {
             return false
         }
 
-        // Hold on seek buttons: single press = ±1 min; hold continues seeking.
-        // L/R toward the other seek button still moves focus (opposite direction).
+        // Seek buttons: L/R only move focus along the chrome row (so CC / HD / LIVE stay reachable).
+        // Scrub is exclusive to the progress bar below.
         if ((onSeekLeft || onSeekRight) &&
             (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)
         ) {
-            val wantLeft = keyCode == KeyEvent.KEYCODE_DPAD_LEFT
-            if (onSeekLeft && !wantLeft) return false
-            if (onSeekRight && wantLeft) return false
-            if (!wantLeft && !isArchivePlayback) {
-                showAppToast("Перемотка вперёд недоступна в прямом эфире")
-                return true
-            }
-            val repeat = event?.repeatCount ?: 0
-            val stepSec = if (repeat == 0 || repeat < 6) 60 else 180
-            queueSeekDeltaSeconds(
-                if (wantLeft) -stepSec else stepSec,
-                fromUser = true,
-                commitDelayMs = if (repeat > 0) 350L else 500L
-            )
-            lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
-            scheduleHidePlayerChrome()
-            return true
+            return false
         }
 
         if (!onTimeline) return false
@@ -11067,31 +11144,98 @@ private fun showDefaultStartupScreen() {
                 return true
             }
 
-            // Chrome hidden: L/R open channel list / EPG (same as before).
-            // While chrome is visible, L/R only move between player buttons — and chrome
-            // stays up for as long as focus remains on those buttons.
+            // Chrome hidden: single L/R → channel list / EPG; double L/R → ±1 min seek.
             keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                return handleChromeHiddenHorizontalKey(seekForward = true)
+            }
+
+            keyCode == KeyEvent.KEYCODE_DPAD_LEFT -> {
+                return handleChromeHiddenHorizontalKey(seekForward = false)
+            }
+        }
+
+        return super.onKeyDown(keyCode, event)
+    }
+
+    /**
+     * Single DPAD L/R opens channel list / EPG; a second press within [chromeHiddenDoubleTapMs]
+     * seeks ±1 minute instead (and cancels the pending panel open).
+     */
+    private fun handleChromeHiddenHorizontalKey(seekForward: Boolean): Boolean {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (seekForward) {
+            pendingChromeHiddenLeftRunnable?.let { handler.removeCallbacks(it) }
+            pendingChromeHiddenLeftRunnable = null
+            lastChromeHiddenDpadLeftElapsedMs = 0L
+            val prev = lastChromeHiddenDpadRightElapsedMs
+            if (prev > 0L && now - prev <= chromeHiddenDoubleTapMs) {
+                lastChromeHiddenDpadRightElapsedMs = 0L
+                pendingChromeHiddenRightRunnable?.let { handler.removeCallbacks(it) }
+                pendingChromeHiddenRightRunnable = null
+                logDebug("NAV", "DPAD_RIGHT_DOUBLE_SEEK")
+                if (!isArchivePlayback) {
+                    showAppToast("Перемотка вперёд недоступна в прямом эфире")
+                    return true
+                }
+                if (!channelSupportsArchiveSeek()) {
+                    showAppToast("Архив недоступен")
+                    return true
+                }
+                queueSeekDeltaSeconds(60, fromUser = true)
+                showUI(preferFocus = if (::timelineTrack.isInitialized) timelineTrack else btnBackRight)
+                return true
+            }
+            lastChromeHiddenDpadRightElapsedMs = now
+            val token = now
+            val open = Runnable {
+                if (lastChromeHiddenDpadRightElapsedMs != token) return@Runnable
+                lastChromeHiddenDpadRightElapsedMs = 0L
+                pendingChromeHiddenRightRunnable = null
                 logDebug(
                     "NAV",
                     "DPAD_RIGHT_OPEN_EPG sdk=${Build.VERSION.SDK_INT} " +
                         "channels=${channels.size} focus=${currentFocus?.javaClass?.simpleName}"
                 )
                 toggleEpgPanel()
-                return true
             }
-
-            keyCode == KeyEvent.KEYCODE_DPAD_LEFT -> {
-                logDebug(
-                    "NAV",
-                    "DPAD_LEFT_OPEN_CHANNEL_LIST sdk=${Build.VERSION.SDK_INT} " +
-                        "channels=${channels.size} focus=${currentFocus?.javaClass?.simpleName}"
-                )
-                showChannelListPanel()
-                return true
-            }
+            pendingChromeHiddenRightRunnable = open
+            handler.postDelayed(open, chromeHiddenDoubleTapMs)
+            return true
         }
 
-        return super.onKeyDown(keyCode, event)
+        pendingChromeHiddenRightRunnable?.let { handler.removeCallbacks(it) }
+        pendingChromeHiddenRightRunnable = null
+        lastChromeHiddenDpadRightElapsedMs = 0L
+        val prev = lastChromeHiddenDpadLeftElapsedMs
+        if (prev > 0L && now - prev <= chromeHiddenDoubleTapMs) {
+            lastChromeHiddenDpadLeftElapsedMs = 0L
+            pendingChromeHiddenLeftRunnable?.let { handler.removeCallbacks(it) }
+            pendingChromeHiddenLeftRunnable = null
+            logDebug("NAV", "DPAD_LEFT_DOUBLE_SEEK")
+            if (!channelSupportsArchiveSeek()) {
+                showAppToast("Архив недоступен")
+                return true
+            }
+            queueSeekDeltaSeconds(-60, fromUser = true)
+            showUI(preferFocus = if (::timelineTrack.isInitialized) timelineTrack else btnBackLeft)
+            return true
+        }
+        lastChromeHiddenDpadLeftElapsedMs = now
+        val token = now
+        val open = Runnable {
+            if (lastChromeHiddenDpadLeftElapsedMs != token) return@Runnable
+            lastChromeHiddenDpadLeftElapsedMs = 0L
+            pendingChromeHiddenLeftRunnable = null
+            logDebug(
+                "NAV",
+                "DPAD_LEFT_OPEN_CHANNEL_LIST sdk=${Build.VERSION.SDK_INT} " +
+                    "channels=${channels.size} focus=${currentFocus?.javaClass?.simpleName}"
+            )
+            showChannelListPanel()
+        }
+        pendingChromeHiddenLeftRunnable = open
+        handler.postDelayed(open, chromeHiddenDoubleTapMs)
+        return true
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
@@ -11150,7 +11294,7 @@ private fun showDefaultStartupScreen() {
             it.contains("Загрузка") || it.contains("Распаковка") || it.contains("Чтение") ||
                 it.contains("Каталог") || it.contains("Сопоставление") || it.contains("Подготовка")
         }
-        if (versionChanged || hasIncompleteEpgProgress) ensureEpgLoadedLazy()
+        if (versionChanged || hasIncompleteEpgProgress || isEpgDataEmpty()) ensureEpgLoadedLazy()
         if (mediaPlayer != null && isPlaybackPaused) {
             mediaPlayer?.play()
             handler.postDelayed(startupSlowStreamRunnable, 45_000L)
@@ -11479,8 +11623,14 @@ private fun showDefaultStartupScreen() {
 
     private fun seekArchiveTo(targetProgramTimeMs: Long) {
         val p = currentArchiveProgram ?: return
+        val ch = channels.getOrNull(currentChannelIndex) ?: return
         val previousAbs = archiveStreamStartMs + (mediaPlayer?.currentPosition ?: 0L)
         val target = targetProgramTimeMs.coerceIn(p.start, (p.stop - 1_000L).coerceAtLeast(p.start))
+        // Seeking before the loaded catchup window (or far past it) → reopen at the exact time.
+        if (target < archiveStreamStartMs - 500L) {
+            playArchiveProgram(ch, p, startAtMs = target)
+            return
+        }
         val offset = (target - archiveStreamStartMs).coerceAtLeast(0L)
         pendingSeekTargetAbsMs = target
         timelineUserSeeking = true
@@ -11492,7 +11642,6 @@ private fun showDefaultStartupScreen() {
         handler.removeCallbacks(restoreEpgRunnable)
         handler.postDelayed(restoreEpgRunnable, 2200L)
         updateTimelineUi()
-        // If seek is already ready (no buffer stall), still hide after a short beat.
         handler.postDelayed({ hideSeekSpinnerIfReady() }, 300L)
     }
 
