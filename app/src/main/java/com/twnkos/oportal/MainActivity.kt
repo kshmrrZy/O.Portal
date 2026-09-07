@@ -417,7 +417,7 @@ class MainActivity : AppCompatActivity() {
 
     /** Freeze / recovery UI is up — keep LIVE reachable; do not open EPG / channel list. */
     private fun isStallNavigationLockActive(): Boolean {
-        if (playbackRecoveryActive || playerLoadingUiActive) return true
+        if (playbackRecoveryActive || playbackRecoveryExhausted || playerLoadingUiActive) return true
         return ::tvReloadingStatus.isInitialized && tvReloadingStatus.visibility == View.VISIBLE
     }
 
