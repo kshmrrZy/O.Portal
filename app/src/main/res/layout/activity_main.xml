@@ -1444,7 +1444,7 @@
             android:adjustViewBounds="true"
             android:importantForAccessibility="no"
             android:scaleType="fitCenter"
-            android:src="@drawable/splash_wordmark_icon" />
+            android:src="@drawable/splash_wordmark_clear" />
 
         <FrameLayout
             android:layout_width="wrap_content"

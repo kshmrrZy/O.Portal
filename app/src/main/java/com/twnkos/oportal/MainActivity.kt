@@ -987,6 +987,8 @@ class MainActivity : AppCompatActivity() {
     private var pendingSeekDeltaSec: Int = 0
     /** TV: OK on progress bar arms scrub; L/R then seek. Cleared when leaving the bar. */
     private var timelineScrubArmed = false
+    /** True if user moved seek while scrub was armed (Back/OK exit without seek cancels pending). */
+    private var timelineScrubDidSeek = false
     private var liveTimelineAnchorMs: Long = 0L
     /** Content time at live pause; after resume, left clock = this + player delta. */
     private var liveTimelinePausedContentMs = 0L
@@ -1225,8 +1227,8 @@ class MainActivity : AppCompatActivity() {
     private fun setupLaunchSplashOverlay() {
         val splash = findViewById<View>(R.id.launchSplashOverlay) ?: return
         val logo = findViewById<ImageView>(R.id.launchSplashLogo)
-        // Same PNG + circular safe-zone crop as system SplashScreen (not TextView spans).
-        logo?.setImageResource(R.drawable.splash_wordmark_icon)
+        // Transparent wordmark (no square plate) — system SplashScreen keeps the masked icon PNG.
+        logo?.setImageResource(R.drawable.splash_wordmark_clear)
         splash.setBackgroundResource(R.drawable.bg_home_screen)
         splash.visibility = View.VISIBLE
         splash.alpha = 1f
@@ -1812,16 +1814,14 @@ private fun showDefaultStartupScreen() {
                     timelineSeekStartProgress = sbTimeline.progress
                     val progress = clampTimelineProgress(timelineProgressFromTouchX(view, event.x))
                     sbTimeline.progress = progress
-                    applyTimelineProgressUi(progress)
-                    previewTimelineSeekText(progress)
+                    previewTimelineProgress(progress)
                     showUI()
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val progress = clampTimelineProgress(timelineProgressFromTouchX(view, event.x))
                     sbTimeline.progress = progress
-                    applyTimelineProgressUi(progress)
-                    previewTimelineSeekText(progress)
+                    previewTimelineProgress(progress)
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -3126,6 +3126,11 @@ private fun showDefaultStartupScreen() {
                     handler.removeCallbacks(channelSwitchRunnable)
                     seekStatusHoldUntilMs = 0L
                     restoreChannelHeaderAfterNumberInput()
+                    return@addCallback
+                }
+                // Scrub mode on the progress bar: Back exits scrub, keeps chrome / player open.
+                if (timelineScrubArmed) {
+                    disarmTimelineScrub(moveFocusToControls = true, cancelPendingIfIdle = true)
                     return@addCallback
                 }
                 // Stall / recovery / error plate keep controls visible and re-show them on each
@@ -8928,18 +8933,20 @@ private fun showDefaultStartupScreen() {
             timelineTrack.nextFocusRightId = View.NO_ID
             timelineTrack.setOnFocusChangeListener { _, hasFocus ->
                 if (!hasFocus) {
-                    timelineScrubArmed = false
-                    viewTimelineThumb.scaleX = 1f
-                    viewTimelineThumb.scaleY = 1f
+                    disarmTimelineScrub(moveFocusToControls = false, cancelPendingIfIdle = false)
+                } else if (timelineScrubArmed) {
+                    viewTimelineThumb.scaleX = 1.45f
+                    viewTimelineThumb.scaleY = 1.45f
                 } else {
-                    viewTimelineThumb.scaleX = if (timelineScrubArmed) 1.45f else 1.2f
-                    viewTimelineThumb.scaleY = if (timelineScrubArmed) 1.45f else 1.2f
+                    viewTimelineThumb.scaleX = 1.2f
+                    viewTimelineThumb.scaleY = 1.2f
                 }
             }
         } else if (::timelineTrack.isInitialized) {
             timelineTrack.isFocusable = false
             timelineTrack.onFocusChangeListener = null
             timelineScrubArmed = false
+            timelineScrubDidSeek = false
             findViewById<View>(R.id.btnBackToMenu)?.isFocusable = false
         }
     }
@@ -10225,6 +10232,7 @@ private fun showDefaultStartupScreen() {
     private fun hideUI() {
         dismissPlayerTrackMenu()
         timelineScrubArmed = false
+        timelineScrubDidSeek = false
         if (::viewTimelineThumb.isInitialized) {
             viewTimelineThumb.scaleX = 1f
             viewTimelineThumb.scaleY = 1f
@@ -10360,11 +10368,10 @@ private fun showDefaultStartupScreen() {
     }
 
     /**
-     * TV timeline scrub / seek buttons:
-     * - Chrome visible: DPAD_UP/DOWN move focus (not channel zap).
-     * - Focus progress bar → OK arms scrub → ←/→ seek.
-     * - Seek buttons: CENTER click seeks; hold ←/→ while focused also seeks.
-     * - Back button is focusable above the timeline.
+     * TV timeline scrub:
+     * - Focus progress bar → OK arms scrub → ←/→ seek (thumb + left time update live).
+     * - OK again (even without seek) or Back → disarm; player controls usable again.
+     * - Seek buttons: CENTER click / hold ←→ while focused.
      */
     private fun handleTvRemoteSeekKeys(keyCode: Int, event: KeyEvent?): Boolean {
         if (!isTelevisionDevice() || !::controlsPanel.isInitialized) return false
@@ -10426,37 +10433,33 @@ private fun showDefaultStartupScreen() {
             }
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                 if ((event?.repeatCount ?: 0) > 0) return true
+                if (timelineScrubArmed) {
+                    // Second OK (with or without seek) leaves scrub mode.
+                    disarmTimelineScrub(moveFocusToControls = true, cancelPendingIfIdle = !timelineScrubDidSeek)
+                    return true
+                }
                 if (!channelSupportsArchiveSeek()) {
                     showAppToast("Архив недоступен")
                     return true
                 }
-                timelineScrubArmed = !timelineScrubArmed
-                viewTimelineThumb.scaleX = if (timelineScrubArmed) 1.45f else 1.2f
-                viewTimelineThumb.scaleY = if (timelineScrubArmed) 1.45f else 1.2f
-                if (timelineScrubArmed) {
-                    tvEpg.text = "Перемотка: ← / →"
-                    seekStatusHoldUntilMs = System.currentTimeMillis() + 1800L
-                    handler.removeCallbacks(restoreEpgRunnable)
-                    handler.postDelayed(restoreEpgRunnable, 1800L)
-                } else {
-                    updateEpgDisplay()
-                }
+                timelineScrubArmed = true
+                timelineScrubDidSeek = false
+                viewTimelineThumb.scaleX = 1.45f
+                viewTimelineThumb.scaleY = 1.45f
+                tvEpg.text = "Перемотка: ← / →"
+                seekStatusHoldUntilMs = System.currentTimeMillis() + 1800L
+                handler.removeCallbacks(restoreEpgRunnable)
+                handler.postDelayed(restoreEpgRunnable, 1800L)
                 lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
                 scheduleHidePlayerChrome()
                 return true
             }
             KeyEvent.KEYCODE_DPAD_DOWN -> {
-                timelineScrubArmed = false
-                viewTimelineThumb.scaleX = 1f
-                viewTimelineThumb.scaleY = 1f
-                lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
-                scheduleHidePlayerChrome()
-                btnPlayPause.requestFocus()
+                disarmTimelineScrub(moveFocusToControls = true, cancelPendingIfIdle = !timelineScrubDidSeek)
                 return true
             }
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
                 if (!timelineScrubArmed) {
-                    // Not armed: leave the bar so L/R still move across player controls.
                     val target = if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
                         btnPlayPause
                     } else {
@@ -10484,13 +10487,42 @@ private fun showDefaultStartupScreen() {
                     else -> 180
                 }
                 val delta = if (isLeft) -stepSec else stepSec
-                queueSeekDeltaSeconds(delta, fromUser = true, commitDelayMs = if (repeat > 0) 350L else 700L)
+                if (queueSeekDeltaSeconds(delta, fromUser = true, commitDelayMs = if (repeat > 0) 350L else 700L)) {
+                    timelineScrubDidSeek = true
+                }
                 lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
                 scheduleHidePlayerChrome()
                 return true
             }
         }
         return false
+    }
+
+    private fun disarmTimelineScrub(
+        moveFocusToControls: Boolean,
+        cancelPendingIfIdle: Boolean
+    ) {
+        val wasArmed = timelineScrubArmed
+        timelineScrubArmed = false
+        if (::viewTimelineThumb.isInitialized) {
+            viewTimelineThumb.scaleX = if (currentFocus === timelineTrack) 1.2f else 1f
+            viewTimelineThumb.scaleY = if (currentFocus === timelineTrack) 1.2f else 1f
+        }
+        if (cancelPendingIfIdle && !timelineScrubDidSeek) {
+            pendingSeekDeltaSec = 0
+            handler.removeCallbacks(applySeekDeltaRunnable)
+            timelineUserSeeking = false
+            updateTimelineUi()
+            if (::tvEpg.isInitialized) updateEpgDisplay()
+        }
+        timelineScrubDidSeek = false
+        if (wasArmed || moveFocusToControls) {
+            lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
+            scheduleHidePlayerChrome()
+        }
+        if (moveFocusToControls && ::btnPlayPause.isInitialized) {
+            btnPlayPause.requestFocus()
+        }
     }
 
     private fun channelSupportsArchiveSeek(channel: Channel? = channels.getOrNull(currentChannelIndex)): Boolean {
@@ -10541,10 +10573,20 @@ private fun showDefaultStartupScreen() {
         val clamped = clampTimelineProgress(progress)
         timelineUserSeeking = true
         sbTimeline.progress = clamped
+        previewTimelineProgress(clamped)
+    }
+
+    /** Thumb + left timestamp while scrubbing (TV remote queue and phone touch). */
+    private fun previewTimelineProgress(progress: Int) {
+        val clamped = clampTimelineProgress(progress)
         applyTimelineProgressUi(clamped)
-        val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+        previewTimelineSeekText(clamped)
+        val (programStart, programStop, _) = currentTimelineSeekableProgram() ?: return
+        val target = programStart + ((programStop - programStart) * (clamped / 1000f)).toLong()
         if (::tvCurrentTime.isInitialized) {
-            tvCurrentTime.text = fmt.format(Date(targetAbs.coerceIn(programStart, programStop)))
+            val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+            tvCurrentTime.visibility = View.VISIBLE
+            tvCurrentTime.text = fmt.format(Date(target.coerceIn(programStart, programStop)))
         }
     }
 
