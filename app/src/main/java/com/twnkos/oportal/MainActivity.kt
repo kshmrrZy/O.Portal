@@ -343,6 +343,8 @@ class MainActivity : AppCompatActivity() {
     /** URL of the playlist body currently held in [currentPlaylistText]. */
     private var lastLoadedPlaylistUrl: String = ""
     private var homeSearchDebounceRunnable: Runnable? = null
+    /** Cancels stale background search results when the user keeps typing. */
+    private var homeSearchApplyToken = 0
     private var selectedPlaylistDisplayName: String = ""
     private var selectedCategoryName: String = ""
     private enum class HomeReturnTarget { PLAYLISTS, CHANNEL_LIST }
@@ -943,6 +945,11 @@ class MainActivity : AppCompatActivity() {
     private var lastPlayerChromeInteractionElapsedMs = 0L
 
     private val hideUiRunnable = Runnable {
+        // Keep channel-number OSD visible while the remote is still collecting digits.
+        if (inputNumber.isNotEmpty()) {
+            scheduleHidePlayerChrome(1_000L)
+            return@Runnable
+        }
         // While the user is actively moving across control buttons, keep chrome up.
         // Idle focus on a button must NOT block auto-hide (TV OK left focus forever).
         if (controlsPanel.visibility == View.VISIBLE && isFocusInPlayerControlsRow()) {
@@ -1463,8 +1470,19 @@ private fun showDefaultStartupScreen() {
 
     private fun buildPortalWordmarkSpan(): CharSequence {
         val logo = SpannableString("O.Portal")
-        val medium = golosTypeface
-        val portalFace = golosTypefaceSemiBold ?: golosTypefaceExtraBold ?: Typeface.create(golosTypeface, Typeface.BOLD)
+        // "O." Medium (500) — fall back to regular Golos file when weight synth is unavailable.
+        val medium = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            Typeface.create(golosTypeface ?: Typeface.DEFAULT, 500, false)
+        } else {
+            golosTypeface
+        }
+        // "Portal" Bold/ExtraBold — visibly heavier than O.
+        val portalFace = golosTypefaceExtraBold
+            ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                Typeface.create(golosTypeface ?: Typeface.DEFAULT_BOLD, 700, false)
+            } else {
+                Typeface.create(golosTypeface, Typeface.BOLD)
+            }
         if (medium != null) {
             logo.setSpan(CustomTypefaceSpan(medium), 0, 2, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
@@ -2657,50 +2675,69 @@ private fun showDefaultStartupScreen() {
         when (homeSearchMode) {
             HomeSearchMode.CATEGORIES -> {
                 val q = query.trim()
-                val names = if (q.isBlank()) {
-                    allCategoryNamesForSearch
-                } else {
-                    allCategoryNamesForSearch.filter {
-                        it.contains(q, ignoreCase = true)
+                val token = ++homeSearchApplyToken
+                // Filter off the main thread — large category lists hitch the remote on TV.
+                thread(name = "home-search-cat") {
+                    val names = if (q.isBlank()) {
+                        allCategoryNamesForSearch
+                    } else {
+                        val ql = q.lowercase(Locale.getDefault())
+                        allCategoryNamesForSearch.filter {
+                            it.lowercase(Locale.getDefault()).contains(ql)
+                        }
+                    }
+                    handler.post {
+                        if (token != homeSearchApplyToken) return@post
+                        if (homeSearchMode != HomeSearchMode.CATEGORIES) return@post
+                        bindHomeTiles(names.map { category ->
+                            HomeTileItem(category) {
+                                logDebug("NAV", "CATEGORY_TILE_CLICK_RECEIVED name=$category")
+                                if (categoryOpenInProgress) {
+                                    logDebug("NAV", "CLICK_BLOCKED reason=category_open_in_progress")
+                                    return@HomeTileItem
+                                }
+                                categoryOpenInProgress = true
+                                selectedCategoryName = category
+                                logDebug("NAV", "CATEGORY_OPEN_CHANNELS_START name=$category")
+                                val startedAt = System.currentTimeMillis()
+                                showAppLoadingSpinner()
+                                val filtered = cachedCategoryGroups[category].orEmpty()
+                                homePlaylistTilesPanel.visibility = View.GONE
+                                val remaining = (220L - (System.currentTimeMillis() - startedAt)).coerceAtLeast(0L)
+                                handler.postDelayed({
+                                    showHomeChannelList(category, filtered)
+                                    hideAppLoadingSpinner()
+                                    logDebug("NAV", "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}")
+                                    categoryOpenInProgress = false
+                                }, remaining)
+                            }
+                        }, source = "categories", requestTileFocus = fromUserSubmit && q.isBlank())
                     }
                 }
-                bindHomeTiles(names.map { category ->
-                    HomeTileItem(category) {
-                        logDebug("NAV", "CATEGORY_TILE_CLICK_RECEIVED name=$category")
-                        if (categoryOpenInProgress) {
-                            logDebug("NAV", "CLICK_BLOCKED reason=category_open_in_progress")
-                            return@HomeTileItem
-                        }
-                        categoryOpenInProgress = true
-                        selectedCategoryName = category
-                        logDebug("NAV", "CATEGORY_OPEN_CHANNELS_START name=$category")
-                        val startedAt = System.currentTimeMillis()
-                        showAppLoadingSpinner()
-                        val filtered = cachedCategoryGroups[category].orEmpty()
-                        homePlaylistTilesPanel.visibility = View.GONE
-                        val remaining = (220L - (System.currentTimeMillis() - startedAt)).coerceAtLeast(0L)
-                        handler.postDelayed({
-                            showHomeChannelList(category, filtered)
-                            hideAppLoadingSpinner()
-                            logDebug("NAV", "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}")
-                            categoryOpenInProgress = false
-                        }, remaining)
-                    }
-                }, source = "categories", requestTileFocus = fromUserSubmit && q.isBlank())
             }
             HomeSearchMode.CHANNELS -> {
                 val q = query.trim()
-                val filtered = if (q.isBlank()) {
-                    homeChannelListSource
-                } else {
-                    homeChannelListSource.filter { it.name.contains(q, ignoreCase = true) }
+                val source = homeChannelListSource
+                val category = homeChannelListCategory
+                val token = ++homeSearchApplyToken
+                thread(name = "home-search-ch") {
+                    val filtered = if (q.isBlank()) {
+                        source
+                    } else {
+                        val ql = q.lowercase(Locale.getDefault())
+                        source.filter { it.name.lowercase(Locale.getDefault()).contains(ql) }
+                    }
+                    handler.post {
+                        if (token != homeSearchApplyToken) return@post
+                        if (homeSearchMode != HomeSearchMode.CHANNELS) return@post
+                        // Keep focus in the search field while typing; only steal focus on Enter/Search.
+                        bindHomeChannelListAdapter(
+                            category,
+                            filtered,
+                            requestListFocus = fromUserSubmit && q.isBlank()
+                        )
+                    }
                 }
-                // Keep focus in the search field while typing; only steal focus on Enter/Search.
-                bindHomeChannelListAdapter(
-                    homeChannelListCategory,
-                    filtered,
-                    requestListFocus = fromUserSubmit && q.isBlank()
-                )
             }
             HomeSearchMode.HIDDEN -> Unit
         }
@@ -5133,10 +5170,16 @@ private fun showDefaultStartupScreen() {
         }
 
         findViewById<ContentAwareScrollView>(R.id.epgSettingsScroll)?.let { scroll ->
-            scroll.forceDpadPaging = true
+            // Allow DPAD to leave the form into the bottom action row (Save/Back), like playlist settings.
+            scroll.forceDpadPaging = false
             scroll.post { scroll.updateScrollEnabled() }
         }
-        tbSourceMode.post { tbSourceMode.requestFocus() }
+        // Start at the first URL toggle (top), not the bottom source-mode button.
+        findViewById<View>(R.id.ivEpgToggle1)?.post {
+            findViewById<View>(R.id.ivEpgToggle1)?.requestFocus()
+                ?: findViewById<View>(R.id.itemEpgRefreshMode)?.requestFocus()
+                ?: tbSourceMode.requestFocus()
+        }
         configureBackButtonsForSettings("openEpgSettingsScreen")
         applySettingsViewportLayout()
     }
@@ -6544,8 +6587,10 @@ private fun showDefaultStartupScreen() {
                 val now = System.currentTimeMillis()
                 val last = lastEpgStatusPostAtMs[source] ?: 0L
                 val isTerminal = status.startsWith("Готово") || status.startsWith("Ошибка")
+                val isHundred = status.contains("(100%)")
                 if (!isTerminal && status == epgSourceStatus[source]) return
-                if (!isTerminal && now - last < 400L && status.contains('%')) {
+                // Never drop the final 100% tick — TV looked stuck at 98/99% when throttled.
+                if (!isTerminal && !isHundred && now - last < 400L && status.contains('%')) {
                     // Keep latest text in memory; flush on next due tick / terminal.
                     epgSourceStatus[source] = status
                     return
@@ -7263,10 +7308,17 @@ private fun showDefaultStartupScreen() {
         lastEpgXmlDisplayNames = xmlChannelDisplayNames.mapValues { it.value.toSet() }
         lastEpgXmlIcons = xmlChannelIcons.toMap()
 
+        // Bytes can already be at 99% — bind is still heavy on TV; keep UI moving to 100.
+        onMessage?.invoke("Сопоставление каналов…")
+        onProgress(96)
         bindEpgChannelsToPlaylist(
             xmlIds = lastEpgXmlIds,
             xmlDisplayNames = lastEpgXmlDisplayNames,
-            xmlIcons = lastEpgXmlIcons
+            xmlIcons = lastEpgXmlIcons,
+            onBindProgress = { p, msg ->
+                onMessage?.invoke(msg)
+                onProgress(p.coerceIn(96, 99))
+            }
         )
 
         logDebug(
@@ -7436,7 +7488,8 @@ private fun showDefaultStartupScreen() {
     private fun bindEpgChannelsToPlaylist(
         xmlIds: Set<String>,
         xmlDisplayNames: Map<String, Set<String>>,
-        xmlIcons: Map<String, String>
+        xmlIcons: Map<String, String>,
+        onBindProgress: ((Int, String) -> Unit)? = null
     ) {
         // Prefer the full playlist (Все каналы), not the currently open category subset.
         val playlistChannels = allChannelsForEpgBind()
@@ -7482,47 +7535,70 @@ private fun showDefaultStartupScreen() {
             }
         }
 
-        fun findUnbound(predicate: (Channel) -> Boolean): Channel? =
-            playlistChannels.firstOrNull { it.url !in boundPlaylistUrls && predicate(it) }
-
-        val allXmlIds = xmlIds.filter { it.isNotBlank() }.toSet()
-
-        // 1) tvg-id == xml channel id (exact + normalized)
-        allXmlIds.forEach { xmlId ->
-            val xmlKeys = epgKeysForMatch(xmlId)
-            findUnbound { ch ->
-                ch.tvgId?.let { epgKeysForMatch(it).any { k -> k in xmlKeys } } == true
-            }?.let { applyBind(xmlId, it) }
+        // Index playlist once — O(channels) instead of O(xmlIds × channels) scans (TV stall at 99%).
+        val byTvgId = HashMap<String, Channel>(playlistChannels.size * 2)
+        val byTvgName = HashMap<String, Channel>(playlistChannels.size * 2)
+        val byName = HashMap<String, Channel>(playlistChannels.size * 2)
+        for (ch in playlistChannels) {
+            ch.tvgId?.let { id ->
+                epgKeysForMatch(id).forEach { k -> byTvgId.putIfAbsent(k, ch) }
+            }
+            ch.tvgName?.let { name ->
+                epgKeysForMatch(name).forEach { k -> byTvgName.putIfAbsent(k, ch) }
+            }
+            epgKeysForMatch(ch.name).forEach { k -> byName.putIfAbsent(k, ch) }
         }
-        // 2) tvg-name == xml channel id (exact + normalized)
-        allXmlIds.forEach { xmlId ->
-            if (xmlId in boundXmlIds) return@forEach
-            val xmlKeys = epgKeysForMatch(xmlId)
-            findUnbound { ch ->
-                ch.tvgName?.let { epgKeysForMatch(it).any { k -> k in xmlKeys } } == true
-            }?.let { applyBind(xmlId, it) }
+
+        val allXmlIds = xmlIds.filter { it.isNotBlank() }
+        val total = allXmlIds.size.coerceAtLeast(1)
+        var processed = 0
+
+        fun emitBindProgress(force: Boolean = false) {
+            processed++
+            if (!force && processed % 250 != 0 && processed != total) return
+            val p = 96 + ((processed * 3) / total).coerceAtMost(3)
+            onBindProgress?.invoke(p, "Сопоставление каналов… $processed/$total")
+            if (processed % 500 == 0) Thread.yield()
         }
-        // 3) tvg-id / tvg-name == display-name (exact + normalized, e.g. "ТНТ +4" ↔ "ТНТ (+4)")
-        allXmlIds.forEach { xmlId ->
-            if (xmlId in boundXmlIds) return@forEach
+
+        fun takeUnbound(map: Map<String, Channel>, keys: Collection<String>): Channel? {
+            for (k in keys) {
+                val ch = map[k] ?: continue
+                if (ch.url !in boundPlaylistUrls) return ch
+            }
+            return null
+        }
+
+        // 1) tvg-id == xml channel id
+        for (xmlId in allXmlIds) {
+            val xmlKeys = epgKeysForMatch(xmlId)
+            takeUnbound(byTvgId, xmlKeys)?.let { applyBind(xmlId, it) }
+            emitBindProgress()
+        }
+        // 2) tvg-name == xml channel id
+        for (xmlId in allXmlIds) {
+            if (xmlId in boundXmlIds) continue
+            val xmlKeys = epgKeysForMatch(xmlId)
+            takeUnbound(byTvgName, xmlKeys)?.let { applyBind(xmlId, it) }
+        }
+        onBindProgress?.invoke(98, "Сопоставление каналов…")
+        // 3) tvg-id / tvg-name == display-name
+        for (xmlId in allXmlIds) {
+            if (xmlId in boundXmlIds) continue
             val nameKeys = xmlDisplayNames[xmlId].orEmpty()
                 .flatMap { epgKeysForMatch(it) }
-                .toSet()
-            if (nameKeys.isEmpty()) return@forEach
-            findUnbound { ch ->
-                val tvgKeys = ch.tvgId?.let { epgKeysForMatch(it) }.orEmpty()
-                val tvgNameKeys = ch.tvgName?.let { epgKeysForMatch(it) }.orEmpty()
-                tvgKeys.any { it in nameKeys } || tvgNameKeys.any { it in nameKeys }
-            }?.let { applyBind(xmlId, it) }
+            if (nameKeys.isEmpty()) continue
+            (takeUnbound(byTvgId, nameKeys) ?: takeUnbound(byTvgName, nameKeys))
+                ?.let { applyBind(xmlId, it) }
         }
-        // 4) channel name == xml id or display-name (exact + normalized)
-        allXmlIds.forEach { xmlId ->
-            if (xmlId in boundXmlIds) return@forEach
+        // 4) channel name == xml id or display-name
+        for (xmlId in allXmlIds) {
+            if (xmlId in boundXmlIds) continue
             val nameKeys = (xmlDisplayNames[xmlId].orEmpty() + xmlId)
                 .flatMap { epgKeysForMatch(it) }
-                .toSet()
-            findUnbound { ch -> epgKeysForMatch(ch.name).any { it in nameKeys } }?.let { applyBind(xmlId, it) }
+            takeUnbound(byName, nameKeys)?.let { applyBind(xmlId, it) }
         }
+        onBindProgress?.invoke(99, "Сопоставление каналов…")
 
         // Cache icons for unbound xml channels too (future playlist loads).
         xmlIcons.forEach { (xmlId, icon) ->
@@ -10057,6 +10133,23 @@ private fun showDefaultStartupScreen() {
             showPlayerLoadingUi()
             return
         }
+        // Remote digit zap: never hide the channel-number OSD mid-entry.
+        if (inputNumber.isNotEmpty()) {
+            playerLoadingUiActive = false
+            findViewById<View>(R.id.playerLoadingSpinner)?.visibility = View.GONE
+            stopCompositeSpinner(findViewById(R.id.playerLoadingSpinnerInner))
+            topInfoPanel.visibility = View.VISIBLE
+            topGradientOverlay.visibility = View.GONE
+            controlsPanel.visibility = View.GONE
+            findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
+            findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
+            findViewById<View>(R.id.btnBackToMenu)?.visibility = View.INVISIBLE
+            findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
+            updateChannelNumberInputDisplay()
+            sbTimeline.isEnabled = false
+            hideSystemUI()
+            return
+        }
         playerLoadingUiActive = false
         findViewById<View>(R.id.playerLoadingSpinner)?.visibility = View.GONE
         stopCompositeSpinner(findViewById(R.id.playerLoadingSpinnerInner))
@@ -10104,15 +10197,25 @@ private fun showDefaultStartupScreen() {
         }
         val idx = inputNumber.toIntOrNull()?.minus(1) ?: -1
         val channelName = channels.getOrNull(idx)?.name
+        findViewById<TextView>(R.id.tvChannelNumber)?.apply {
+            text = inputNumber
+            visibility = View.VISIBLE
+        }
         tvChannelName.text = if (channelName != null) {
-            "Переключаем на канал: $inputNumber ($channelName)"
+            "→ $channelName"
         } else {
-            "Переключаем на канал: $inputNumber"
+            "Переключаем…"
         }
         tvEpg.visibility = View.GONE
+        findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
+        topInfoPanel.visibility = View.VISIBLE
     }
 
     private fun restoreChannelHeaderAfterNumberInput() {
+        findViewById<TextView>(R.id.tvChannelNumber)?.apply {
+            text = ""
+            visibility = View.GONE
+        }
         tvEpg.visibility = View.VISIBLE
         val ch = channels.getOrNull(currentChannelIndex)
         if (ch != null) {
@@ -10143,10 +10246,20 @@ private fun showDefaultStartupScreen() {
         when (keyCode) {
             in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> {
                 inputNumber += (keyCode - KeyEvent.KEYCODE_0).toString()
+                // Keep the digit OSD up; do not let the 6s chrome hide wipe the number.
+                handler.removeCallbacks(hideUiRunnable)
                 updateChannelNumberInputDisplay()
                 seekStatusHoldUntilMs = System.currentTimeMillis() + 2000L
                 handler.removeCallbacks(channelSwitchRunnable)
-                showUI()
+                if (controlsPanel.visibility != View.VISIBLE) {
+                    // Show top channel info without forcing full control chrome every digit.
+                    topInfoPanel.visibility = View.VISIBLE
+                    findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
+                    findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
+                    findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
+                } else {
+                    showUI()
+                }
                 handler.postDelayed(channelSwitchRunnable, 1500)
                 return true
             }
