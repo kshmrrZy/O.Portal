@@ -3,6 +3,7 @@ package com.twnkos.oportal
 import android.content.Context
 import android.graphics.Rect
 import android.util.AttributeSet
+import android.view.FocusFinder
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -12,6 +13,9 @@ import android.widget.ScrollView
 /**
  * ScrollView that only intercepts/scrolls when its content is taller than the viewport.
  * Prevents the slight "rubber" scroll when a grid of tiles already fits on screen.
+ *
+ * Set [forceDpadPaging] for TV forms (EPG settings) so DPAD keeps scrolling inside the
+ * form even when a leaf focusable would otherwise trap navigation.
  */
 class ContentAwareScrollView @JvmOverloads constructor(
     context: Context,
@@ -20,6 +24,9 @@ class ContentAwareScrollView @JvmOverloads constructor(
 ) : ScrollView(context, attrs, defStyleAttr) {
 
     private var scrollingEnabled = false
+
+    /** When true, DPAD pages/scrolls within this view and never escapes to outer chrome. */
+    var forceDpadPaging: Boolean = false
 
     fun updateScrollEnabled() {
         val child = getChildAt(0)
@@ -61,35 +68,79 @@ class ContentAwareScrollView @JvmOverloads constructor(
         return super.onTouchEvent(ev)
     }
 
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (forceDpadPaging && event.action == KeyEvent.ACTION_DOWN) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    if (moveFocusInside(FOCUS_DOWN) || pageScrollByDirection(1)) return true
+                }
+                KeyEvent.KEYCODE_DPAD_UP -> {
+                    if (moveFocusInside(FOCUS_UP) || pageScrollByDirection(-1)) return true
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun executeKeyEvent(event: KeyEvent): Boolean {
-        if (!scrollingEnabled) return false
+        if (!scrollingEnabled && !forceDpadPaging) return false
         // When a deeply nested focusable (e.g. EditText) consumes DPAD_DOWN without
         // moving, still scroll the page so TV users are not trapped mid-form.
         if (event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
-                    if (!canScrollVertically(1)) return false
+                    if (!canScrollVertically(1) && !forceDpadPaging) return false
                     val before = scrollY
                     val handled = super.executeKeyEvent(event)
                     if (scrollY == before) {
                         arrowScroll(FOCUS_DOWN)
-                        return scrollY != before
+                        if (scrollY != before) return true
+                        if (forceDpadPaging && pageScrollByDirection(1)) return true
                     }
-                    return handled
+                    return handled || scrollY != before
                 }
                 KeyEvent.KEYCODE_DPAD_UP -> {
-                    if (!canScrollVertically(-1)) return false
+                    if (!canScrollVertically(-1) && !forceDpadPaging) return false
                     val before = scrollY
                     val handled = super.executeKeyEvent(event)
                     if (scrollY == before) {
                         arrowScroll(FOCUS_UP)
-                        return scrollY != before
+                        if (scrollY != before) return true
+                        if (forceDpadPaging && pageScrollByDirection(-1)) return true
                     }
-                    return handled
+                    return handled || scrollY != before
                 }
             }
         }
         return super.executeKeyEvent(event)
+    }
+
+    private fun moveFocusInside(direction: Int): Boolean {
+        val focused = findFocus()
+        val next = FocusFinder.getInstance().findNextFocus(this, focused, direction) ?: return false
+        if (next === focused || !isDescendant(next)) return false
+        next.requestFocus()
+        return true
+    }
+
+    private fun isDescendant(view: View): Boolean {
+        var v: View? = view
+        while (v != null) {
+            if (v === this) return true
+            v = v.parent as? View
+        }
+        return false
+    }
+
+    private fun pageScrollByDirection(direction: Int): Boolean {
+        updateScrollEnabled()
+        val max = ((getChildAt(0)?.height ?: height) - height).coerceAtLeast(0)
+        if (max <= 0) return false
+        val step = (height * 0.55f).toInt().coerceAtLeast(80)
+        val target = (scrollY + direction * step).coerceIn(0, max)
+        if (target == scrollY) return false
+        smoothScrollTo(0, target)
+        return true
     }
 
     override fun requestChildRectangleOnScreen(
