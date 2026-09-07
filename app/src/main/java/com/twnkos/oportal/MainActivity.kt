@@ -101,6 +101,7 @@ import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.DecoderCounters
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
@@ -823,6 +824,9 @@ class MainActivity : AppCompatActivity() {
             R.font.golos_text
         )
     }
+    private val golosTypefaceBold: Typeface? by lazy {
+        ResourcesCompat.getFont(this, R.font.golostext_bold)
+    }
     private val golosTypefaceExtraBold: Typeface? by lazy {
         ResourcesCompat.getFont(this, R.font.golostext_extrabold)
     }
@@ -830,7 +834,7 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             Typeface.create(golosTypeface, 600, false)
         } else {
-            golosTypefaceExtraBold
+            golosTypefaceBold ?: golosTypefaceExtraBold
         }
     }
 
@@ -1476,8 +1480,8 @@ private fun showDefaultStartupScreen() {
         } else {
             golosTypeface
         }
-        // "Portal" Bold/ExtraBold — visibly heavier than O.
-        val portalFace = golosTypefaceExtraBold
+        // "Portal" Bold (700) — heavier than O. Medium, lighter than ExtraBold 800.
+        val portalFace = golosTypefaceBold
             ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 Typeface.create(golosTypeface ?: Typeface.DEFAULT_BOLD, 700, false)
             } else {
@@ -3033,8 +3037,19 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun applyLockButtonVisibility() {
+        // TV remote has no swipe gestures — hide lock on television always.
+        if (isTelevisionDevice()) {
+            btnLock.visibility = View.GONE
+            btnLock.isFocusable = false
+            btnLock.isClickable = false
+            updatePlayerControlFocusChain()
+            return
+        }
         val showLock = prefs.getBoolean(PREF_SHOW_LOCK_BUTTON, true)
         btnLock.visibility = if (showLock) View.VISIBLE else View.GONE
+        btnLock.isFocusable = showLock
+        btnLock.isClickable = showLock
+        updatePlayerControlFocusChain()
     }
 
     private fun showHomePlaylistSelector() {
@@ -8848,6 +8863,15 @@ private fun showDefaultStartupScreen() {
         if (btnAudioTrack.visibility == View.VISIBLE) chain += R.id.btnAudioTrack
         if (btnHdQuality.visibility == View.VISIBLE) chain += R.id.btnHdQuality
 
+        // Skip lock on TV (always GONE); phones keep lock in the middle of the row.
+        val lockVisible = ::btnLock.isInitialized && btnLock.visibility == View.VISIBLE
+        btnBackRight.nextFocusRightId = if (lockVisible) R.id.btnLock else R.id.btnEpgPlayer
+        btnEpgPlayer.nextFocusLeftId = if (lockVisible) R.id.btnLock else R.id.btnBackRight
+        if (lockVisible) {
+            btnLock.nextFocusLeftId = R.id.btnBackRight
+            btnLock.nextFocusRightId = R.id.btnEpgPlayer
+        }
+
         btnAspectRatio.nextFocusRightId = chain.firstOrNull() ?: R.id.btnLiveReload
         chain.forEachIndexed { index, id ->
             val view = findViewById<View>(id)
@@ -8855,6 +8879,27 @@ private fun showDefaultStartupScreen() {
             view.nextFocusRightId = if (index == chain.lastIndex) R.id.btnLiveReload else chain[index + 1]
         }
         btnLiveReload.nextFocusLeftId = chain.lastOrNull() ?: R.id.btnAspectRatio
+
+        // TV: progress bar is a focus target above the button row (UP from any control).
+        if (::timelineTrack.isInitialized && isTelevisionDevice()) {
+            timelineTrack.isFocusable = true
+            timelineTrack.isFocusableInTouchMode = false
+            timelineTrack.isClickable = true
+            listOf(
+                btnPlayPause, btnBackLeft, btnBackRight, btnEpgPlayer, btnAspectRatio,
+                btnLiveReload, btnCcSubtitles, btnAudioTrack, btnHdQuality
+            ).forEach { btn ->
+                if (btn.visibility == View.VISIBLE) {
+                    btn.nextFocusUpId = R.id.timelineTrack
+                }
+            }
+            if (lockVisible) btnLock.nextFocusUpId = R.id.timelineTrack
+            timelineTrack.nextFocusDownId = R.id.btnPlayPause
+            timelineTrack.nextFocusLeftId = R.id.timelineTrack
+            timelineTrack.nextFocusRightId = R.id.timelineTrack
+        } else if (::timelineTrack.isInitialized) {
+            timelineTrack.isFocusable = false
+        }
     }
 
     private fun showSubtitleTrackMenu() {
@@ -9030,9 +9075,14 @@ private fun showDefaultStartupScreen() {
             R.id.btnCcSubtitles, R.id.btnAudioTrack, R.id.btnHdQuality
         ).forEach { id ->
             findViewById<View?>(id)?.let { v ->
+                if (v.visibility != View.VISIBLE) return@let
                 v.isEnabled = true
                 v.isClickable = true
             }
+        }
+        if (::timelineTrack.isInitialized && isTelevisionDevice()) {
+            timelineTrack.isFocusable = true
+            timelineTrack.isClickable = true
         }
     }
 
@@ -9247,11 +9297,13 @@ private fun showDefaultStartupScreen() {
         val playBuf: Int
         val rebuf: Int
         if (isTelevisionDevice()) {
-            // Enough to ride CDN hiccups, not so large that 3–5s HD segments OOM the TV heap.
-            minBuf = 6_000
-            maxBuf = 28_000
-            playBuf = 1_500
-            rebuf = 3_000
+            // Log on v-113 (854x480 @ ~3.2 Mbps): buffer dipped to ~0.3s then BUFFERING↔READY
+            // every ~6–12s with droppedBufferCount=0 — underrun hitch, not codec drops.
+            // Keep more ahead of the live edge so short CDN/segment gaps do not flash a frame.
+            minBuf = 12_000
+            maxBuf = 40_000
+            playBuf = 3_000
+            rebuf = 5_000
         } else {
             minBuf = 3_500
             maxBuf = 18_000
@@ -9262,6 +9314,7 @@ private fun showDefaultStartupScreen() {
             .setAllocator(allocator)
             .setBufferDurationsMs(minBuf, maxBuf, playBuf, rebuf)
             .setTargetBufferBytes(C.LENGTH_UNSET)
+            .setPrioritizeTimeOverSizeThresholds(true)
             .setBackBuffer(0, false)
             .build()
 
@@ -9298,7 +9351,18 @@ private fun showDefaultStartupScreen() {
         logDebug("PLAYER_HLS", "hlsPayloadReaderFlags=$hlsPayloadReaderFlags allowNonIdr=$allowNonIdr")
         val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory).setDataSourceFactory(httpFactory)
 
-        trackSelector = DefaultTrackSelector(this).apply {
+        trackSelector = if (isTelevisionDevice()) {
+            // Prefer staying on a stable rung; avoid brief quality thrash that looks like a drop.
+            val adaptiveFactory = AdaptiveTrackSelection.Factory(
+                /* minDurationForQualityIncreaseMs= */ 15_000,
+                /* maxDurationForQualityDecreaseMs= */ 10_000,
+                /* minDurationToRetainAfterDiscardMs= */ 15_000,
+                /* bandwidthFraction= */ 0.70f
+            )
+            DefaultTrackSelector(this, adaptiveFactory)
+        } else {
+            DefaultTrackSelector(this)
+        }.apply {
             applyDefaultVideoConstraints(this)
         }
 
@@ -10100,7 +10164,7 @@ private fun showDefaultStartupScreen() {
         val controlsPanelButtonIds = intArrayOf(
             R.id.btnPlayPause, R.id.btnLiveReload, R.id.btnBackLeft,
             R.id.btnBackRight, R.id.btnLock, R.id.btnEpgPlayer, R.id.btnAspectRatio,
-            R.id.btnCcSubtitles, R.id.btnAudioTrack, R.id.btnHdQuality
+            R.id.btnCcSubtitles, R.id.btnAudioTrack, R.id.btnHdQuality, R.id.timelineTrack
         )
         val current = currentFocus
         val keepCurrent = current != null && controlsPanelButtonIds.any { findViewById<View>(it) === current }
@@ -10197,14 +10261,15 @@ private fun showDefaultStartupScreen() {
         }
         val idx = inputNumber.toIntOrNull()?.minus(1) ?: -1
         val channelName = channels.getOrNull(idx)?.name
+        // Keep digit OSD off — single caption as before ("Переключаем на канал…").
         findViewById<TextView>(R.id.tvChannelNumber)?.apply {
-            text = inputNumber
-            visibility = View.VISIBLE
+            text = ""
+            visibility = View.GONE
         }
         tvChannelName.text = if (channelName != null) {
-            "→ $channelName"
+            "Переключаем на канал: $inputNumber ($channelName)"
         } else {
-            "Переключаем…"
+            "Переключаем на канал: $inputNumber"
         }
         tvEpg.visibility = View.GONE
         findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
@@ -10233,12 +10298,59 @@ private fun showDefaultStartupScreen() {
 
     private fun isFocusInPlayerControlsRow(): Boolean {
         val focused = currentFocus ?: return false
+        if (::timelineTrack.isInitialized && focused === timelineTrack) return true
         val controlsPanelButtonIds = intArrayOf(
             R.id.btnPlayPause, R.id.btnLiveReload, R.id.btnBackLeft,
             R.id.btnBackRight, R.id.btnLock, R.id.btnEpgPlayer, R.id.btnAspectRatio,
             R.id.btnCcSubtitles, R.id.btnAudioTrack, R.id.btnHdQuality
         )
         return controlsPanelButtonIds.any { findViewById<View>(it) === focused }
+    }
+
+    /** TV remote hold L/R on timeline or seek buttons → relative seek (live: left only). */
+    private fun handleTvRemoteSeekKeys(keyCode: Int, event: KeyEvent?): Boolean {
+        if (!isTelevisionDevice() || !::controlsPanel.isInitialized) return false
+        if (controlsPanel.visibility != View.VISIBLE) return false
+        val focused = currentFocus ?: return false
+        val onTimeline = ::timelineTrack.isInitialized && focused === timelineTrack
+        val onSeekLeft = ::btnBackLeft.isInitialized && focused === btnBackLeft
+        val onSeekRight = ::btnBackRight.isInitialized && focused === btnBackRight
+        if (!onTimeline && !onSeekLeft && !onSeekRight) return false
+
+        val isLeft = keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+        val isRight = keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+        if (!isLeft && !isRight) return false
+        if (onSeekLeft && !isLeft) return false
+        if (onSeekRight && !isRight) return false
+
+        if (isRight && !isArchivePlayback) {
+            if ((event?.repeatCount ?: 0) == 0) {
+                showAppToast("Перемотка вперёд недоступна в прямом эфире")
+            }
+            lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
+            scheduleHidePlayerChrome()
+            return true
+        }
+
+        val repeat = event?.repeatCount ?: 0
+        val stepSec = when {
+            repeat == 0 -> 60
+            repeat < 6 -> 60
+            else -> 180
+        }
+        val delta = if (isLeft) -stepSec else stepSec
+        pendingSeekDeltaSec += delta
+        tvEpg.text =
+            "Перематываем передачу на ${formatMinutesRu(kotlin.math.abs(pendingSeekDeltaSec) / 60)}"
+        seekStatusHoldUntilMs = System.currentTimeMillis() + 2200L
+        handler.removeCallbacks(applySeekDeltaRunnable)
+        // Faster commit while holding so scrub feels continuous.
+        val delay = if (repeat > 0) 350L else 700L
+        handler.postDelayed(applySeekDeltaRunnable, delay)
+        showSeekSpinner()
+        lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
+        scheduleHidePlayerChrome()
+        return true
     }
 
     private fun handleWatchingHotkeys(keyCode: Int): Boolean {
@@ -10439,8 +10551,9 @@ private fun showDefaultStartupScreen() {
 
         if (controlsPanel.visibility == View.VISIBLE) {
             if (handleWatchingHotkeys(keyCode)) return true
-            // Active player chrome: L/R move between control buttons (seek / lock / EPG / …).
-            // Side panels open only when chrome is hidden.
+            if (handleTvRemoteSeekKeys(keyCode, event)) return true
+            // Active player chrome: L/R move between control buttons (seek / EPG / …).
+            // Side panels open only when chrome is hidden. UP moves to progress bar on TV.
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
@@ -10448,6 +10561,11 @@ private fun showDefaultStartupScreen() {
                     if (!isFocusInPlayerControlsRow()) {
                         findViewById<View>(R.id.btnPlayPause)?.requestFocus()
                     }
+                    lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
+                    scheduleHidePlayerChrome()
+                    return super.onKeyDown(keyCode, event)
+                }
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
                     lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
                     scheduleHidePlayerChrome()
                     return super.onKeyDown(keyCode, event)
@@ -10814,7 +10932,13 @@ private fun showDefaultStartupScreen() {
         val targetAbs = currentAbs + deltaSec * 1000L
         seekToAbsoluteTime(targetAbs)
         showSeekSpinner()
-        showUI(preferFocus = if (deltaSec < 0) btnBackLeft else btnBackRight)
+        val prefer = when {
+            isTelevisionDevice() && ::timelineTrack.isInitialized && currentFocus === timelineTrack ->
+                timelineTrack
+            deltaSec < 0 -> btnBackLeft
+            else -> btnBackRight
+        }
+        showUI(preferFocus = prefer)
     }
 
     private fun applyTimelineSeekFromProgress(progress: Int) {
