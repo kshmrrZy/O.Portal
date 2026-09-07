@@ -1,6 +1,9 @@
 package com.twnkos.oportal
 
 import android.util.Log
+import java.io.BufferedReader
+import java.io.File
+import java.io.Reader
 
 object M3uParser {
     private val STREAM_URL_REGEX = Regex(
@@ -22,7 +25,23 @@ object M3uParser {
         return ""
     }
 
-    fun parse(m3uText: String): List<Channel> {
+    fun parse(m3uText: String): List<Channel> =
+        parseLines(normalizePlaylistLines(m3uText).asSequence())
+
+    /** Stream-parse a cached M3U from disk — avoids a second full-string copy on low-RAM TVs. */
+    fun parseFile(file: File): List<Channel> {
+        if (!file.exists() || file.length() <= 0L) return emptyList()
+        return file.bufferedReader(Charsets.UTF_8).use { reader ->
+            parseReader(reader)
+        }
+    }
+
+    fun parseReader(reader: Reader): List<Channel> {
+        val buffered = reader as? BufferedReader ?: BufferedReader(reader, 64 * 1024)
+        return parseLines(buffered.lineSequence())
+    }
+
+    private fun parseLines(lines: Sequence<String>): List<Channel> {
         val channels = mutableListOf<Channel>()
 
         var currentName = ""
@@ -113,7 +132,7 @@ object M3uParser {
             }
         }
 
-        normalizePlaylistLines(m3uText).forEach { line ->
+        lines.forEach { line ->
             val trimmedLine = line.trim()
             if (trimmedLine.isEmpty()) return@forEach
 

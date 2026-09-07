@@ -1172,26 +1172,12 @@ class MainActivity : AppCompatActivity() {
         startEpgTicker()
         scheduleEpgRefreshAlarm()
         applyLockButtonVisibility()
-        val needsServiceCache =
-            (isAuthorizedUser() || hasEnabledThirdPartyPlaylists()) &&
-                !playlistsDiskCacheComplete()
-        if (needsServiceCache) {
-            ensurePlaylistsPrecached(force = false) {
-                loadPlaylist(showErrors = true, autoPlay = true)
-                if (!shouldOpenLastChannelOnStart) {
-                    showDefaultStartupScreen()
-                }
-            }
+        // Never precache all services at startup (Wink/Only4 OOMs Android 9 TV).
+        // Percent progress is only shown when the user opens a specific service.
+        if (shouldOpenLastChannelOnStart) {
+            loadPlaylist(showErrors = true, autoPlay = true, showDownloadProgress = false)
         } else {
-            if ((isAuthorizedUser() || hasEnabledThirdPartyPlaylists()) &&
-                playlistsDiskCacheComplete()
-            ) {
-                markPlaylistsDiskReady(true)
-            }
-            loadPlaylist(showErrors = true, autoPlay = true)
-            if (!shouldOpenLastChannelOnStart) {
-                showDefaultStartupScreen()
-            }
+            showDefaultStartupScreen()
         }
     }
 
@@ -3468,13 +3454,21 @@ private fun showDefaultStartupScreen() {
         if (channels.isEmpty()) {
             // Offline / after process quirks: restore last cached playlist for the current URL.
             val url = lastLoadedPlaylistUrl.ifBlank { resolveCurrentPlaylistUrl() }
-            val cached = if (url.isNotBlank()) getCachedPlaylistContent(url) else null
-            if (looksLikePlaylistBody(cached)) {
-                channels.clear()
-                channels.addAll(M3uParser.parse(cached!!))
-                currentPlaylistText = cached
-                lastLoadedPlaylistUrl = url
-                logDebug("PLAYLIST_FLOW", "CHANNEL_LIST_CACHE_RESTORE count=${channels.size}")
+            if (url.isNotBlank()) {
+                val file = playlistCacheFile(url)
+                if (playlistFileLooksLikeBody(file)) {
+                    runCatching {
+                        val restored = M3uParser.parseFile(file)
+                        if (restored.isNotEmpty()) {
+                            channels.clear()
+                            channels.addAll(restored)
+                            lastLoadedPlaylistUrl = url
+                            logDebug("PLAYLIST_FLOW", "CHANNEL_LIST_CACHE_RESTORE count=${channels.size}")
+                        }
+                    }.onFailure { err ->
+                        logDebug("PLAYLIST_FLOW", "CHANNEL_LIST_CACHE_RESTORE_FAIL ${err.message}")
+                    }
+                }
             }
         }
         if (channels.isEmpty()) return
@@ -4375,29 +4369,30 @@ private fun showDefaultStartupScreen() {
             showAppToast("Сначала авторизуйтесь")
             return
         }
-        showAppLoadingSpinner(0)
+        showAppLoadingSpinner(progressPercent = null)
         clearPlaylistContentCache()
         markPlaylistsDiskReady(false)
         cachedCategoryGroups = emptyMap()
         lastChannelListCategory = null
         settingsOpenedFromHomeChannelList = false
+        channels.clear()
+        currentPlaylistText = ""
         syncPortalPlaylistsForAuthorizedUser(token) {
-            ensurePlaylistsPrecached(force = true) {
-                isSettingsModalVisible = false
-                settingsOpenedAsAuthOnly = false
-                settingsOpenedFromPlayer = false
-                homeSettingsScreen.visibility = View.GONE
-                findViewById<View>(R.id.settingsMainPanel).visibility = View.GONE
-                findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
-                findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
-                findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
-                findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
-                findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
-                applyHomeAppTitleStyle(settingsMode = false)
-                showPlaylistPageHeader(showWelcome = false, showTitle = false)
-                showPlaylistPageOnHome(source = "refresh_services")
-                showAppToast("Сервисы обновлены")
-            }
+            hideAppLoadingSpinner()
+            isSettingsModalVisible = false
+            settingsOpenedAsAuthOnly = false
+            settingsOpenedFromPlayer = false
+            homeSettingsScreen.visibility = View.GONE
+            findViewById<View>(R.id.settingsMainPanel).visibility = View.GONE
+            findViewById<View>(R.id.userProfileHeaderCard).visibility = View.GONE
+            findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
+            findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
+            findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
+            findViewById<View>(R.id.appInfoPanel).visibility = View.GONE
+            applyHomeAppTitleStyle(settingsMode = false)
+            showPlaylistPageHeader(showWelcome = false, showTitle = false)
+            showPlaylistPageOnHome(source = "refresh_services")
+            showAppToast("Сервисы обновлены")
         }
     }
 
@@ -4505,9 +4500,7 @@ private fun showDefaultStartupScreen() {
             }
             saveThirdPartyPlaylistProfiles(items)
             markPlaylistsDiskReady(false)
-            ensurePlaylistsPrecached(force = true) {
-                showAppToast("Сторонние плейлисты сохранены")
-            }
+            showAppToast("Сторонние плейлисты сохранены")
         }
         findViewById<View>(R.id.btnRefreshPlaylistSettings).setOnClickListener {
             handleSettingsBackPress()
@@ -5231,14 +5224,7 @@ private fun showDefaultStartupScreen() {
                         }
                     }
                 }
-            handler.post {
-                if (onComplete != null) {
-                    onComplete.invoke()
-                } else {
-                    // First auth / background sync: fill disk cache once with progress UI.
-                    ensurePlaylistsPrecached(force = false)
-                }
-            }
+            handler.post { onComplete?.invoke() }
         }
     }
 
@@ -5929,11 +5915,17 @@ private fun showDefaultStartupScreen() {
     private fun loadPlaylist(
         forceReload: Boolean = false,
         showErrors: Boolean = false,
-        autoPlay: Boolean = true
+        autoPlay: Boolean = true,
+        showDownloadProgress: Boolean = true
     ) {
-        // Category / channel open: spinner without «Загрузка (N%)».
-        // Percent progress is reserved for ensurePlaylistsPrecached (cold start / refresh).
-        handler.post { showAppLoadingSpinner(progressPercent = null) }
+        // Percent under spinner only while fetching/caching the selected service.
+        // Free previous service before allocating another large list (Android 9 TV).
+        channels.clear()
+        cachedCategoryGroups = emptyMap()
+        currentPlaylistText = ""
+        handler.post {
+            showAppLoadingSpinner(progressPercent = if (showDownloadProgress) 0 else null)
+        }
         thread(name = "playlist-load") {
             try {
                 val playlistUrl = resolveCurrentPlaylistUrl()
@@ -5950,177 +5942,248 @@ private fun showDefaultStartupScreen() {
                     return@thread
                 }
 
-                var content = if (!forceReload) getCachedPlaylistContent(playlistUrl) else null
-                if (!looksLikePlaylistBody(content)) {
-                    content = runCatching {
-                        fetchPlaylistBodyText(playlistUrl).also { body ->
-                            if (looksLikePlaylistBody(body)) saveCachedPlaylistContent(playlistUrl, body)
-                        }
-                    }.getOrElse { err ->
-                        logDebug("PLAYLIST_FLOW", "PLAYLIST_FETCH_FAIL ${err.message}")
-                        getCachedPlaylistContent(playlistUrl)
-                    }
-                }
-                // Stale header-only cache (saved by EPG settings) → force network once.
-                var parsedChannels = if (looksLikePlaylistBody(content)) {
-                    M3uParser.parse(content!!)
-                } else {
-                    emptyList()
-                }
-                if (parsedChannels.isEmpty()) {
-                    logDebug(
-                        "PLAYLIST_FLOW",
-                        "PLAYLIST_CACHE_MISS_OR_EMPTY urlHash=${playlistUrl.hashCode()} " +
-                            "cachedLen=${content?.length ?: 0} forceNetwork=true"
-                    )
-                    content = runCatching { fetchPlaylistBodyText(playlistUrl) }
-                        .getOrElse { getCachedPlaylistContent(playlistUrl) }
-                    if (looksLikePlaylistBody(content)) {
-                        saveCachedPlaylistContent(playlistUrl, content!!)
-                        parsedChannels = M3uParser.parse(content!!)
-                    } else {
-                        // Last resort: any previously cached body for this URL.
-                        val cached = getCachedPlaylistContent(playlistUrl)
-                        if (looksLikePlaylistBody(cached)) {
-                            content = cached
-                            parsedChannels = M3uParser.parse(cached!!)
-                            logDebug("PLAYLIST_FLOW", "PLAYLIST_OFFLINE_CACHE_FALLBACK len=${cached.length}")
+                val cacheFile = playlistCacheFile(playlistUrl)
+                var usedNetwork = false
+                val haveDisk = !forceReload && cacheFile.exists() && cacheFile.length() > 64L &&
+                    playlistFileLooksLikeBody(cacheFile)
+
+                if (!haveDisk) {
+                    usedNetwork = true
+                    downloadPlaylistToCache(playlistUrl, cacheFile) { pct ->
+                        if (showDownloadProgress) {
+                            handler.post { showAppLoadingSpinner(pct) }
                         }
                     }
+                } else if (showDownloadProgress) {
+                    handler.post { showAppLoadingSpinner(progressPercent = null) }
                 }
 
-                currentPlaylistText = content.orEmpty()
-                lastLoadedPlaylistUrl = playlistUrl
-                val groupedCategories = parsedChannels
-                    .groupBy { ch -> ch.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
-                    .filterKeys { key -> key != "{region_name}" }
-                val parsedEpgUrls = extractEpgSourcesFromPlaylist(content.orEmpty())
-                // Keep a tiny header cache for Builtin EPG forms without clobbering the body.
-                extractEpgSourcesFromPlaylist(content.orEmpty()).firstOrNull()?.let {
-                    saveCachedPlaylistHeader(
-                        playlistUrl,
-                        content.orEmpty().lineSequence().take(5).joinToString("\n")
-                    )
+                if (!playlistFileLooksLikeBody(cacheFile)) {
+                    throw IOException("Плейлист пуст или повреждён")
                 }
-                val selectedPlaylist = getSelectedPlaylistName()
+
+                // Peek header only — do not keep multi‑MB M3U text in memory.
+                val headerText = runCatching {
+                    cacheFile.bufferedReader(Charsets.UTF_8).use { br ->
+                        br.lineSequence().take(8).joinToString("\n")
+                    }
+                }.getOrDefault("")
+                val parsedEpgUrls = extractEpgSourcesFromPlaylist(headerText)
+                if (parsedEpgUrls.isNotEmpty()) {
+                    saveCachedPlaylistHeader(playlistUrl, headerText.take(16 * 1024))
+                }
+
+                val runtime = Runtime.getRuntime()
+                val freeBefore = runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())
                 logDebug(
                     "PLAYLIST_FLOW",
-                    "PLAYLIST_CLICK selectedPlaylist=$selectedPlaylist forceReload=$forceReload " +
-                        "channelsCount=${parsedChannels.size} bodyLen=${content?.length ?: 0}"
+                    "PLAYLIST_PARSE_START fileBytes=${cacheFile.length()} freeHeap=$freeBefore " +
+                        "forceReload=$forceReload usedNetwork=$usedNetwork"
                 )
-                logDebug("NAV", "playlist_click name=$selectedPlaylist")
 
+                val parsedChannels = try {
+                    M3uParser.parseFile(cacheFile)
+                } catch (oom: OutOfMemoryError) {
+                    System.gc()
+                    throw oom
+                }
+
+                if (parsedChannels.isEmpty() && usedNetwork.not()) {
+                    // Stale/corrupt disk — one network retry.
+                    logDebug("PLAYLIST_FLOW", "PLAYLIST_DISK_EMPTY_RETRY_NETWORK")
+                    downloadPlaylistToCache(playlistUrl, cacheFile) { pct ->
+                        if (showDownloadProgress) handler.post { showAppLoadingSpinner(pct) }
+                    }
+                    val retry = M3uParser.parseFile(cacheFile)
+                    if (retry.isEmpty()) throw IOException("В плейлисте нет каналов")
+                    applyParsedPlaylist(
+                        playlistUrl = playlistUrl,
+                        parsedChannels = retry,
+                        headerText = headerText,
+                        parsedEpgUrls = extractEpgSourcesFromPlaylist(
+                            cacheFile.bufferedReader().use { it.lineSequence().take(8).joinToString("\n") }
+                        ),
+                        autoPlay = autoPlay,
+                        showErrors = showErrors
+                    )
+                    return@thread
+                }
+
+                if (parsedChannels.isEmpty()) {
+                    throw IOException("В плейлисте нет каналов")
+                }
+
+                applyParsedPlaylist(
+                    playlistUrl = playlistUrl,
+                    parsedChannels = parsedChannels,
+                    headerText = headerText,
+                    parsedEpgUrls = parsedEpgUrls,
+                    autoPlay = autoPlay,
+                    showErrors = showErrors
+                )
+            } catch (oom: OutOfMemoryError) {
+                Log.e("PLAYLIST_FLOW", "OOM loading playlist", oom)
+                System.gc()
                 handler.post {
                     hideAppLoadingSpinner()
-                    try {
-                        channels.clear()
-                        channels.addAll(parsedChannels)
-                    } catch (oom: OutOfMemoryError) {
-                        Log.e("PLAYLIST_FLOW", "OOM applying channel list", oom)
-                        channels.clear()
-                        showAppToast("Недостаточно памяти для плейлиста", 4000L)
-                        showHomeAfterPlaylistFailure()
-                        return@post
-                    }
-                    currentPlaylistText = content.orEmpty()
-                    lastLoadedPlaylistUrl = playlistUrl
-                    availableEpgSources = parsedEpgUrls
-                    val savedSelection = getSelectedEpgSources()
-                    selectedEpgSources = savedSelection.toMutableSet()
-                    logDebug(
-                        "EPG_DEBUG",
-                        "EPG_SOURCE_SELECTION playlist=$selectedPlaylist availableEpgSources=$availableEpgSources savedSelection=$savedSelection selectedEpgSources=$selectedEpgSources"
-                    )
-
-                    if (shouldRefreshEpgNow() && !epgFetchInProgress) {
-                        clearEpgRuntimeData()
-                    }
-
-                    if (channels.isEmpty()) {
-                        tvEpg.text = "Каналы не найдены в плейлисте"
-                        showAppToast("В плейлисте нет каналов", 3500L)
-                        showHomeAfterPlaylistFailure()
-                    } else if (shouldOpenLastChannelOnStart && autoPlay) {
-                        if (!restoreLastChannelAndPlay()) {
-                            logDebug("NAV", "startup_last_channel_not_found")
-                            showDefaultStartupScreen()
-                        }
-                    } else if (!autoPlay) {
-                        selectedPlaylistDisplayName = getSelectedPlaylistName()
-                        if (!isSettingsModalVisible) {
-                            logDebug("NAV", "open_categories_screen")
-                            showCategoryTilesOnHome(selectedPlaylistDisplayName, groupedCategories)
-                        }
-                    } else {
-                        logDebug("NAV", "startup_load_ready_without_autonavigation")
-                    }
-
-                    // Heavy EPG alias/logo work after UI is already shown — avoids spinner hangs.
-                    thread(name = "playlist-epg-rebind") {
-                        runCatching {
-                            rebindEpgAliasesForCurrentPlaylist()
-                            applyCachedLogosToChannels()
-                        }
-                        handler.post { refreshOpenOverlayPanelsAfterEpgUpdate() }
-                    }
+                    channels.clear()
+                    cachedCategoryGroups = emptyMap()
+                    currentPlaylistText = ""
+                    showPlaylistMemoryErrorAlert()
+                    showHomeAfterPlaylistFailure()
                 }
             } catch (e: Exception) {
                 Log.e("M3U", "Ошибка загрузки плейлиста: ${redactThrowableChain(e)}")
                 val playlistUrl = runCatching { resolveCurrentPlaylistUrl() }.getOrNull().orEmpty()
-                val cached = if (playlistUrl.isNotBlank()) getCachedPlaylistContent(playlistUrl) else null
-                if (looksLikePlaylistBody(cached)) {
-                    logDebug("PLAYLIST_FLOW", "PLAYLIST_CATCH_CACHE_HIT len=${cached!!.length}")
-                    val parsedChannels = M3uParser.parse(cached)
-                    val groupedCategories = parsedChannels
-                        .groupBy { ch -> ch.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
-                        .filterKeys { key -> key != "{region_name}" }
-                    handler.post {
-                        hideAppLoadingSpinner()
-                        channels.clear()
-                        channels.addAll(parsedChannels)
-                        currentPlaylistText = cached
-                        lastLoadedPlaylistUrl = playlistUrl
-                        if (channels.isEmpty()) {
-                            if (showErrors) showAppToast("В плейлисте нет каналов", 3500L)
-                            showHomeAfterPlaylistFailure()
-                        } else if (!autoPlay) {
-                            selectedPlaylistDisplayName = getSelectedPlaylistName()
-                            if (!isSettingsModalVisible) {
-                                showCategoryTilesOnHome(selectedPlaylistDisplayName, groupedCategories)
+                val cacheFile = if (playlistUrl.isNotBlank()) playlistCacheFile(playlistUrl) else null
+                val canFallback = cacheFile != null && playlistFileLooksLikeBody(cacheFile)
+                if (canFallback) {
+                    runCatching {
+                        val parsedChannels = M3uParser.parseFile(cacheFile!!)
+                        if (parsedChannels.isNotEmpty()) {
+                            applyParsedPlaylist(
+                                playlistUrl = playlistUrl,
+                                parsedChannels = parsedChannels,
+                                headerText = "",
+                                parsedEpgUrls = emptyList(),
+                                autoPlay = autoPlay,
+                                showErrors = false
+                            )
+                            handler.post {
+                                showAppToast("Нет сети — показан сохранённый список", 2800L)
                             }
-                        } else if (shouldOpenLastChannelOnStart) {
-                            if (!restoreLastChannelAndPlay()) showDefaultStartupScreen()
+                            return@thread
                         }
-                        showAppToast("Нет сети — показан сохранённый список", 2800L)
+                    }.onFailure { err ->
+                        logDebug("PLAYLIST_FLOW", "FALLBACK_PARSE_FAIL ${err.message}")
                     }
-                } else {
-                    handler.post {
-                        hideAppLoadingSpinner()
-                        if (showErrors) {
-                            showAppToast("Сервис временно недоступен", 3500L)
-                            showHomeAfterPlaylistFailure()
-                            AlertDialog.Builder(this)
-                                .setTitle("Сервис недоступен")
-                                .setMessage("Не удалось загрузить плейлист. Проверьте токен, ссылку или доступность сервиса.")
-                                .setPositiveButton("Открыть настройки") { _, _ ->
-                                    showSettingsDialog()
-                                    openPlaylistSettingsScreen()
-                                }
-                                .setNegativeButton("Закрыть", null)
-                                .show()
-                        }
-                        tvEpg.text = "Ошибка загрузки плейлиста"
-                        showUI()
+                }
+                handler.post {
+                    hideAppLoadingSpinner()
+                    if (showErrors) {
+                        showPlaylistLoadErrorAlert(e.message ?: e.javaClass.simpleName)
+                        showHomeAfterPlaylistFailure()
                     }
+                    tvEpg.text = "Ошибка загрузки плейлиста"
+                    showUI()
                 }
             }
         }
     }
 
-    /** True when content has at least one channel entry (not a bare #EXTM3U header). */
+    private fun applyParsedPlaylist(
+        playlistUrl: String,
+        parsedChannels: List<Channel>,
+        headerText: String,
+        parsedEpgUrls: List<String>,
+        autoPlay: Boolean,
+        showErrors: Boolean
+    ) {
+        val groupedCategories = parsedChannels
+            .groupBy { ch -> ch.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
+            .filterKeys { key -> key != "{region_name}" }
+        val selectedPlaylist = getSelectedPlaylistName()
+        logDebug(
+            "PLAYLIST_FLOW",
+            "PLAYLIST_CLICK selectedPlaylist=$selectedPlaylist " +
+                "channelsCount=${parsedChannels.size} fileBytes=${playlistCacheFile(playlistUrl).length()}"
+        )
+        logDebug("NAV", "playlist_click name=$selectedPlaylist")
+
+        handler.post {
+            hideAppLoadingSpinner()
+            try {
+                channels.clear()
+                channels.addAll(parsedChannels)
+            } catch (oom: OutOfMemoryError) {
+                Log.e("PLAYLIST_FLOW", "OOM applying channel list", oom)
+                channels.clear()
+                cachedCategoryGroups = emptyMap()
+                showPlaylistMemoryErrorAlert()
+                showHomeAfterPlaylistFailure()
+                return@post
+            }
+            // Keep only a tiny header in RAM for Built-in EPG forms.
+            currentPlaylistText = headerText.take(16 * 1024)
+            lastLoadedPlaylistUrl = playlistUrl
+            availableEpgSources = parsedEpgUrls
+            val savedSelection = getSelectedEpgSources()
+            selectedEpgSources = savedSelection.toMutableSet()
+            cachedCategoryGroups = groupedCategories
+
+            if (shouldRefreshEpgNow() && !epgFetchInProgress) {
+                clearEpgRuntimeData()
+            }
+
+            if (channels.isEmpty()) {
+                tvEpg.text = "Каналы не найдены в плейлисте"
+                if (showErrors) showAppToast("В плейлисте нет каналов", 3500L)
+                showHomeAfterPlaylistFailure()
+            } else if (shouldOpenLastChannelOnStart && autoPlay) {
+                if (!restoreLastChannelAndPlay()) {
+                    logDebug("NAV", "startup_last_channel_not_found")
+                    showDefaultStartupScreen()
+                }
+            } else if (!autoPlay) {
+                selectedPlaylistDisplayName = getSelectedPlaylistName()
+                if (!isSettingsModalVisible) {
+                    logDebug("NAV", "open_categories_screen")
+                    showCategoryTilesOnHome(selectedPlaylistDisplayName, groupedCategories)
+                }
+            } else {
+                logDebug("NAV", "startup_load_ready_without_autonavigation")
+            }
+
+            thread(name = "playlist-epg-rebind") {
+                runCatching {
+                    rebindEpgAliasesForCurrentPlaylist()
+                    applyCachedLogosToChannels()
+                }
+                handler.post { refreshOpenOverlayPanelsAfterEpgUpdate() }
+            }
+        }
+    }
+
+    private fun showPlaylistMemoryErrorAlert() {
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
+            .setTitle("Недостаточно памяти")
+            .setMessage(
+                "На устройстве не хватает памяти, чтобы загрузить этот сервис с большим числом каналов. " +
+                    "Закройте другие приложения и попробуйте снова, либо выберите сервис поменьше."
+            )
+            .setPositiveButton("ОК", null)
+            .show()
+    }
+
+    private fun showPlaylistLoadErrorAlert(detail: String) {
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
+            .setTitle("Ошибка загрузки сервиса")
+            .setMessage(
+                "Не удалось загрузить или сохранить плейлист.\n\n$detail"
+            )
+            .setPositiveButton("ОК", null)
+            .show()
+    }
+
+        /** True when content has at least one channel entry (not a bare #EXTM3U header). */
     private fun looksLikePlaylistBody(content: String?): Boolean {
         if (content.isNullOrBlank()) return false
         return content.contains("#EXTINF", ignoreCase = true)
+    }
+
+    private fun playlistFileLooksLikeBody(file: File): Boolean {
+        if (!file.exists() || file.length() < 16L) return false
+        return runCatching {
+            file.bufferedReader(Charsets.UTF_8).use { br ->
+                var scanned = 0
+                for (line in br.lineSequence()) {
+                    if (line.contains("#EXTINF", ignoreCase = true)) return@use true
+                    scanned += line.length
+                    if (scanned > 256 * 1024) break
+                }
+                false
+            }
+        }.getOrDefault(false)
     }
 
     private fun playlistCacheDir(): File =
@@ -6131,13 +6194,17 @@ private fun showDefaultStartupScreen() {
         return File(playlistCacheDir(), "$key.m3u")
     }
 
-    private fun fetchPlaylistBodyText(
+    /** Stream HTTP body straight to disk — never hold a multi‑MB String in RAM. */
+    private fun downloadPlaylistToCache(
         playlistUrl: String,
+        dest: File,
         onProgress: ((Int) -> Unit)? = null
-    ): String {
+    ) {
+        val tmp = File(dest.parentFile, dest.name + ".tmp")
+        runCatching { if (tmp.exists()) tmp.delete() }
         val conn = (URL(playlistUrl).openConnection() as HttpURLConnection).apply {
             connectTimeout = 12_000
-            readTimeout = 45_000
+            readTimeout = 90_000
             setRequestProperty("User-Agent", userAgent)
             setRequestProperty("Accept", "*/*")
             setRequestProperty("Accept-Encoding", "identity")
@@ -6149,31 +6216,60 @@ private fun showDefaultStartupScreen() {
                 throw IOException("HTTP $code for playlist")
             }
             val total = conn.contentLengthLong.coerceAtLeast(0L)
-            val out = java.io.ByteArrayOutputStream()
-            val buf = ByteArray(64 * 1024)
+            val maxBytes = if (isTelevisionDevice()) 80L * 1024L * 1024L else 200L * 1024L * 1024L
             var readTotal = 0L
             var lastPct = -1
             onProgress?.invoke(0)
             conn.inputStream.use { input ->
-                while (true) {
-                    val n = input.read(buf)
-                    if (n <= 0) break
-                    out.write(buf, 0, n)
-                    readTotal += n
-                    if (onProgress != null && total > 0L) {
-                        val pct = ((readTotal * 100L) / total).toInt().coerceIn(0, 100)
-                        if (pct != lastPct) {
-                            lastPct = pct
-                            onProgress(pct)
+                tmp.outputStream().buffered(64 * 1024).use { out ->
+                    val buf = ByteArray(64 * 1024)
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n <= 0) break
+                        out.write(buf, 0, n)
+                        readTotal += n
+                        if (readTotal > maxBytes) {
+                            throw IOException("Плейлист слишком большой для памяти устройства (${readTotal / (1024 * 1024)} МБ)")
+                        }
+                        if (onProgress != null) {
+                            val pct = if (total > 0L) {
+                                ((readTotal * 100L) / total).toInt().coerceIn(0, 99)
+                            } else {
+                                (1 + (readTotal / (512L * 1024L)).toInt()).coerceIn(1, 95)
+                            }
+                            if (pct != lastPct) {
+                                lastPct = pct
+                                onProgress(pct)
+                            }
                         }
                     }
                 }
             }
+            if (!tmp.renameTo(dest)) {
+                tmp.copyTo(dest, overwrite = true)
+                tmp.delete()
+            }
             onProgress?.invoke(100)
-            return out.toString(Charsets.UTF_8.name())
+            if (!playlistFileLooksLikeBody(dest)) {
+                dest.delete()
+                throw IOException("Ответ сервера не похож на M3U плейлист")
+            }
+        } catch (t: Throwable) {
+            runCatching { tmp.delete() }
+            throw t
         } finally {
             conn.disconnect()
         }
+    }
+
+    private fun fetchPlaylistBodyText(
+        playlistUrl: String,
+        onProgress: ((Int) -> Unit)? = null
+    ): String {
+        // Prefer disk path; keep String API for small favorites / legacy callers.
+        val dest = playlistCacheFile(playlistUrl)
+        downloadPlaylistToCache(playlistUrl, dest, onProgress)
+        return dest.readText(Charsets.UTF_8)
     }
 
     private fun markPlaylistsDiskReady(ready: Boolean) {
@@ -6205,7 +6301,7 @@ private fun showDefaultStartupScreen() {
     private fun playlistsDiskCacheComplete(): Boolean {
         val targets = enabledPlaylistCacheTargets()
         if (targets.isEmpty()) return true
-        return targets.all { (_, url) -> looksLikePlaylistBody(getCachedPlaylistContent(url)) }
+        return targets.all { (_, url) -> playlistFileLooksLikeBody(playlistCacheFile(url)) }
     }
 
     /**
@@ -6240,21 +6336,20 @@ private fun showDefaultStartupScreen() {
             var failed = 0
             targets.forEachIndexed { index, (name, url) ->
                 try {
-                    if (!force && looksLikePlaylistBody(getCachedPlaylistContent(url))) {
+                    val dest = playlistCacheFile(url)
+                    if (!force && playlistFileLooksLikeBody(dest)) {
                         val overall = (((index + 1) * 100) / total).coerceIn(0, 100)
                         handler.post { showAppLoadingSpinner(overall) }
                         return@forEachIndexed
                     }
                     logDebug("PLAYLIST_FLOW", "PRECACHE_START name=$name")
-                    val body = fetchPlaylistBodyText(url) { partPct ->
+                    downloadPlaylistToCache(url, dest) { partPct ->
                         val overall = ((index * 100) + partPct) / total
                         handler.post { showAppLoadingSpinner(overall.coerceIn(0, 100)) }
                     }
-                    if (looksLikePlaylistBody(body)) {
-                        saveCachedPlaylistContent(url, body)
-                    } else {
+                    if (!playlistFileLooksLikeBody(dest)) {
                         failed++
-                        logDebug("PLAYLIST_FLOW", "PRECACHE_EMPTY name=$name len=${body.length}")
+                        logDebug("PLAYLIST_FLOW", "PRECACHE_EMPTY name=$name")
                     }
                     // Release large M3U before the next service — critical on Android 9 TV.
                     if (isTelevisionDevice()) {
@@ -6280,18 +6375,19 @@ private fun showDefaultStartupScreen() {
 
     private fun getCachedPlaylistContent(url: String): String? {
         if (url.isBlank()) return null
-        // Disk first — avoids SharedPreferences bloat/hangs on large M3U.
         runCatching {
             val file = playlistCacheFile(url)
             if (file.exists() && file.length() > 0L) {
+                // Weak TVs: never inflate multi‑MB playlist Strings — callers must use parseFile.
+                if (isTelevisionDevice() && file.length() > 3L * 1024L * 1024L) {
+                    if (!playlistFileLooksLikeBody(file)) file.delete()
+                    return null
+                }
                 val body = file.readText(Charsets.UTF_8)
                 if (looksLikePlaylistBody(body)) return body
-                // Drop header-only junk left from older builds.
                 file.delete()
             }
         }
-        // Do not fall back to SharedPreferences — Android 9 TVs OOM when the prefs
-        // XML still contains multi‑MB playlist bodies from older builds.
         runCatching {
             if (prefs.contains(PREF_PLAYLIST_CONTENT_CACHE)) {
                 prefs.edit().remove(PREF_PLAYLIST_CONTENT_CACHE).apply()
@@ -6305,7 +6401,6 @@ private fun showDefaultStartupScreen() {
         runCatching {
             playlistCacheFile(url).writeText(content, Charsets.UTF_8)
         }
-        // Never keep playlist bodies in SharedPreferences — Android 9 TVs OOM / crash-loop.
         runCatching {
             if (prefs.contains(PREF_PLAYLIST_CONTENT_CACHE)) {
                 prefs.edit().remove(PREF_PLAYLIST_CONTENT_CACHE).apply()
@@ -7164,12 +7259,10 @@ private fun showDefaultStartupScreen() {
         val fromGroups = allChannelsForEpgBind()
         if (fromGroups.isNotEmpty()) return fromGroups
         val url = resolveBuiltinPlaylistUrl().ifBlank { resolveCurrentPlaylistUrl() }
-        val content = when {
-            lastLoadedPlaylistUrl == url && currentPlaylistText.isNotBlank() -> currentPlaylistText
-            else -> getCachedPlaylistContent(url).orEmpty().ifBlank { currentPlaylistText }
-        }
-        if (content.isBlank()) return emptyList()
-        return runCatching { M3uParser.parse(content) }.getOrDefault(emptyList())
+        if (url.isBlank()) return emptyList()
+        val file = playlistCacheFile(url)
+        if (!playlistFileLooksLikeBody(file)) return emptyList()
+        return runCatching { M3uParser.parseFile(file) }.getOrDefault(emptyList())
     }
 
     /** Skip current START_TAG and its children without allocating text (critical for huge <desc>). */
@@ -9021,10 +9114,11 @@ private fun showDefaultStartupScreen() {
         val playBuf: Int
         val rebuf: Int
         if (isTelevisionDevice()) {
-            minBuf = 8_000
-            maxBuf = 40_000
-            playBuf = 2_000
-            rebuf = 4_000
+            // Enough to ride CDN hiccups, not so large that 3–5s HD segments OOM the TV heap.
+            minBuf = 6_000
+            maxBuf = 28_000
+            playBuf = 1_500
+            rebuf = 3_000
         } else {
             minBuf = 3_500
             maxBuf = 18_000
@@ -9045,7 +9139,12 @@ private fun showDefaultStartupScreen() {
                     .sortedBy { it.hardwareAccelerated }
             }
         } else {
-            MediaCodecSelector.DEFAULT
+            // Prefer hardware first — DEFAULT already does, but keep explicit for TV SoCs.
+            MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
+                MediaCodecSelector.DEFAULT
+                    .getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+                    .sortedByDescending { it.hardwareAccelerated }
+            }
         }
 
         val useFfmpegAudio = prefs.getBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, USE_FFMPEG_AUDIO_FOR_MPEG_L2)
@@ -9067,10 +9166,14 @@ private fun showDefaultStartupScreen() {
         val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory).setDataSourceFactory(httpFactory)
 
         trackSelector = DefaultTrackSelector(this).apply {
+            val tvCaps = isTelevisionDevice()
+            // Cap adaptive ladder on weak TVs — 1080p@8Mbps + soft decode drops frames hard.
+            val maxH = if (tvCaps) 720 else Int.MAX_VALUE
+            val maxBr = if (tvCaps) 4_500_000 else Int.MAX_VALUE
             setParameters(
                 buildUponParameters()
-                    .clearVideoSizeConstraints()
-                    .setMaxVideoBitrate(Int.MAX_VALUE)
+                    .setMaxVideoSize(if (tvCaps) 1280 else Int.MAX_VALUE, maxH)
+                    .setMaxVideoBitrate(maxBr)
                     .setExceedVideoConstraintsIfNecessary(true)
                     .setForceHighestSupportedBitrate(false)
                     .setForceLowestBitrate(false)
@@ -9205,28 +9308,20 @@ private fun showDefaultStartupScreen() {
                         logDebug("PLAYER_STATE", "onPlayerError url=$lastRequestedPlaybackUrl message=${error.message} code=${error.errorCode} codeName=${error.errorCodeName} causeChain=$causeChain", error)
                         startupPlaybackUrlLock = null
                         logMemoryStats("on_player_error")
-                        if (
+                        val isPlaylistReset = causeChain.contains("PlaylistResetException", ignoreCase = true)
+                        val isSourceIo =
                             error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
-                            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
-                            error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
-                            error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
-                        ) {
+                                error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                                error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
+                                error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED ||
+                                error.errorCode == PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE
+                        // Source/CDN resets are NOT decoder failures — do not permanently disable GPU.
+                        if (isSourceIo && !isPlaylistReset) {
                             videoRendererPossiblyBroken = true
-                            logDebug("PLAYER_LIFECYCLE", "PLAYER_ERROR_SOURCE marked_renderer_tainted=true errorCode=${error.errorCode} codeName=${error.errorCodeName}")
-                        }
-                        if (isTelevisionDevice() && preferGpuDecoding && !softwareDecoderMode) {
-                            // Texture/Surface + HW decoder glitches on some TV SoCs (e.g. Only4).
-                            // Fall back to software once for this session.
-                            logDebug("PLAYER_LIFECYCLE", "TV_HW_GLITCH_FALLBACK switching to software decoder")
-                            preferGpuDecoding = false
-                            softwareDecoderMode = true
-                            prefs.edit().putBoolean(PREF_USE_GPU_DECODER, false).apply()
-                            handler.post {
-                                if (isFinishing || isDestroyed) return@post
-                                setupPlayer(preferSoftwareDecoder = true)
-                                playChannel(forcePlay = true, reason = PlayerOpenReason.RECOVERY)
-                            }
-                            return
+                            logDebug(
+                                "PLAYER_LIFECYCLE",
+                                "PLAYER_ERROR_SOURCE marked_renderer_tainted=true errorCode=${error.errorCode}"
+                            )
                         }
                         handler.post {
                             if (isFinishing || isDestroyed) return@post
@@ -9241,34 +9336,53 @@ private fun showDefaultStartupScreen() {
                                 handler.postDelayed(playbackFreezeWatchdogRunnable, PLAYBACK_STALL_WATCHDOG_MS)
                                 return@post
                             }
-                            if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+                            // Wink CDN media-sequence jumps / live window resets: auto-reload.
+                            if (isPlaylistReset ||
+                                error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW
+                            ) {
                                 if (behindLiveWindowRecoveryInProgress) {
-                                    showPlaybackFailureAndReturn(lastRequestedPlaybackUrl, "ERROR_CODE_BEHIND_LIVE_WINDOW")
+                                    notifyPlaybackStall("Сброс плейлиста потока", immediate = true)
                                     return@post
                                 }
                                 behindLiveWindowRecoveryInProgress = true
-                                logDebug("PLAYER_STATE", "BEHIND_LIVE_WINDOW recovery started attempt=1 url=$lastRequestedPlaybackUrl")
-                                val playerRef = mediaPlayer ?: run {
+                                logDebug(
+                                    "PLAYER_STATE",
+                                    "PLAYLIST_RESET_RECOVERY started url=$lastRequestedPlaybackUrl"
+                                )
+                                forceFreshPlayerSession = true
+                                try {
+                                    playChannel(forcePlay = true, reason = PlayerOpenReason.RECOVERY)
+                                } finally {
                                     behindLiveWindowRecoveryInProgress = false
-                                    return@post
                                 }
-                                val allowNonIdr = prefs.getBoolean(PREF_HLS_ALLOW_NON_IDR, false)
-                                playerRef.stop()
-                                playerRef.clearMediaItems()
-                                logPathState("BEHIND_LIVE_WINDOW after_clear")
-                                playerRef.setMediaSource(buildPlaybackMediaSource(lastRequestedPlaybackUrl, allowNonIdr))
-                                playerRef.seekToDefaultPosition()
-                                logPathState("BEHIND_LIVE_WINDOW after_seek_default")
-                                playerRef.prepare()
-                                playerRef.playWhenReady = true
-                                playerRef.play()
-                                logPathState("BEHIND_LIVE_WINDOW after_prepare_play")
-                                behindLiveWindowRecoveryInProgress = false
+                                return@post
+                            }
+                            // Only fall back to software after real decoder/renderer failures.
+                            val isDecoderFailure =
+                                error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+                                    error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED ||
+                                    error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
+                                    error.errorCodeName.contains("DECODER", ignoreCase = true)
+                            if (isTelevisionDevice() && isDecoderFailure &&
+                                preferGpuDecoding && !softwareDecoderMode
+                            ) {
+                                logDebug("PLAYER_LIFECYCLE", "TV_HW_GLITCH_FALLBACK software decoder (session only)")
+                                softwareDecoderMode = true
+                                // Do NOT persist — software 1080p causes frame drops on TV.
+                                setupPlayer(preferSoftwareDecoder = true)
+                                playChannel(forcePlay = true, reason = PlayerOpenReason.RECOVERY)
                                 return@post
                             }
                             if (error.errorCodeName == "ERROR_CODE_FAILED_RUNTIME_CHECK") {
                                 showCenterError("Буферизация потока, попробуйте LIVE", 2000L)
                                 startupPlaybackUrlLock = null
+                                return@post
+                            }
+                            if (isSourceIo) {
+                                notifyPlaybackStall(
+                                    "Ошибка источника: ${error.errorCodeName}",
+                                    immediate = true
+                                )
                                 return@post
                             }
                             showPlaybackFailureAndReturn(
@@ -10233,6 +10347,11 @@ private fun showDefaultStartupScreen() {
         val packageInfo = packageManager.getPackageInfo(packageName, 0)
         val currentVersion =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) packageInfo.longVersionCode else packageInfo.versionCode.toLong()
+        // Previous builds permanently wrote GPU=off after Wink PlaylistResetException,
+        // forcing software 1080p decode and frame drops. Re-enable HW by default on TV.
+        if (isTelevisionDevice() && !prefs.getBoolean(PREF_USE_GPU_DECODER, true)) {
+            prefs.edit().putBoolean(PREF_USE_GPU_DECODER, true).apply()
+        }
         preferGpuDecoding = prefs.getBoolean(PREF_USE_GPU_DECODER, true)
         softwareDecoderMode = !preferGpuDecoding
 
@@ -11001,9 +11120,15 @@ private fun showDefaultStartupScreen() {
             return emptyList()
         }
         val header = getCachedPlaylistHeader(url).orEmpty()
-        val cached = getCachedPlaylistContent(url).orEmpty()
         val memory = if (lastLoadedPlaylistUrl == url) currentPlaylistText else ""
-        val candidates = listOf(header, cached, memory).filter { it.isNotBlank() }.distinct()
+        val fileHeader = runCatching {
+            val f = playlistCacheFile(url)
+            if (!f.exists()) ""
+            else f.bufferedReader(Charsets.UTF_8).use { br ->
+                br.lineSequence().take(8).joinToString("\n")
+            }
+        }.getOrDefault("")
+        val candidates = listOf(header, memory, fileHeader).filter { it.isNotBlank() }.distinct()
         for (content in candidates) {
             val parsed = extractEpgSourcesFromPlaylist(content)
             if (parsed.isNotEmpty()) {
@@ -11014,7 +11139,7 @@ private fun showDefaultStartupScreen() {
         }
         logDebug(
             "EPG_DEBUG",
-            "BUILTIN_SOURCES miss url=$url headerLen=${header.length} cachedLen=${cached.length} memoryLen=${memory.length}"
+            "BUILTIN_SOURCES miss url=$url headerLen=${header.length} memoryLen=${memory.length}"
         )
         return emptyList()
     }
@@ -11486,40 +11611,42 @@ private fun showDefaultStartupScreen() {
         val prefsFile = File(applicationInfo.dataDir, "shared_prefs/oportal_settings.xml")
         if (!prefsFile.exists()) return
         val len = prefsFile.length()
-        if (len < 750_000L) {
+        val heavyKeys = listOf(PREF_EPG_CACHE, PREF_LOGO_CACHE, PREF_PLAYLIST_CONTENT_CACHE)
+        // Never open SharedPreferences first on a fat XML — that alone OOMs Android 9.
+        if (len >= 400_000L) {
+            Log.w("CACHE", "Bloated shared_prefs detected size=$len — rewriting without heavy keys")
             runCatching {
-                getSharedPreferences("oportal_settings", MODE_PRIVATE)
-                    .edit()
-                    .remove(PREF_EPG_CACHE)
-                    .apply()
+                if (len > 8_000_000L) {
+                    val bak = File(prefsFile.parentFile, "oportal_settings.xml.bloated.bak")
+                    if (bak.exists()) bak.delete()
+                    prefsFile.renameTo(bak)
+                    Log.e("CACHE", "Quarantined bloated prefs ($len bytes) to ${bak.name}")
+                    return
+                }
+                var xml = prefsFile.readText(Charsets.UTF_8)
+                for (key in heavyKeys) {
+                    xml = removeSharedPrefsXmlEntry(xml, "string", key)
+                    xml = removeSharedPrefsXmlEntry(xml, "set", key)
+                }
+                prefsFile.writeText(xml)
+                Log.w("CACHE", "Rewrote shared_prefs without heavy cache keys (was $len bytes)")
+            }.onFailure { err ->
+                Log.e("CACHE", "Failed to scrub shared_prefs — quarantining", err)
+                runCatching {
+                    val bak = File(prefsFile.parentFile, "oportal_settings.xml.bloated.bak")
+                    if (bak.exists()) bak.delete()
+                    prefsFile.renameTo(bak)
+                }
             }
             return
         }
-        Log.w("CACHE", "Bloated shared_prefs detected size=$len — rewriting without heavy keys")
         runCatching {
-            val original = prefsFile.readBytes()
-            if (original.size > 12_000_000) {
-                val bak = File(prefsFile.parentFile, "oportal_settings.xml.bloated.bak")
-                if (bak.exists()) bak.delete()
-                prefsFile.renameTo(bak)
-                Log.e("CACHE", "Quarantined bloated prefs (${original.size} bytes) to ${bak.name}")
-                return
-            }
-            var xml = original.toString(Charsets.UTF_8)
-            val heavyKeys = listOf(PREF_EPG_CACHE, PREF_LOGO_CACHE, PREF_PLAYLIST_CONTENT_CACHE)
-            for (key in heavyKeys) {
-                xml = removeSharedPrefsXmlEntry(xml, "string", key)
-                xml = removeSharedPrefsXmlEntry(xml, "set", key)
-            }
-            prefsFile.writeText(xml)
-            Log.w("CACHE", "Rewrote shared_prefs without heavy cache keys (was $len bytes)")
-        }.onFailure { err ->
-            Log.e("CACHE", "Failed to scrub shared_prefs — quarantining", err)
-            runCatching {
-                val bak = File(prefsFile.parentFile, "oportal_settings.xml.bloated.bak")
-                if (bak.exists()) bak.delete()
-                prefsFile.renameTo(bak)
-            }
+            getSharedPreferences("oportal_settings", MODE_PRIVATE)
+                .edit()
+                .remove(PREF_EPG_CACHE)
+                .remove(PREF_PLAYLIST_CONTENT_CACHE)
+                .remove(PREF_LOGO_CACHE)
+                .apply()
         }
     }
 
