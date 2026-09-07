@@ -48,6 +48,7 @@ import android.text.style.MetricAffectingSpan
 import android.view.ScaleGestureDetector
 import android.Manifest
 import android.content.pm.PackageManager
+import android.media.MediaScannerConnection
 import android.provider.Settings
 import android.content.Intent
 import android.widget.AdapterView
@@ -264,7 +265,16 @@ class MainActivity : AppCompatActivity() {
     private var tvEpgLoadStatus: TextView? = null
     private var pendingAfterStoragePermission: (() -> Unit)? = null
     private val REQ_EPG_STORAGE_PERMISSION = 9911
+    private val REQ_DEBUG_LOG_STORAGE_PERMISSION = 9912
     private val lastEpgStatusPostAtMs = mutableMapOf<String, Long>()
+    /** Public Download/O.Portal log (user-visible); separate from app-private filesDir. */
+    private val publicDebugLogLock = Any()
+    private var publicDebugLogUri: Uri? = null
+    private var publicDebugLogFile: File? = null
+    private var publicDebugLogPermissionRequested = false
+    private var publicDebugLogScanPending = false
+    private var publicDebugLogLastScanElapsedMs = 0L
+    private var publicDebugLogFailLogged = false
 
     data class QualityOption(val label: String, val height: Int, val url: String)
     data class SubtitleOption(val label: String, val language: String?, val url: String)
@@ -883,6 +893,10 @@ class MainActivity : AppCompatActivity() {
         private const val PLAYBACK_AUDIO_WITHOUT_VIDEO_MS = 2_000L
         // Keep player buttons reachable; short hide made L/R open EPG instead of LIVE.
         private const val PLAYER_CHROME_HIDE_MS = 6_000L
+        /** User-visible debug logs: Загрузки/Download/O.Portal/ (not app-private Android/). */
+        private const val PUBLIC_LOG_DIR_NAME = "O.Portal"
+        private const val PUBLIC_LOG_FILE_NAME = "player_debug.log"
+        private const val PRIVATE_DEBUG_LOG_NAME = "player_debug.log"
         private const val PREF_EPG_CACHE = "epg_cache"
         private const val PREF_EPG_STATUS = "epg_status"
         private const val PREF_EPG_LAST_REFRESH = "epg_last_refresh"
@@ -1220,6 +1234,16 @@ class MainActivity : AppCompatActivity() {
         startEpgTicker()
         scheduleEpgRefreshAlarm()
         applyLockButtonVisibility()
+        // Seed public Download/O.Portal log early (Android 9 TV may need WRITE_EXTERNAL_STORAGE).
+        installPublicCrashLogHook()
+        handler.post {
+            ensureLegacyWriteStoragePermission()
+            logDebug(
+                "LOG",
+                "public debug log target=Download/$PUBLIC_LOG_DIR_NAME/$PUBLIC_LOG_FILE_NAME " +
+                    "sdk=${Build.VERSION.SDK_INT} tv=${isTelevisionDevice()}"
+            )
+        }
         // Never precache all services at startup (Wink/Only4 OOMs Android 9 TV).
         // Percent progress is only shown when the user opens a specific service.
         if (shouldOpenLastChannelOnStart) {
@@ -5523,7 +5547,7 @@ private fun showDefaultStartupScreen() {
     private fun showSettingsPlaceholderDialog() {
         AlertDialog.Builder(this)
             .setTitle("Дополнительные настройки")
-            .setMessage("Экспорт debug лога")
+            .setMessage("Экспорт debug лога в Загрузки/O.Portal")
             .setPositiveButton("Экспорт") { _, _ -> exportDebugLogToDownloads() }
             .setNeutralButton("FFmpeg audio toggle") { _, _ ->
                 val current = prefs.getBoolean(PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2, USE_FFMPEG_AUDIO_FOR_MPEG_L2)
@@ -8580,13 +8604,30 @@ private fun showDefaultStartupScreen() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode != REQ_EPG_STORAGE_PERMISSION) return
-        val pending = pendingAfterStoragePermission
-        pendingAfterStoragePermission = null
-        if (grantResults.isEmpty() || grantResults.all { it != PackageManager.PERMISSION_GRANTED }) {
-            showAppToast("Без доступа к файлам локальный EPG может не читаться", 3500L)
+        when (requestCode) {
+            REQ_DEBUG_LOG_STORAGE_PERMISSION -> {
+                val granted = grantResults.isNotEmpty() &&
+                    grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+                if (granted) {
+                    logDebug("LOG", "public Download/O.Portal storage permission granted")
+                } else {
+                    showAppToast(
+                        "Нет доступа к Загрузкам — лог останется только внутри приложения",
+                        3500L
+                    )
+                }
+            }
+            REQ_EPG_STORAGE_PERMISSION -> {
+                val pending = pendingAfterStoragePermission
+                pendingAfterStoragePermission = null
+                if (grantResults.isEmpty() ||
+                    grantResults.all { it != PackageManager.PERMISSION_GRANTED }
+                ) {
+                    showAppToast("Без доступа к файлам локальный EPG может не читаться", 3500L)
+                }
+                pending?.invoke()
+            }
         }
-        pending?.invoke()
     }
 
     private fun clearEpgCacheFiles() {
@@ -10950,11 +10991,21 @@ private fun showDefaultStartupScreen() {
             // While chrome is visible, L/R only move between player buttons — and chrome
             // stays up for as long as focus remains on those buttons.
             keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                logDebug(
+                    "NAV",
+                    "DPAD_RIGHT_OPEN_EPG sdk=${Build.VERSION.SDK_INT} " +
+                        "channels=${channels.size} focus=${currentFocus?.javaClass?.simpleName}"
+                )
                 toggleEpgPanel()
                 return true
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_LEFT -> {
+                logDebug(
+                    "NAV",
+                    "DPAD_LEFT_OPEN_CHANNEL_LIST sdk=${Build.VERSION.SDK_INT} " +
+                        "channels=${channels.size} focus=${currentFocus?.javaClass?.simpleName}"
+                )
                 showChannelListPanel()
                 return true
             }
@@ -12478,49 +12529,238 @@ private fun showDefaultStartupScreen() {
         return chain.joinToString(" -- caused by: ") { redactSensitive(it.toString()) }
     }
 
-    private fun logDebug(tag: String, message: String, tr: Throwable? = null) {
-        val safeMessage = redactSensitive(message)
-        Log.i(tag, safeMessage, tr)
-        runCatching<Unit> {
-            val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
-            val line = "$ts [$tag] $safeMessage\n"
-            val out = openFileOutput("player_debug.log", Context.MODE_APPEND)
-            out.use { stream -> stream.write(line.toByteArray()) }
+    private fun privateDebugLogFile(): File = File(filesDir, PRIVATE_DEBUG_LOG_NAME)
+
+    /** Persist uncaught crashes into Download/O.Portal so Android 9 TV dumps are recoverable. */
+    private fun installPublicCrashLogHook() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            runCatching {
+                val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
+                val safe = redactSensitive(Log.getStackTraceString(error))
+                val line = "$ts [FATAL] thread=${thread.name} $safe\n"
+                val bytes = line.toByteArray(Charsets.UTF_8)
+                runCatching { privateDebugLogFile().appendBytes(bytes) }
+                appendPublicDebugLog(bytes)
+            }
+            previous?.uncaughtException(thread, error)
         }
     }
 
+    private fun logDebug(tag: String, message: String, tr: Throwable? = null) {
+        val safeMessage = redactSensitive(message)
+        Log.i(tag, safeMessage, tr)
+        val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
+        val line = "$ts [$tag] $safeMessage\n"
+        val bytes = line.toByteArray(Charsets.UTF_8)
+        // App-private backup (always writable).
+        runCatching {
+            privateDebugLogFile().appendBytes(bytes)
+        }
+        // User-visible Download/O.Portal — same folder on phones and Android 9 TV.
+        appendPublicDebugLog(bytes)
+    }
+
+    private fun appendPublicDebugLog(bytes: ByteArray) {
+        runCatching {
+            synchronized(publicDebugLogLock) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    appendPublicDebugLogMediaStore(bytes)
+                } else {
+                    appendPublicDebugLogLegacyFile(bytes)
+                }
+            }
+        }.onFailure { err ->
+            if (!publicDebugLogFailLogged) {
+                publicDebugLogFailLogged = true
+                Log.w("LOG", "public O.Portal log write failed: ${err.message}", err)
+            }
+        }
+    }
+
+    private fun ensureLegacyWriteStoragePermission(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) return true
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+        if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return true
+        }
+        if (!publicDebugLogPermissionRequested && !isFinishing) {
+            publicDebugLogPermissionRequested = true
+            runCatching {
+                requestPermissions(
+                    arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE),
+                    REQ_DEBUG_LOG_STORAGE_PERMISSION
+                )
+            }
+        }
+        return false
+    }
+
+    @Suppress("DEPRECATION")
+    private fun publicOPortalDir(): File {
+        val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        if (!downloads.exists()) downloads.mkdirs()
+        return File(downloads, PUBLIC_LOG_DIR_NAME)
+    }
+
+    private fun appendPublicDebugLogLegacyFile(bytes: ByteArray) {
+        if (!ensureLegacyWriteStoragePermission()) return
+        val dir = publicOPortalDir()
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw IllegalStateException("Не удалось создать ${dir.absolutePath}")
+        }
+        val file = File(dir, PUBLIC_LOG_FILE_NAME)
+        val created = !file.exists()
+        file.appendBytes(bytes)
+        publicDebugLogFile = file
+        if (created || publicDebugLogScanPending) {
+            publicDebugLogScanPending = false
+            scanPublicDebugLogFile(file)
+        } else {
+            maybeRescanPublicDebugLog(file)
+        }
+    }
+
+    private fun maybeRescanPublicDebugLog(file: File) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - publicDebugLogLastScanElapsedMs < 30_000L) return
+        publicDebugLogLastScanElapsedMs = now
+        scanPublicDebugLogFile(file)
+    }
+
+    private fun scanPublicDebugLogFile(file: File) {
+        publicDebugLogLastScanElapsedMs = android.os.SystemClock.elapsedRealtime()
+        runCatching {
+            MediaScannerConnection.scanFile(
+                applicationContext,
+                arrayOf(file.absolutePath),
+                arrayOf("text/plain"),
+                null
+            )
+        }
+    }
+
+    private fun appendPublicDebugLogMediaStore(bytes: ByteArray) {
+        val uri = publicDebugLogUri ?: findOrCreatePublicDebugLogUri().also {
+            publicDebugLogUri = it
+        }
+        contentResolver.openOutputStream(uri, "wa")?.use { out ->
+            out.write(bytes)
+            out.flush()
+        } ?: throw IllegalStateException("Не удалось открыть Download/O.Portal/$PUBLIC_LOG_FILE_NAME")
+    }
+
+    private fun findOrCreatePublicDebugLogUri(): Uri {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            throw IllegalStateException("MediaStore Downloads requires API 29+")
+        }
+        val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/$PUBLIC_LOG_DIR_NAME/"
+        val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        contentResolver.query(
+            collection,
+            arrayOf(MediaStore.Downloads._ID),
+            "${MediaStore.Downloads.DISPLAY_NAME}=? AND ${MediaStore.Downloads.RELATIVE_PATH}=?",
+            arrayOf(PUBLIC_LOG_FILE_NAME, relativePath),
+            null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val id = cursor.getLong(0)
+                return Uri.withAppendedPath(collection, id.toString())
+            }
+        }
+        // Some TV firmwares store RELATIVE_PATH without trailing slash — retry loose match.
+        contentResolver.query(
+            collection,
+            arrayOf(MediaStore.Downloads._ID, MediaStore.Downloads.RELATIVE_PATH),
+            "${MediaStore.Downloads.DISPLAY_NAME}=?",
+            arrayOf(PUBLIC_LOG_FILE_NAME),
+            "${MediaStore.Downloads.DATE_MODIFIED} DESC"
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val path = cursor.getString(1).orEmpty()
+                if (path.contains(PUBLIC_LOG_DIR_NAME)) {
+                    val id = cursor.getLong(0)
+                    return Uri.withAppendedPath(collection, id.toString())
+                }
+            }
+        }
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, PUBLIC_LOG_FILE_NAME)
+            put(MediaStore.Downloads.MIME_TYPE, "text/plain")
+            put(MediaStore.Downloads.RELATIVE_PATH, relativePath)
+            put(MediaStore.Downloads.IS_PENDING, 0)
+        }
+        return contentResolver.insert(collection, values)
+            ?: throw IllegalStateException("Не удалось создать Download/$PUBLIC_LOG_DIR_NAME/$PUBLIC_LOG_FILE_NAME")
+    }
+
     private fun exportDebugLogToDownloads() {
-        val src = File(filesDir, "player_debug.log")
-        if (!src.exists()) {
+        val src = privateDebugLogFile()
+        if (!src.exists() || src.length() == 0L) {
             showAppToast("Файл лога ещё не создан")
             return
         }
-        val fileName = "player_debug_${System.currentTimeMillis()}.log"
+        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        val fileName = "player_debug_$stamp.log"
         runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val resolver = contentResolver
+            // Also refresh the live rolling log in O.Portal.
+            src.readBytes().let { bytes ->
+                // Rewrite live file from private backup so export and live stay in sync.
+                synchronized(publicDebugLogLock) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        publicDebugLogUri = null
+                        val liveUri = findOrCreatePublicDebugLogUri().also { publicDebugLogUri = it }
+                        contentResolver.openOutputStream(liveUri, "wt")?.use { out ->
+                            out.write(bytes)
+                            out.flush()
+                        }
+                    } else if (ensureLegacyWriteStoragePermission()) {
+                        val dir = publicOPortalDir()
+                        if (!dir.exists()) dir.mkdirs()
+                        val live = File(dir, PUBLIC_LOG_FILE_NAME)
+                        live.writeBytes(bytes)
+                        publicDebugLogFile = live
+                        scanPublicDebugLogFile(live)
+                    }
+                }
+            }
+            val exportedPath: String = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/$PUBLIC_LOG_DIR_NAME/"
                 val values = ContentValues().apply {
                     put(MediaStore.Downloads.DISPLAY_NAME, fileName)
                     put(MediaStore.Downloads.MIME_TYPE, "text/plain")
+                    put(MediaStore.Downloads.RELATIVE_PATH, relativePath)
                     put(MediaStore.Downloads.IS_PENDING, 1)
                 }
-                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                    ?: throw IllegalStateException("Не удалось создать файл в Загрузках")
-                resolver.openOutputStream(uri)?.use { out ->
+                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: throw IllegalStateException("Не удалось создать файл в Загрузках/O.Portal")
+                contentResolver.openOutputStream(uri)?.use { out ->
                     src.inputStream().use { it.copyTo(out) }
                 } ?: throw IllegalStateException("Не удалось открыть поток для записи")
                 values.clear()
                 values.put(MediaStore.Downloads.IS_PENDING, 0)
-                resolver.update(uri, values, null, null)
-                showAppToast("Лог сохранён в Загрузки: $fileName", 3500L)
+                contentResolver.update(uri, values, null, null)
+                "Загрузки/$PUBLIC_LOG_DIR_NAME/$fileName"
             } else {
-                @Suppress("DEPRECATION")
-                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                if (!dir.exists()) dir.mkdirs()
+                if (!ensureLegacyWriteStoragePermission()) {
+                    throw IllegalStateException("Нет разрешения на запись в Загрузки")
+                }
+                val dir = publicOPortalDir()
+                if (!dir.exists() && !dir.mkdirs()) {
+                    throw IllegalStateException("Не удалось создать ${dir.absolutePath}")
+                }
                 val dst = File(dir, fileName)
                 src.copyTo(dst, overwrite = true)
-                showAppToast("Лог сохранён: ${dst.absolutePath}", 3500L)
+                scanPublicDebugLogFile(dst)
+                dst.absolutePath
             }
+            showAppToast(
+                "Лог: Загрузки/$PUBLIC_LOG_DIR_NAME/ ($exportedPath)",
+                4500L
+            )
+            logDebug("LOG", "exported debug log to $exportedPath")
         }.onFailure { error: Throwable ->
             showAppToast("Ошибка экспорта: ${error.message}", 3500L)
         }
