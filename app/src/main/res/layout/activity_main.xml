@@ -207,11 +207,15 @@
             android:layout_width="@dimen/player_control_button_size"
             android:layout_height="@dimen/player_control_button_size"
             android:layout_gravity="center_vertical"
-            android:background="@drawable/bg_player_glass_plate"
+            android:background="@drawable/bg_player_button_plain"
+            android:defaultFocusHighlightEnabled="false"
             android:padding="@dimen/player_control_icon_padding"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_back_player"
-            android:contentDescription="Back to menu" />
+            android:contentDescription="Back to menu"
+            android:focusable="false"
+            android:clickable="true"
+            android:nextFocusDown="@id/timelineTrack" />
 
         <LinearLayout
             android:id="@+id/liveStatusBadge"
@@ -439,7 +443,7 @@
                 android:focusable="true"
                 android:clickable="true"
                 android:nextFocusLeft="@id/btnBackLeft"
-                android:nextFocusRight="@id/btnLock"
+                android:nextFocusRight="@id/btnEpgPlayer"
                 android:padding="@dimen/player_control_icon_padding" />
 
             <ImageButton
@@ -468,7 +472,7 @@
                 android:scaleType="fitCenter"
                 android:focusable="true"
                 android:clickable="true"
-                android:nextFocusLeft="@id/btnLock"
+                android:nextFocusLeft="@id/btnBackRight"
                 android:nextFocusRight="@id/btnAspectRatio"
                 android:padding="@dimen/player_control_icon_padding" />
 
@@ -1432,17 +1436,15 @@
         android:focusable="true"
         android:elevation="80dp">
 
-        <TextView
+        <ImageView
             android:id="@+id/launchSplashLogo"
-            style="@style/AppGolosText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:includeFontPadding="false"
+            android:adjustViewBounds="true"
             android:importantForAccessibility="no"
-            android:text="O.Portal"
-            android:textColor="#FFFFFF"
-            android:textSize="@dimen/home_app_title_size" />
+            android:scaleType="fitCenter"
+            android:src="@drawable/splash_wordmark_icon" />
 
         <FrameLayout
             android:layout_width="wrap_content"

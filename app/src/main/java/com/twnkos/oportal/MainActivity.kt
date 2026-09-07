@@ -1224,8 +1224,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupLaunchSplashOverlay() {
         val splash = findViewById<View>(R.id.launchSplashOverlay) ?: return
-        val logo = findViewById<TextView>(R.id.launchSplashLogo)
-        logo?.text = buildPortalWordmarkSpan()
+        val logo = findViewById<ImageView>(R.id.launchSplashLogo)
+        // Same PNG + circular safe-zone crop as system SplashScreen (not TextView spans).
+        logo?.setImageResource(R.drawable.splash_wordmark_icon)
         splash.setBackgroundResource(R.drawable.bg_home_screen)
         splash.visibility = View.VISIBLE
         splash.alpha = 1f
@@ -1234,25 +1235,15 @@ class MainActivity : AppCompatActivity() {
         hideAppLoadingSpinner()
         startCompositeSpinner(findViewById(R.id.launchSplashSpinner))
         launchSplashShownAtElapsedMs = android.os.SystemClock.elapsedRealtime()
-        // System splash now also shows the O.Portal wordmark. Keep it until the in-app
-        // overlay (logo + bottom spinner) has been laid out, then hand off seamlessly.
-        // Wordmark width ≈ 35% of screen width (height-based sizing made it huge).
+        // Match system splash icon scale: keep wordmark compact in the center.
         splash.post {
             keepLaunchSplashOnScreen = false
-            if (splash.width <= 0 || splash.height <= 0) return@post
-            val targetWidth = (splash.width * 0.35f).coerceAtLeast(1f)
-            var textPx = splash.height * 0.12f
-            logo?.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textPx)
-            logo?.measure(
-                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
-                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-            )
-            val measuredW = (logo?.measuredWidth ?: 0).toFloat().coerceAtLeast(1f)
-            textPx = (textPx * (targetWidth / measuredW)).coerceIn(
-                splash.height * 0.06f,
-                splash.height * 0.16f
-            )
-            logo?.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textPx)
+            if (splash.width <= 0 || splash.height <= 0 || logo == null) return@post
+            val target = (minOf(splash.width, splash.height) * 0.42f).toInt().coerceAtLeast(1)
+            val lp = logo.layoutParams
+            lp.width = target
+            lp.height = target
+            logo.layoutParams = lp
         }
     }
 
@@ -1515,12 +1506,27 @@ private fun showDefaultStartupScreen() {
         tvHomeBreadcrumbPill.visibility = if (settingsMode) View.VISIBLE else View.GONE
         if (settingsMode) {
             tvHomeBreadcrumbPill.text = settingsTitle.lowercase(Locale.getDefault())
+            tvHomeBreadcrumbPill.nextFocusUpId = R.id.ivHomeSettings
+            val settingsOpen = isSettingsModalVisible ||
+                (::homeSettingsScreen.isInitialized && homeSettingsScreen.visibility == View.VISIBLE)
+            tvHomeBreadcrumbPill.nextFocusDownId = when {
+                settingsOpen -> R.id.btnPlaylistSettings
+                etHomeListSearch.visibility == View.VISIBLE -> R.id.etHomeListSearch
+                homePlaylistTilesPanel.visibility == View.VISIBLE -> R.id.rvHomeTiles
+                else -> R.id.gvHomeChannelList
+            }
         }
         val showSecondLevel = settingsMode && !settingsTitle2.isNullOrBlank()
         tvHomeBreadcrumbArrow2.visibility = if (showSecondLevel) View.VISIBLE else View.GONE
         tvHomeBreadcrumbPill2.visibility = if (showSecondLevel) View.VISIBLE else View.GONE
         if (showSecondLevel) {
             tvHomeBreadcrumbPill2.text = settingsTitle2!!.lowercase(Locale.getDefault())
+            tvHomeBreadcrumbPill2.nextFocusUpId = R.id.ivHomeSettings
+            tvHomeBreadcrumbPill2.nextFocusDownId = tvHomeBreadcrumbPill.nextFocusDownId
+            tvHomeBreadcrumbPill.nextFocusRightId = R.id.tvHomeBreadcrumbPill2
+            tvHomeBreadcrumbPill2.nextFocusLeftId = R.id.tvHomeBreadcrumbPill
+        } else {
+            tvHomeBreadcrumbPill.nextFocusRightId = View.NO_ID
         }
     }
 
@@ -2676,43 +2682,45 @@ private fun showDefaultStartupScreen() {
             HomeSearchMode.CATEGORIES -> {
                 val q = query.trim()
                 val token = ++homeSearchApplyToken
-                // Filter off the main thread — large category lists hitch the remote on TV.
-                thread(name = "home-search-cat") {
-                    val names = if (q.isBlank()) {
-                        allCategoryNamesForSearch
-                    } else {
-                        val ql = q.lowercase(Locale.getDefault())
-                        allCategoryNamesForSearch.filter {
-                            it.lowercase(Locale.getDefault()).contains(ql)
-                        }
-                    }
-                    handler.post {
-                        if (token != homeSearchApplyToken) return@post
-                        if (homeSearchMode != HomeSearchMode.CATEGORIES) return@post
-                        bindHomeTiles(names.map { category ->
-                            HomeTileItem(category) {
-                                logDebug("NAV", "CATEGORY_TILE_CLICK_RECEIVED name=$category")
-                                if (categoryOpenInProgress) {
-                                    logDebug("NAV", "CLICK_BLOCKED reason=category_open_in_progress")
-                                    return@HomeTileItem
-                                }
-                                categoryOpenInProgress = true
-                                selectedCategoryName = category
-                                logDebug("NAV", "CATEGORY_OPEN_CHANNELS_START name=$category")
-                                val startedAt = System.currentTimeMillis()
-                                showAppLoadingSpinner()
-                                val filtered = cachedCategoryGroups[category].orEmpty()
-                                homePlaylistTilesPanel.visibility = View.GONE
-                                val remaining = (220L - (System.currentTimeMillis() - startedAt)).coerceAtLeast(0L)
-                                handler.postDelayed({
-                                    showHomeChannelList(category, filtered)
-                                    hideAppLoadingSpinner()
-                                    logDebug("NAV", "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}")
-                                    categoryOpenInProgress = false
-                                }, remaining)
+                fun bindCategoryNames(names: List<String>) {
+                    if (token != homeSearchApplyToken) return
+                    if (homeSearchMode != HomeSearchMode.CATEGORIES) return
+                    bindHomeTiles(names.map { category ->
+                        HomeTileItem(category) {
+                            logDebug("NAV", "CATEGORY_TILE_CLICK_RECEIVED name=$category")
+                            if (categoryOpenInProgress) {
+                                logDebug("NAV", "CLICK_BLOCKED reason=category_open_in_progress")
+                                return@HomeTileItem
                             }
-                        }, source = "categories", requestTileFocus = fromUserSubmit && q.isBlank())
+                            categoryOpenInProgress = true
+                            selectedCategoryName = category
+                            logDebug("NAV", "CATEGORY_OPEN_CHANNELS_START name=$category")
+                            val startedAt = System.currentTimeMillis()
+                            showAppLoadingSpinner()
+                            val filtered = cachedCategoryGroups[category].orEmpty()
+                            homePlaylistTilesPanel.visibility = View.GONE
+                            val remaining = (220L - (System.currentTimeMillis() - startedAt)).coerceAtLeast(0L)
+                            handler.postDelayed({
+                                showHomeChannelList(category, filtered)
+                                hideAppLoadingSpinner()
+                                logDebug("NAV", "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}")
+                                categoryOpenInProgress = false
+                            }, remaining)
+                        }
+                    }, source = "categories", requestTileFocus = fromUserSubmit && q.isBlank())
+                }
+                // Blank query (opening a service): bind on the main thread so old service
+                // tiles are not visible for a frame after the spinner dismisses.
+                if (q.isBlank()) {
+                    bindCategoryNames(allCategoryNamesForSearch)
+                    return
+                }
+                thread(name = "home-search-cat") {
+                    val ql = q.lowercase(Locale.getDefault())
+                    val names = allCategoryNamesForSearch.filter {
+                        it.lowercase(Locale.getDefault()).contains(ql)
                     }
+                    handler.post { bindCategoryNames(names) }
                 }
             }
             HomeSearchMode.CHANNELS -> {
@@ -5271,7 +5279,9 @@ private fun showDefaultStartupScreen() {
                     // Child views can remain VISIBLE while homePanel is GONE (during playback).
                     // Never bounce categories / channel list / player back to the services grid.
                     // Also skip while a service playlist is opening (spinner over services → categories).
+                    val loadingVisible = findViewById<View?>(R.id.loadingPanel)?.visibility == View.VISIBLE
                     if (!playlistOpenInProgress &&
+                        !loadingVisible &&
                         homePanel.visibility == View.VISIBLE &&
                         homePlaylistTilesPanel.visibility == View.VISIBLE &&
                         homeCategoryBackHandler == null &&
@@ -8893,12 +8903,16 @@ private fun showDefaultStartupScreen() {
         }
         btnLiveReload.nextFocusLeftId = chain.lastOrNull() ?: R.id.btnAspectRatio
 
-        // TV: progress bar is a focus target above the button row (UP from any control).
-        // Scrub only after OK on the bar — L/R on control buttons stay for focus navigation.
+        // TV: progress bar + Back are focus targets. Scrub after OK on the bar.
+        // L/R on control buttons stay for focus navigation (lock is GONE on TV).
         if (::timelineTrack.isInitialized && isTelevisionDevice()) {
             timelineTrack.isFocusable = true
             timelineTrack.isFocusableInTouchMode = false
             timelineTrack.isClickable = true
+            val backBtn = findViewById<View>(R.id.btnBackToMenu)
+            backBtn?.isFocusable = true
+            backBtn?.isFocusableInTouchMode = false
+            backBtn?.nextFocusDownId = R.id.timelineTrack
             listOf(
                 btnPlayPause, btnBackLeft, btnBackRight, btnEpgPlayer, btnAspectRatio,
                 btnLiveReload, btnCcSubtitles, btnAudioTrack, btnHdQuality
@@ -8908,8 +8922,8 @@ private fun showDefaultStartupScreen() {
                 }
             }
             if (lockVisible) btnLock.nextFocusUpId = R.id.timelineTrack
+            timelineTrack.nextFocusUpId = R.id.btnBackToMenu
             timelineTrack.nextFocusDownId = R.id.btnPlayPause
-            // Allow L/R to leave the bar when scrub is not armed (handled in key code).
             timelineTrack.nextFocusLeftId = View.NO_ID
             timelineTrack.nextFocusRightId = View.NO_ID
             timelineTrack.setOnFocusChangeListener { _, hasFocus ->
@@ -8926,6 +8940,7 @@ private fun showDefaultStartupScreen() {
             timelineTrack.isFocusable = false
             timelineTrack.onFocusChangeListener = null
             timelineScrubArmed = false
+            findViewById<View>(R.id.btnBackToMenu)?.isFocusable = false
         }
     }
 
@@ -10179,7 +10194,9 @@ private fun showDefaultStartupScreen() {
             visibility = View.VISIBLE
             isEnabled = true
             isClickable = true
-            isFocusable = false
+            // TV remote must reach Back; phones keep it non-focusable (touch-only chrome).
+            isFocusable = isTelevisionDevice()
+            isFocusableInTouchMode = false
         }
         bindRealPlayerExitButtonListener()
         sbTimeline.isEnabled = true
@@ -10187,11 +10204,13 @@ private fun showDefaultStartupScreen() {
         scheduleHidePlayerChrome()
         updatePlayPauseButton()
         ensurePlayerControlsInteractive()
+        updatePlayerControlFocusChain()
         layoutPlayerSubtitlesOverlay()
         val controlsPanelButtonIds = intArrayOf(
             R.id.btnPlayPause, R.id.btnLiveReload, R.id.btnBackLeft,
             R.id.btnBackRight, R.id.btnLock, R.id.btnEpgPlayer, R.id.btnAspectRatio,
-            R.id.btnCcSubtitles, R.id.btnAudioTrack, R.id.btnHdQuality, R.id.timelineTrack
+            R.id.btnCcSubtitles, R.id.btnAudioTrack, R.id.btnHdQuality,
+            R.id.timelineTrack, R.id.btnBackToMenu
         )
         val current = currentFocus
         val keepCurrent = current != null && controlsPanelButtonIds.any { findViewById<View>(it) === current }
@@ -10331,6 +10350,7 @@ private fun showDefaultStartupScreen() {
     private fun isFocusInPlayerControlsRow(): Boolean {
         val focused = currentFocus ?: return false
         if (::timelineTrack.isInitialized && focused === timelineTrack) return true
+        if (focused.id == R.id.btnBackToMenu) return true
         val controlsPanelButtonIds = intArrayOf(
             R.id.btnPlayPause, R.id.btnLiveReload, R.id.btnBackLeft,
             R.id.btnBackRight, R.id.btnLock, R.id.btnEpgPlayer, R.id.btnAspectRatio,
@@ -10340,20 +10360,70 @@ private fun showDefaultStartupScreen() {
     }
 
     /**
-     * TV timeline scrub:
-     * - Focus the progress bar with UP (does not steal L/R from control buttons).
-     * - OK arms scrub mode; then single / repeated / held L/R seek.
-     * - DOWN or leaving focus disarms.
-     * Seek buttons still seek via CENTER click; L/R on them only move focus.
+     * TV timeline scrub / seek buttons:
+     * - Chrome visible: DPAD_UP/DOWN move focus (not channel zap).
+     * - Focus progress bar → OK arms scrub → ←/→ seek.
+     * - Seek buttons: CENTER click seeks; hold ←/→ while focused also seeks.
+     * - Back button is focusable above the timeline.
      */
     private fun handleTvRemoteSeekKeys(keyCode: Int, event: KeyEvent?): Boolean {
         if (!isTelevisionDevice() || !::controlsPanel.isInitialized) return false
         if (controlsPanel.visibility != View.VISIBLE) return false
         val focused = currentFocus ?: return false
         val onTimeline = ::timelineTrack.isInitialized && focused === timelineTrack
+        val onBack = focused.id == R.id.btnBackToMenu
+        val onSeekLeft = ::btnBackLeft.isInitialized && focused === btnBackLeft
+        val onSeekRight = ::btnBackRight.isInitialized && focused === btnBackRight
+
+        if (onBack) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    timelineTrack.requestFocus()
+                    lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
+                    scheduleHidePlayerChrome()
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    if ((event?.repeatCount ?: 0) == 0) focused.performClick()
+                    return true
+                }
+            }
+            return false
+        }
+
+        // Hold on seek buttons: continuous seek without trapping single L/R navigation.
+        if ((onSeekLeft || onSeekRight) &&
+            (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)
+        ) {
+            val repeat = event?.repeatCount ?: 0
+            if (repeat == 0) return false
+            val wantLeft = keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+            if (onSeekLeft && !wantLeft) return false
+            if (onSeekRight && wantLeft) return false
+            if (!wantLeft && !isArchivePlayback) {
+                showAppToast("Перемотка вперёд недоступна в прямом эфире")
+                return true
+            }
+            val stepSec = if (repeat < 6) 60 else 180
+            queueSeekDeltaSeconds(
+                if (wantLeft) -stepSec else stepSec,
+                fromUser = true,
+                commitDelayMs = 350L
+            )
+            lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
+            scheduleHidePlayerChrome()
+            return true
+        }
+
         if (!onTimeline) return false
 
         when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP -> {
+                findViewById<View>(R.id.btnBackToMenu)?.requestFocus()
+                lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
+                scheduleHidePlayerChrome()
+                return true
+            }
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                 if ((event?.repeatCount ?: 0) > 0) return true
                 if (!channelSupportsArchiveSeek()) {
@@ -10501,6 +10571,14 @@ private fun showDefaultStartupScreen() {
                 return true
             }
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> {
+                // While player chrome is up, DPAD_UP must move focus (timeline / Back),
+                // not zap channels — that made bottom controls unreachable on TV.
+                if (keyCode == KeyEvent.KEYCODE_DPAD_UP &&
+                    ::controlsPanel.isInitialized &&
+                    controlsPanel.visibility == View.VISIBLE
+                ) {
+                    return false
+                }
                 if (channels.isNotEmpty()) {
                     currentChannelIndex = (currentChannelIndex + 1) % channels.size
                     // Keep player session alive; use CHANNEL_CLICK so startup-gate allows zap.
@@ -10509,6 +10587,12 @@ private fun showDefaultStartupScreen() {
                 return true
             }
             KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
+                    ::controlsPanel.isInitialized &&
+                    controlsPanel.visibility == View.VISIBLE
+                ) {
+                    return false
+                }
                 if (channels.isNotEmpty()) {
                     currentChannelIndex =
                         (currentChannelIndex - 1 + channels.size) % channels.size
@@ -10580,12 +10664,74 @@ private fun showDefaultStartupScreen() {
         // Плиточные экраны (плейлисты/категории/список каналов на главном экране, но не самый первый
         // пустой экран) — своя явная связка: вверх с верхнего ряда уводит на шестерёнку/питание,
         // влево-вправо переключает между ними, вниз возвращает обратно в сетку.
+        // В подразделах (хлебные крошки) ↑/↓ связывают крошки ↔ контент ↔ иконки шапки.
         if (homePanel.visibility == View.VISIBLE && tvHomeStartTitle.visibility != View.VISIBLE) {
             val focused = currentFocus
             val headerIcons = listOf(ivHomeProfile, ivHomeSettings, ivHomePower)
                 .filter { it.visibility == View.VISIBLE }
+            val breadcrumbs = listOf(tvHomeBreadcrumbPill, tvHomeBreadcrumbPill2)
+                .filter { it.visibility == View.VISIBLE }
             val iconsHaveFocus = focused != null && focused in headerIcons
-            if (iconsHaveFocus) {
+            val breadcrumbHasFocus = focused != null && focused in breadcrumbs
+
+            fun focusHomeContentFromHeader(): Boolean {
+                if (homeSettingsScreen.visibility == View.VISIBLE) {
+                    val settingsFocus = findViewById<View?>(R.id.btnPlaylistSettings)
+                        ?.takeIf { it.visibility == View.VISIBLE && it.isShown }
+                        ?: findViewById<View?>(R.id.settingsMainPanel)
+                        ?: homeSettingsScreen
+                    // Re-enable fields that may have been marked non-focusable.
+                    headerIcons.forEach { it.isFocusable = false }
+                    settingsFocus.requestFocus()
+                    return true
+                }
+                if (etHomeListSearch.visibility == View.VISIBLE) {
+                    headerIcons.forEach { it.isFocusable = false }
+                    etHomeListSearch.requestFocus()
+                    return true
+                }
+                if (homePlaylistTilesPanel.visibility == View.VISIBLE) {
+                    headerIcons.forEach { it.isFocusable = false }
+                    rvHomeTiles.requestFocus()
+                    return true
+                }
+                if (gvHomeChannelList.visibility == View.VISIBLE) {
+                    headerIcons.forEach { it.isFocusable = false }
+                    gvHomeChannelList.requestFocus()
+                    return true
+                }
+                return false
+            }
+
+            if (breadcrumbHasFocus) {
+                when (keyCode) {
+                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                        if (breadcrumbs.size < 2) return true
+                        val idx = breadcrumbs.indexOf(focused)
+                        val next = if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                            breadcrumbs[(idx + 1) % breadcrumbs.size]
+                        } else {
+                            breadcrumbs[(idx - 1 + breadcrumbs.size) % breadcrumbs.size]
+                        }
+                        next.requestFocus()
+                        return true
+                    }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        if (focusHomeContentFromHeader()) return true
+                        return true
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        headerIcons.forEach { it.isFocusable = true }
+                        (if (ivHomeSettings.visibility == View.VISIBLE) ivHomeSettings else headerIcons.firstOrNull())
+                            ?.requestFocus()
+                        return true
+                    }
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                        focused?.performClick()
+                        return true
+                    }
+                }
+            } else if (iconsHaveFocus) {
                 when (keyCode) {
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
                         val idx = headerIcons.indexOf(focused)
@@ -10598,14 +10744,12 @@ private fun showDefaultStartupScreen() {
                         return true
                     }
                     KeyEvent.KEYCODE_DPAD_DOWN -> {
-                        headerIcons.forEach { it.isFocusable = false }
-                        if (etHomeListSearch.visibility == View.VISIBLE) {
-                            etHomeListSearch.requestFocus()
-                        } else if (homePlaylistTilesPanel.visibility == View.VISIBLE) {
-                            rvHomeTiles.requestFocus()
-                        } else if (gvHomeChannelList.visibility == View.VISIBLE) {
-                            gvHomeChannelList.requestFocus()
+                        if (breadcrumbs.isNotEmpty()) {
+                            headerIcons.forEach { it.isFocusable = false }
+                            breadcrumbs.last().requestFocus()
+                            return true
                         }
+                        if (focusHomeContentFromHeader()) return true
                         return true
                     }
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
@@ -10617,6 +10761,10 @@ private fun showDefaultStartupScreen() {
             } else if (focused == etHomeListSearch && etHomeListSearch.visibility == View.VISIBLE) {
                 when (keyCode) {
                     KeyEvent.KEYCODE_DPAD_UP -> {
+                        if (breadcrumbs.isNotEmpty()) {
+                            breadcrumbs.last().requestFocus()
+                            return true
+                        }
                         headerIcons.forEach { it.isFocusable = true }
                         (if (ivHomeSettings.visibility == View.VISIBLE) ivHomeSettings else headerIcons.firstOrNull())
                             ?.requestFocus()
@@ -10629,12 +10777,35 @@ private fun showDefaultStartupScreen() {
                     }
                 }
             } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP &&
+                homeSettingsScreen.visibility == View.VISIBLE
+            ) {
+                // Settings subsection scrolled to top: leave content for breadcrumbs / header.
+                val onSettingsChrome = focused != null && (
+                    focused === homeSettingsScreen ||
+                        generateSequence(focused) { it.parent as? View }
+                            .any { it === homeSettingsScreen }
+                    )
+                if (onSettingsChrome) {
+                    if (breadcrumbs.isNotEmpty()) {
+                        breadcrumbs.last().requestFocus()
+                        return true
+                    }
+                    headerIcons.forEach { it.isFocusable = true }
+                    (if (ivHomeSettings.visibility == View.VISIBLE) ivHomeSettings else headerIcons.firstOrNull())
+                        ?.requestFocus()
+                    return true
+                }
+            } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP &&
                 (homePlaylistTilesPanel.visibility == View.VISIBLE || gvHomeChannelList.visibility == View.VISIBLE)
             ) {
                 val grid = if (homePlaylistTilesPanel.visibility == View.VISIBLE) rvHomeTiles else gvHomeChannelList
                 if (isHomeListAtTopRow(grid, focused)) {
                     if (etHomeListSearch.visibility == View.VISIBLE) {
                         etHomeListSearch.requestFocus()
+                        return true
+                    }
+                    if (breadcrumbs.isNotEmpty()) {
+                        breadcrumbs.last().requestFocus()
                         return true
                     }
                     headerIcons.forEach { it.isFocusable = true }
