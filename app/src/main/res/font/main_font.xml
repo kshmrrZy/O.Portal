@@ -11,14 +11,19 @@
         android:fontWeight="500" />
 
     <font
-        android:font="@font/golostext_extrabold"
+        android:font="@font/golostext_bold"
         android:fontStyle="normal"
         android:fontWeight="600" />
 
     <font
-        android:font="@font/golostext_extrabold"
+        android:font="@font/golostext_bold"
         android:fontStyle="normal"
         android:fontWeight="700" />
+
+    <font
+        android:font="@font/golostext_extrabold"
+        android:fontStyle="normal"
+        android:fontWeight="800" />
 
     <font
         android:font="@font/golostext_black"
