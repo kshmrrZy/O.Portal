@@ -538,7 +538,10 @@ class MainActivity : AppCompatActivity() {
                     stopReloadingPlateSpinner()
                     tvReloadingStatus.visibility = View.GONE
                 }
-                if (controlsPanel.visibility != View.VISIBLE) {
+                if (controlsPanel.visibility == View.VISIBLE) {
+                    // Stall path kept chrome up and cancelled the idle hide timer — restart it.
+                    scheduleHidePlayerChrome()
+                } else {
                     hideUI()
                 }
             }
@@ -568,12 +571,18 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             pos < lastPlaybackPositionMs - 1_000L -> {
+                // Live HLS window slides backwards while the picture is frozen — that is NOT
+                // forward progress. Counting it as healthy cleared the spinner, briefly showed
+                // EPG, then spun again forever without reaching recovery (TVC / Wink live).
                 lastPlaybackPositionMs = pos
-                lastProgressWallClockMs = now
-                stuckPositionSinceMs = 0L
-                consecutiveForwardProgressTicks++
-                if (playbackRecoveryActive && consecutiveForwardProgressTicks >= 1) {
-                    onPlaybackRecoverySucceeded()
+                consecutiveForwardProgressTicks = 0
+                if (isArchivePlayback) {
+                    // Archive scrub/seek: reset stall clocks so a deliberate rewind is not a stall.
+                    lastProgressWallClockMs = now
+                    stuckPositionSinceMs = 0L
+                } else if (stuckPositionSinceMs == 0L) {
+                    stuckPositionSinceMs =
+                        if (lastProgressWallClockMs > 0L) lastProgressWallClockMs else now
                 }
             }
             else -> {
@@ -7836,7 +7845,9 @@ private fun showDefaultStartupScreen() {
             runtimeRecoveryAttempted = false
             retriedWithAlternateDecoder = false
             enableAudioTrack()
-            applyUnlimitedVideoConstraints()
+            // Re-apply ladder caps every tune-in. Unlimited was wiping the TV 720p/bitrate
+            // cap and forcing 1080p (MOSKOV24HD underrun / rebuffer loop).
+            applyDefaultVideoConstraints()
 
             val player = mediaPlayer ?: run {
                 logDebug("PLAYER_LIFECYCLE", "PLAYER NULL AFTER ensurePlayerReadyForPlayback, abort startup")
@@ -9166,20 +9177,7 @@ private fun showDefaultStartupScreen() {
         val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory).setDataSourceFactory(httpFactory)
 
         trackSelector = DefaultTrackSelector(this).apply {
-            val tvCaps = isTelevisionDevice()
-            // Cap adaptive ladder on weak TVs — 1080p@8Mbps + soft decode drops frames hard.
-            val maxH = if (tvCaps) 720 else Int.MAX_VALUE
-            val maxBr = if (tvCaps) 4_500_000 else Int.MAX_VALUE
-            setParameters(
-                buildUponParameters()
-                    .setMaxVideoSize(if (tvCaps) 1280 else Int.MAX_VALUE, maxH)
-                    .setMaxVideoBitrate(maxBr)
-                    .setExceedVideoConstraintsIfNecessary(true)
-                    .setForceHighestSupportedBitrate(false)
-                    .setForceLowestBitrate(false)
-                    .setAllowVideoMixedMimeTypeAdaptiveness(true)
-                    .setAllowAudioMixedMimeTypeAdaptiveness(true)
-            )
+            applyDefaultVideoConstraints(this)
         }
 
         mediaPlayer = ExoPlayer.Builder(this, renderersFactory)
@@ -9846,7 +9844,38 @@ private fun showDefaultStartupScreen() {
         handler.postDelayed(noFrameRunnable, 25_000L)
     }
 
+    /** TV: hard-cap adaptive ladder at 720p / ~4.5 Mbps. Phone: no size/bitrate ceiling. */
+    private fun applyDefaultVideoConstraints(
+        selector: DefaultTrackSelector? = trackSelector
+    ) {
+        val sel = selector ?: return
+        val tvCaps = isTelevisionDevice()
+        val maxH = if (tvCaps) 720 else Int.MAX_VALUE
+        val maxW = if (tvCaps) 1280 else Int.MAX_VALUE
+        val maxBr = if (tvCaps) 4_500_000 else Int.MAX_VALUE
+        sel.setParameters(
+            sel.buildUponParameters()
+                .setMaxVideoSize(maxW, maxH)
+                .setMaxVideoBitrate(maxBr)
+                // On TV do not fall back to 1080p when a 720p rung exists.
+                .setExceedVideoConstraintsIfNecessary(!tvCaps)
+                .setForceHighestSupportedBitrate(false)
+                .setForceLowestBitrate(false)
+                .setAllowVideoMixedMimeTypeAdaptiveness(true)
+                .setAllowAudioMixedMimeTypeAdaptiveness(true)
+        )
+        logDebug(
+            "PLAYER_STATE",
+            "video_constraints tv=$tvCaps max=${maxW}x$maxH maxBr=$maxBr exceed=${!tvCaps}"
+        )
+    }
+
     private fun applyUnlimitedVideoConstraints() {
+        // Phone / explicit override only — never call on TV tune-in (wipes 720p cap).
+        if (isTelevisionDevice()) {
+            applyDefaultVideoConstraints()
+            return
+        }
         trackSelector?.setParameters(
             trackSelector?.buildUponParameters()
                 ?.clearVideoSizeConstraints()
@@ -10753,7 +10782,7 @@ private fun showDefaultStartupScreen() {
         archiveStreamStartMs = 0L
         resetPlaybackRecoveryState()
         enableAudioTrack()
-        applyUnlimitedVideoConstraints()
+        applyDefaultVideoConstraints()
     }
 
     private fun exitPlayerToPlaylist() {
