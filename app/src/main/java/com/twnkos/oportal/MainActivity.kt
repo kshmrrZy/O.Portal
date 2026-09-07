@@ -302,7 +302,8 @@ class MainActivity : AppCompatActivity() {
     private var lastChromeHiddenDpadRightElapsedMs = 0L
     private var pendingChromeHiddenLeftRunnable: Runnable? = null
     private var pendingChromeHiddenRightRunnable: Runnable? = null
-    private val chromeHiddenDoubleTapMs = 420L
+    /** TV remotes often have 400–900ms between intentional double presses. */
+    private val chromeHiddenDoubleTapMs = 1200L
     /** Last fully parsed playlist kept in RAM to skip slow re-parse on reopen. */
     private var memCachedPlaylistUrl: String = ""
     private var memCachedChannels: List<Channel> = emptyList()
@@ -1950,10 +1951,20 @@ private fun showDefaultStartupScreen() {
         }
 
         btnBackLeft.setOnClickListener {
+            // TV: scrub only on the progress bar — seek buttons are focus targets only.
+            if (isTelevisionDevice()) {
+                showUI(preferFocus = btnBackLeft)
+                return@setOnClickListener
+            }
             if (!queueSeekDeltaSeconds(-60, fromUser = true)) return@setOnClickListener
             showUI(preferFocus = btnBackLeft)
         }
         btnBackRight.setOnClickListener {
+            // TV: never seek / toast from this button — L/R here only move focus to CC/HD/LIVE.
+            if (isTelevisionDevice()) {
+                showUI(preferFocus = btnBackRight)
+                return@setOnClickListener
+            }
             if (!isArchivePlayback) {
                 showAppToast("Перемотка вперёд недоступна в прямом эфире")
                 showUI(preferFocus = btnBackRight)
@@ -3555,25 +3566,34 @@ private fun showDefaultStartupScreen() {
     private fun bindChannelListPanelAdapter() {
         val q = channelListSearchQuery.trim()
         data class Row(val channel: Channel, val realIndex: Int)
+        // Same scope as home: one category, never the full 2k+ service list (Android 9 OOM).
+        val baseRows = resolveInPlayerChannelListRows()
         val rows: List<Row> = if (q.isBlank()) {
-            channels.mapIndexed { index, ch -> Row(ch, index) }
+            baseRows.map { Row(it.first, it.second) }
         } else {
-            channels.mapIndexedNotNull { index, ch ->
-                if (ch.name.contains(q, ignoreCase = true)) Row(ch, index) else null
+            baseRows.mapNotNull { (ch, idx) ->
+                if (ch.name.contains(q, ignoreCase = true)) Row(ch, idx) else null
             }
         }
+        logDebug(
+            "NAV",
+            "CHANNEL_LIST_BIND rows=${rows.size} category=${resolveInPlayerListCategory()} " +
+                "totalChannels=${channels.size} sdk=${Build.VERSION.SDK_INT}"
+        )
+        val skipLogos = isTelevisionDevice() && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P
         gvChannelListPanel.adapter = object : ArrayAdapter<Row>(this@MainActivity, 0, rows) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val holder: ChannelGridItemViewHolder
                 val itemView: View
                 if (convertView == null) {
-                    itemView = layoutInflater.inflate(R.layout.item_channel_grid, parent, false)
+                    // Same card layout as the home channel grid (lighter / proven on Android 9 TV).
+                    itemView = layoutInflater.inflate(R.layout.item_home_channel_card, parent, false)
                     holder = ChannelGridItemViewHolder(
-                        tvNumber = itemView.findViewById(R.id.itemNumber),
-                        tvName = itemView.findViewById(R.id.itemName),
-                        tvCurrentProgram = itemView.findViewById(R.id.itemCurrentProgram),
-                        ivLogo = itemView.findViewById(R.id.itemLogo),
-                        archiveBadge = itemView.findViewById(R.id.itemArchiveBadge)
+                        tvNumber = null,
+                        tvName = itemView.findViewById(R.id.cardName),
+                        tvCurrentProgram = itemView.findViewById(R.id.cardCurrentProgram),
+                        ivLogo = itemView.findViewById(R.id.cardLogo),
+                        archiveBadge = itemView.findViewById(R.id.cardArchiveBadge)
                     )
                     itemView.tag = holder
                 } else {
@@ -3584,28 +3604,37 @@ private fun showDefaultStartupScreen() {
                 val row = rows[position]
                 val channel = row.channel
                 val realIndex = row.realIndex
-                holder.tvNumber.text = (realIndex + 1).toString()
                 holder.tvName.text = channel.name
                 holder.tvName.isSelected = true
-                // Android 9 TV: skip weight synth in getView (OOM / SoC crash with large lists).
-                if (golosTypeface != null && Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
+                // Never synth weights in getView on TV — home list also uses default typeface path.
+                if (!isTelevisionDevice() && golosTypeface != null &&
+                    Build.VERSION.SDK_INT > Build.VERSION_CODES.P
+                ) {
                     holder.tvName.typeface = golosWeight(500) ?: golosTypeface
-                } else {
-                    golosTypeface?.let { holder.tvName.typeface = it }
                 }
-                loadLogoWithGlide(
-                    channel.logoFromEpg ?: channel.logoFromPlaylist,
-                    holder.ivLogo
-                )
+
+                if (skipLogos) {
+                    holder.ivLogo.setImageDrawable(null)
+                } else {
+                    loadLogoWithGlide(
+                        channel.logoFromEpg ?: channel.logoFromPlaylist,
+                        holder.ivLogo
+                    )
+                }
 
                 itemView.setBackgroundResource(
                     if (realIndex == currentChannelIndex) R.drawable.channel_grid_tile_bg_current
                     else R.drawable.channel_grid_tile_bg
                 )
 
-                holder.tvCurrentProgram.text = channelListProgramTitles[realIndex].orEmpty()
-                holder.tvCurrentProgram.visibility =
-                    if (holder.tvCurrentProgram.text.isNullOrBlank()) View.GONE else View.VISIBLE
+                val title = channelListProgramTitles[realIndex].orEmpty()
+                if (title.isNotBlank()) {
+                    holder.tvCurrentProgram.text = title
+                    holder.tvCurrentProgram.visibility = View.VISIBLE
+                } else {
+                    holder.tvCurrentProgram.text = ""
+                    holder.tvCurrentProgram.visibility = View.GONE
+                }
                 holder.archiveBadge.visibility =
                     if (channel.catchupDays > 0 && !channel.catchupSource.isNullOrBlank()) {
                         View.VISIBLE
@@ -3619,7 +3648,6 @@ private fun showDefaultStartupScreen() {
                     playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
                     hideChannelListPanel()
                 }
-                // Focus must stay on GridView so D-pad can scroll past the last visible row.
                 itemView.isFocusable = false
                 itemView.isFocusableInTouchMode = false
                 return itemView
@@ -3636,6 +3664,63 @@ private fun showDefaultStartupScreen() {
             gvChannelListPanel.setSelection(focusIdx.coerceAtMost(rows.lastIndex))
             gvChannelListPanel.requestFocus()
         }
+    }
+
+    private fun resolveInPlayerListCategory(): String {
+        fun usable(name: String?): String? =
+            name?.trim()?.takeIf { it.isNotBlank() && !it.equals("Все каналы", ignoreCase = true) }
+        usable(lastChannelListCategory)?.let { return it }
+        usable(selectedCategoryName)?.let { return it }
+        usable(channels.getOrNull(currentChannelIndex)?.groupTitle)?.let { return it }
+        return "Без категории"
+    }
+
+    /** Rows for the in-player list: one category (like home), with real indices into [channels]. */
+    private fun resolveInPlayerChannelListRows(): List<Pair<Channel, Int>> {
+        val category = resolveInPlayerListCategory()
+        val fromCache = cachedCategoryGroups[category]
+        if (!fromCache.isNullOrEmpty()) {
+            val mapped = ArrayList<Pair<Channel, Int>>(fromCache.size)
+            // Build url→index once (O(n)), not per row.
+            val indexByKey = HashMap<String, Int>(channels.size * 2)
+            channels.forEachIndexed { i, ch ->
+                indexByKey["${ch.url}\u0000${ch.name}"] = i
+            }
+            fromCache.forEach { ch ->
+                val idx = indexByKey["${ch.url}\u0000${ch.name}"]
+                if (idx != null) mapped.add(ch to idx)
+            }
+            if (mapped.isNotEmpty()) return capInPlayerChannelRows(mapped)
+            // channels list may already be the category subset (home→player path).
+            return capInPlayerChannelRows(channels.mapIndexed { i, ch -> ch to i })
+        }
+        val filtered = ArrayList<Pair<Channel, Int>>()
+        channels.forEachIndexed { i, ch ->
+            val g = ch.groupTitle?.trim()?.takeUnless { it.isNullOrBlank() } ?: "Без категории"
+            if (g.equals(category, ignoreCase = true)) filtered.add(ch to i)
+        }
+        if (filtered.isNotEmpty()) return capInPlayerChannelRows(filtered)
+        // Android 9 TV: never inflate the full 2k+ service list in the modal (OOM).
+        if (isTelevisionDevice() && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            val idx = currentChannelIndex.coerceIn(0, (channels.size - 1).coerceAtLeast(0))
+            val ch = channels.getOrNull(idx) ?: return emptyList()
+            return listOf(ch to idx)
+        }
+        return capInPlayerChannelRows(channels.mapIndexed { i, ch -> ch to i })
+    }
+
+    /** Keep the in-player modal bounded around the current channel on low-RAM TV. */
+    private fun capInPlayerChannelRows(rows: List<Pair<Channel, Int>>): List<Pair<Channel, Int>> {
+        val maxRows =
+            if (isTelevisionDevice() && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) 120 else 800
+        if (rows.size <= maxRows) return rows
+        val cur = rows.indexOfFirst { it.second == currentChannelIndex }.takeIf { it >= 0 }
+            ?: (rows.size / 2)
+        val half = maxRows / 2
+        val start = (cur - half).coerceAtLeast(0)
+        val end = (start + maxRows).coerceAtMost(rows.size)
+        val from = (end - maxRows).coerceAtLeast(0)
+        return rows.subList(from, end)
     }
 
     private fun showChannelListPanel() {
@@ -3669,8 +3754,18 @@ private fun showDefaultStartupScreen() {
             return
         }
         runCatching {
-            logMemoryStats("channel_list_open_start count=${channels.size}")
-            tvChannelListTitle.text = "Список каналов: ${getSelectedPlaylistName()}"
+            val category = resolveInPlayerListCategory()
+            val rowsPreview = resolveInPlayerChannelListRows()
+            logMemoryStats(
+                "channel_list_open_start total=${channels.size} rows=${rowsPreview.size} category=$category"
+            )
+            // Android 9 TV: free what we can before inflating grid rows (log showed ~1MB free).
+            if (isTelevisionDevice() && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+                runCatching { Glide.get(this).clearMemory() }
+                System.gc()
+            }
+            tvChannelListTitle.text =
+                "Список каналов: ${getSelectedPlaylistName()} · $category"
             channelListSearchQuery = ""
             if (::etChannelListSearch.isInitialized) {
                 etChannelListSearch.setText("")
@@ -3684,20 +3779,19 @@ private fun showDefaultStartupScreen() {
             handler.removeCallbacks(hideUiRunnable)
             pausePlaybackStallWatchdogForOverlay()
             channelListPanel.visibility = View.VISIBLE
-            // Do NOT build titles for all channels on the main thread (Android 9 OOM with 2k+).
+            // Titles only for the category rows (not the whole service).
             channelListProgramTitles = emptyMap()
             bindChannelListPanelAdapter()
             channelListPanel.post {
-                val snapshot = channels.toList()
+                val rowsSnapshot = resolveInPlayerChannelListRows()
                 thread(name = "channel-list-prep") {
-                    val titles = LinkedHashMap<Int, String>(snapshot.size)
-                    snapshot.forEachIndexed { index, ch ->
-                        titles[index] = getCurrentProgramTitleForChannelList(ch)
+                    val titles = LinkedHashMap<Int, String>(rowsSnapshot.size)
+                    rowsSnapshot.forEach { (ch, realIndex) ->
+                        titles[realIndex] = getCurrentProgramTitleForChannelList(ch)
                     }
                     handler.post {
                         if (channelListPanel.visibility != View.VISIBLE) return@post
                         channelListProgramTitles = titles
-                        // Refresh visible rows without rebuilding the whole adapter when possible.
                         (gvChannelListPanel.adapter as? BaseAdapter)?.notifyDataSetChanged()
                             ?: bindChannelListPanelAdapter()
                     }
@@ -7951,7 +8045,12 @@ private fun showDefaultStartupScreen() {
             ).format(Date(seekTarget))
             tvEpg.text = "Архив от $stamp - ${program.title}"
             updateTimelineUi()
-            showUI()
+            // Stay on the progress bar after archive retune (TV scrub must not jump to ←/→).
+            if (isTelevisionDevice() && ::timelineTrack.isInitialized) {
+                showUI(preferFocus = timelineTrack)
+            } else {
+                showUI()
+            }
         }.onFailure { e ->
             showPlaybackFailureAndReturn(archiveUrl, e.message ?: e.javaClass.simpleName)
         }
@@ -9112,6 +9211,10 @@ private fun showDefaultStartupScreen() {
             view.nextFocusRightId = if (index == chain.lastIndex) R.id.btnLiveReload else chain[index + 1]
         }
         btnLiveReload.nextFocusLeftId = chain.lastOrNull() ?: R.id.btnAspectRatio
+        // When mid badges are GONE, HdQuality's XML still points at Audio — fix left edge.
+        if (chain.isEmpty()) {
+            btnLiveReload.nextFocusLeftId = R.id.btnAspectRatio
+        }
 
         // TV: progress bar + Back are focus targets. Scrub while the bar has focus (L/R).
         // L/R on control buttons stay for focus navigation (lock is GONE on TV).
@@ -9129,9 +9232,14 @@ private fun showDefaultStartupScreen() {
             ).forEach { btn ->
                 if (btn.visibility == View.VISIBLE) {
                     btn.nextFocusUpId = R.id.timelineTrack
+                    // Never let spatial search bounce L/R back onto the scrub bar.
+                    btn.nextFocusDownId = View.NO_ID
                 }
             }
-            if (lockVisible) btnLock.nextFocusUpId = R.id.timelineTrack
+            if (lockVisible) {
+                btnLock.nextFocusUpId = R.id.timelineTrack
+                btnLock.nextFocusDownId = View.NO_ID
+            }
             timelineTrack.nextFocusUpId = R.id.btnBackToMenu
             timelineTrack.nextFocusDownId = R.id.btnPlayPause
             timelineTrack.nextFocusLeftId = View.NO_ID
@@ -9150,6 +9258,40 @@ private fun showDefaultStartupScreen() {
             timelineTrack.onFocusChangeListener = null
             findViewById<View>(R.id.btnBackToMenu)?.isFocusable = false
         }
+    }
+
+    /** Ordered bottom-row chrome targets for manual TV L/R focus (avoids spatial seek glitches). */
+    private fun playerChromeHorizontalFocusChain(): List<View> {
+        val views = mutableListOf<View>()
+        if (::btnPlayPause.isInitialized) views += btnPlayPause
+        if (::btnBackLeft.isInitialized) views += btnBackLeft
+        if (::btnBackRight.isInitialized) views += btnBackRight
+        if (::btnLock.isInitialized && btnLock.visibility == View.VISIBLE) views += btnLock
+        if (::btnEpgPlayer.isInitialized) views += btnEpgPlayer
+        if (::btnAspectRatio.isInitialized) views += btnAspectRatio
+        if (::btnCcSubtitles.isInitialized) views += btnCcSubtitles
+        if (::btnAudioTrack.isInitialized) views += btnAudioTrack
+        if (::btnHdQuality.isInitialized) views += btnHdQuality
+        if (::btnLiveReload.isInitialized) views += btnLiveReload
+        return views.filter { it.visibility == View.VISIBLE && it.isShown && it.isFocusable }
+    }
+
+    private fun movePlayerChromeHorizontalFocus(forward: Boolean): Boolean {
+        val chain = playerChromeHorizontalFocusChain()
+        if (chain.isEmpty()) return false
+        val focused = currentFocus
+        val idx = chain.indexOfFirst { it === focused }
+        if (idx < 0) {
+            chain.first().requestFocus()
+            return true
+        }
+        val next = if (forward) chain.getOrNull(idx + 1) else chain.getOrNull(idx - 1)
+        if (next != null) {
+            next.requestFocus()
+            return true
+        }
+        // Absorb at the ends — do not fall through to seek / channel zap.
+        return true
     }
 
     private fun showSubtitleTrackMenu() {
@@ -10722,21 +10864,29 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun previewPendingSeekOnTimeline() {
-        val (programStart, programStop, _) = currentTimelineSeekableProgram() ?: return
+        if (pendingSeekDeltaSec == 0 && seekGestureBaseAbsMs <= 0L) return
         val base = if (seekGestureBaseAbsMs > 0L) seekGestureBaseAbsMs else return
         val targetAbs = base + pendingSeekDeltaSec * 1000L
         pendingSeekTargetAbsMs = targetAbs
+        // Resolve the programme that contains the target — so 23:00→22:59 previews the 22:00 bar.
+        val window = timelineWindowForAbsoluteMs(targetAbs) ?: return
+        val (programStart, programStop) = window
         val duration = (programStop - programStart).coerceAtLeast(1L)
         val progress = (((targetAbs - programStart).toDouble() / duration) * 1000.0)
             .toInt().coerceIn(0, 1000)
         val clamped = clampTimelineProgress(progress)
         timelineUserSeeking = true
         sbTimeline.progress = clamped
-        previewTimelineProgress(clamped)
+        applyTimelineProgressUi(clamped)
         if (::tvCurrentTime.isInitialized) {
             val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
             tvCurrentTime.visibility = View.VISIBLE
             tvCurrentTime.text = fmt.format(Date(targetAbs.coerceIn(programStart, programStop)))
+        }
+        if (::tvProgramEndTime.isInitialized) {
+            val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+            tvProgramEndTime.visibility = View.VISIBLE
+            tvProgramEndTime.text = fmt.format(Date(programStop))
         }
     }
 
@@ -10831,9 +10981,35 @@ private fun showDefaultStartupScreen() {
             (!::epgPanel.isInitialized || epgPanel.visibility != View.VISIBLE) &&
             (!::channelListPanel.isInitialized || channelListPanel.visibility != View.VISIBLE)
         ) {
+            // Cancel any pending single-tap list/EPG open armed by L/R.
+            pendingChromeHiddenLeftRunnable?.let { handler.removeCallbacks(it) }
+            pendingChromeHiddenLeftRunnable = null
+            pendingChromeHiddenRightRunnable?.let { handler.removeCallbacks(it) }
+            pendingChromeHiddenRightRunnable = null
+            lastChromeHiddenDpadLeftElapsedMs = 0L
+            lastChromeHiddenDpadRightElapsedMs = 0L
             pausePlaybackForTvOkReveal()
             showUI(preferFocus = if (::btnPlayPause.isInitialized) btnPlayPause else null)
             return true
+        }
+        // Intercept L/R before focused (often invisible) chrome children can eat the event —
+        // otherwise double-tap seek never arms and each press opens list/EPG after the delay.
+        if (event.action == KeyEvent.ACTION_DOWN &&
+            (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT ||
+                event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) &&
+            isWatchingChannel() &&
+            homePanel.visibility != View.VISIBLE &&
+            homeSettingsScreen.visibility != View.VISIBLE &&
+            (::playerSettingsOverlay.isInitialized.not() ||
+                playerSettingsOverlay.visibility != View.VISIBLE) &&
+            controlsPanel.visibility != View.VISIBLE &&
+            (!::epgPanel.isInitialized || epgPanel.visibility != View.VISIBLE) &&
+            (!::channelListPanel.isInitialized || channelListPanel.visibility != View.VISIBLE)
+        ) {
+            return handleChromeHiddenHorizontalKey(
+                seekForward = event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT,
+                repeatCount = event.repeatCount
+            )
         }
         return super.dispatchKeyEvent(event)
     }
@@ -11085,7 +11261,24 @@ private fun showDefaultStartupScreen() {
                     return super.onKeyDown(keyCode, event)
                 }
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    if (!isFocusInPlayerControlsRow()) {
+                    // TV: walk the bottom chrome row manually so CC / HD / LIVE are reachable
+                    // without spatial focus bouncing onto the scrub bar (which would seek).
+                    if (isTelevisionDevice()) {
+                        val focused = currentFocus
+                        val onTimeline = ::timelineTrack.isInitialized && focused === timelineTrack
+                        val onBack = focused?.id == R.id.btnBackToMenu
+                        if (!onTimeline && !onBack) {
+                            if (movePlayerChromeHorizontalFocus(
+                                    forward = keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                                )
+                            ) {
+                                lastPlayerChromeInteractionElapsedMs =
+                                    android.os.SystemClock.elapsedRealtime()
+                                scheduleHidePlayerChrome()
+                                return true
+                            }
+                        }
+                    } else if (!isFocusInPlayerControlsRow()) {
                         findViewById<View>(R.id.btnPlayPause)?.requestFocus()
                     }
                     lastPlayerChromeInteractionElapsedMs = android.os.SystemClock.elapsedRealtime()
@@ -11144,13 +11337,19 @@ private fun showDefaultStartupScreen() {
                 return true
             }
 
-            // Chrome hidden: single L/R → channel list / EPG; double L/R → ±1 min seek.
+            // Fallback if dispatchKeyEvent did not intercept (rare OEM remotes).
             keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                return handleChromeHiddenHorizontalKey(seekForward = true)
+                return handleChromeHiddenHorizontalKey(
+                    seekForward = true,
+                    repeatCount = event?.repeatCount ?: 0
+                )
             }
 
             keyCode == KeyEvent.KEYCODE_DPAD_LEFT -> {
-                return handleChromeHiddenHorizontalKey(seekForward = false)
+                return handleChromeHiddenHorizontalKey(
+                    seekForward = false,
+                    repeatCount = event?.repeatCount ?: 0
+                )
             }
         }
 
@@ -11160,8 +11359,10 @@ private fun showDefaultStartupScreen() {
     /**
      * Single DPAD L/R opens channel list / EPG; a second press within [chromeHiddenDoubleTapMs]
      * seeks ±1 minute instead (and cancels the pending panel open).
+     * Key-repeat is ignored so a short hold does not fake a double-tap or open twice.
      */
-    private fun handleChromeHiddenHorizontalKey(seekForward: Boolean): Boolean {
+    private fun handleChromeHiddenHorizontalKey(seekForward: Boolean, repeatCount: Int): Boolean {
+        if (repeatCount > 0) return true
         val now = android.os.SystemClock.elapsedRealtime()
         if (seekForward) {
             pendingChromeHiddenLeftRunnable?.let { handler.removeCallbacks(it) }
@@ -11182,7 +11383,12 @@ private fun showDefaultStartupScreen() {
                     return true
                 }
                 queueSeekDeltaSeconds(60, fromUser = true)
-                showUI(preferFocus = if (::timelineTrack.isInitialized) timelineTrack else btnBackRight)
+                // Keep chrome up with focus on the timeline — do not jump to seek buttons.
+                if (::timelineTrack.isInitialized) {
+                    showUI(preferFocus = timelineTrack)
+                } else {
+                    showUI()
+                }
                 return true
             }
             lastChromeHiddenDpadRightElapsedMs = now
@@ -11217,7 +11423,11 @@ private fun showDefaultStartupScreen() {
                 return true
             }
             queueSeekDeltaSeconds(-60, fromUser = true)
-            showUI(preferFocus = if (::timelineTrack.isInitialized) timelineTrack else btnBackLeft)
+            if (::timelineTrack.isInitialized) {
+                showUI(preferFocus = timelineTrack)
+            } else {
+                showUI()
+            }
             return true
         }
         lastChromeHiddenDpadLeftElapsedMs = now
@@ -11229,7 +11439,8 @@ private fun showDefaultStartupScreen() {
             logDebug(
                 "NAV",
                 "DPAD_LEFT_OPEN_CHANNEL_LIST sdk=${Build.VERSION.SDK_INT} " +
-                    "channels=${channels.size} focus=${currentFocus?.javaClass?.simpleName}"
+                    "channels=${channels.size} category=${resolveInPlayerListCategory()} " +
+                    "focus=${currentFocus?.javaClass?.simpleName}"
             )
             showChannelListPanel()
         }
@@ -11334,11 +11545,17 @@ private fun showDefaultStartupScreen() {
     private fun updateTimelineUi() {
         if (!::tvCurrentTime.isInitialized || !::controlsPanel.isInitialized) return
         val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-        val p =
-            if (isArchivePlayback) currentArchiveProgram else channels.getOrNull(currentChannelIndex)
-                ?.let { ch ->
-                    getProgramsForDisplay(ch).find { System.currentTimeMillis() in it.start until it.stop }
-                }
+        // While scrubbing to another hour, show that hour's bar (e.g. 22:00–23:00 at 22:59).
+        val p = if (timelineUserSeeking && pendingSeekTargetAbsMs > 0L) {
+            timelineProgramForAbsoluteMs(pendingSeekTargetAbsMs)
+                ?: if (isArchivePlayback) currentArchiveProgram else null
+        } else if (isArchivePlayback) {
+            currentArchiveProgram
+        } else {
+            channels.getOrNull(currentChannelIndex)?.let { ch ->
+                getProgramsForDisplay(ch).find { System.currentTimeMillis() in it.start until it.stop }
+            }
+        }
         if (p == null) {
             tvCurrentTime.visibility = View.INVISIBLE
             tvProgramEndTime.visibility = View.INVISIBLE
@@ -11428,6 +11645,11 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun clampTimelineProgress(progress: Int): Int {
+        // During archive / active scrub preview the bar follows the target programme window
+        // (e.g. 22:00–23:00 with thumb at 22:59) — never clip to the live "now" mark.
+        if (isArchivePlayback || timelineUserSeeking) {
+            return progress.coerceIn(0, 1000)
+        }
         val maxLive = maxTimelineProgressForLiveSeek()
         return if (maxLive != null) progress.coerceIn(0, maxLive) else progress.coerceIn(0, 1000)
     }
@@ -11487,7 +11709,8 @@ private fun showDefaultStartupScreen() {
     private fun currentTimelineSeekableProgram(): Triple<Long, Long, Long>? {
         return if (isArchivePlayback) {
             val p = currentArchiveProgram ?: return null
-            Triple(p.start, p.stop, p.start + (mediaPlayer?.currentPosition ?: 0L))
+            val absNow = archiveStreamStartMs + (mediaPlayer?.currentPosition ?: 0L)
+            Triple(p.start, p.stop, absNow.coerceIn(p.start, p.stop))
         } else {
             val ch = channels.getOrNull(currentChannelIndex) ?: return null
             val cur =
@@ -11495,6 +11718,19 @@ private fun showDefaultStartupScreen() {
                     ?: return null
             Triple(cur.start, cur.stop, getLiveTimelinePositionMs())
         }
+    }
+
+    private fun timelineProgramForAbsoluteMs(absMs: Long): Program? {
+        val ch = channels.getOrNull(currentChannelIndex) ?: return currentArchiveProgram
+        val programs = getProgramsWithArchiveFallback(ch)
+        return programs.find { absMs in it.start until it.stop }
+            ?: programs.filter { it.start <= absMs }.maxByOrNull { it.start }
+            ?: currentArchiveProgram
+    }
+
+    private fun timelineWindowForAbsoluteMs(absMs: Long): Pair<Long, Long>? {
+        val p = timelineProgramForAbsoluteMs(absMs) ?: return null
+        return p.start to p.stop
     }
 
     private fun previewTimelineSeekText(progress: Int) {
@@ -11551,11 +11787,13 @@ private fun showDefaultStartupScreen() {
 
         seekToAbsoluteTime(targetAbsMs)
         showSeekSpinner()
-        val prefer = when {
-            isTelevisionDevice() && ::timelineTrack.isInitialized &&
-                currentFocus === timelineTrack -> timelineTrack
-            deltaSecForStatus < 0 -> btnBackLeft
-            else -> btnBackRight
+        // TV: stay on the progress bar after scrub — do not jump to ←/→ buttons.
+        val prefer = if (isTelevisionDevice() && ::timelineTrack.isInitialized) {
+            timelineTrack
+        } else if (deltaSecForStatus < 0) {
+            btnBackLeft
+        } else {
+            btnBackRight
         }
         showUI(preferFocus = prefer)
     }
@@ -12778,7 +13016,7 @@ private fun showDefaultStartupScreen() {
         val btnWatch: TextView
     )
     private data class ChannelGridItemViewHolder(
-        val tvNumber: TextView,
+        val tvNumber: TextView?,
         val tvName: TextView,
         val tvCurrentProgram: TextView,
         val ivLogo: ImageView,
