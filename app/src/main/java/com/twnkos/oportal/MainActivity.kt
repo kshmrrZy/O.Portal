@@ -339,6 +339,12 @@ class MainActivity : AppCompatActivity() {
     private var settingsOpenedFromPlayer = false
     private var settingsOpenedAsAuthOnly = false
     private var channelListProgramTitles: Map<Int, String> = emptyMap()
+    private val channelListTitleInflight = java.util.Collections.synchronizedSet(mutableSetOf<Int>())
+    private val flushChannelListTitlesRunnable = Runnable {
+        if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
+            (gvChannelListPanel.adapter as? BaseAdapter)?.notifyDataSetChanged()
+        }
+    }
     private var homeActionIndex = 0
     private var isSettingsModalVisible = false
 
@@ -3551,6 +3557,9 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun hideChannelListPanel() {
+        inPlayerTitlePrefetchToken++
+        channelListTitleInflight.clear()
+        handler.removeCallbacks(flushChannelListTitlesRunnable)
         channelListPanel.visibility = View.GONE
         gvChannelListPanel.adapter = null
         channelListProgramTitles = emptyMap()
@@ -3566,20 +3575,22 @@ private fun showDefaultStartupScreen() {
     private fun bindChannelListPanelAdapter() {
         val q = channelListSearchQuery.trim()
         data class Row(val channel: Channel, val realIndex: Int)
-        // Same scope as home: one category, never the full 2k+ service list (Android 9 OOM).
-        val baseRows = resolveInPlayerChannelListRows()
+        // Full current service (mem/disk cache), not a single home category.
+        val service = resolveInPlayerServiceChannels()
+        val baseRows = service.mapIndexed { index, ch -> Row(ch, index) }
         val rows: List<Row> = if (q.isBlank()) {
-            baseRows.map { Row(it.first, it.second) }
+            baseRows
         } else {
-            baseRows.mapNotNull { (ch, idx) ->
-                if (ch.name.contains(q, ignoreCase = true)) Row(ch, idx) else null
-            }
+            baseRows.filter { it.channel.name.contains(q, ignoreCase = true) }
         }
+        val currentKey = channels.getOrNull(currentChannelIndex)?.let { "${it.url}\u0000${it.name}" }
         logDebug(
             "NAV",
-            "CHANNEL_LIST_BIND rows=${rows.size} category=${resolveInPlayerListCategory()} " +
-                "totalChannels=${channels.size} sdk=${Build.VERSION.SDK_INT}"
+            "CHANNEL_LIST_BIND rows=${rows.size} serviceChannels=${service.size} " +
+                "activeChannels=${channels.size} sdk=${Build.VERSION.SDK_INT} " +
+                "memCache=${memCachedChannels.size}"
         )
+        // Android 9 TV: skip Glide logos (home card + recycled GridView is enough to stay under OOM).
         val skipLogos = isTelevisionDevice() && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P
         gvChannelListPanel.adapter = object : ArrayAdapter<Row>(this@MainActivity, 0, rows) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
@@ -3622,11 +3633,14 @@ private fun showDefaultStartupScreen() {
                     )
                 }
 
+                val isCurrent = currentKey != null &&
+                    "${channel.url}\u0000${channel.name}" == currentKey
                 itemView.setBackgroundResource(
-                    if (realIndex == currentChannelIndex) R.drawable.channel_grid_tile_bg_current
+                    if (isCurrent) R.drawable.channel_grid_tile_bg_current
                     else R.drawable.channel_grid_tile_bg
                 )
 
+                // Titles are filled lazily (visible rows / small batches) — never prebuild 2k+.
                 val title = channelListProgramTitles[realIndex].orEmpty()
                 if (title.isNotBlank()) {
                     holder.tvCurrentProgram.text = title
@@ -3634,6 +3648,7 @@ private fun showDefaultStartupScreen() {
                 } else {
                     holder.tvCurrentProgram.text = ""
                     holder.tvCurrentProgram.visibility = View.GONE
+                    scheduleInPlayerChannelTitle(realIndex, channel)
                 }
                 holder.archiveBadge.visibility =
                     if (channel.catchupDays > 0 && !channel.catchupSource.isNullOrBlank()) {
@@ -3643,10 +3658,8 @@ private fun showDefaultStartupScreen() {
                     }
 
                 itemView.setOnClickListener {
-                    logDebug("NAV", "channel_grid_click name=${channel.name}")
-                    currentChannelIndex = realIndex
-                    playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
-                    hideChannelListPanel()
+                    logDebug("NAV", "channel_grid_click name=${channel.name} serviceIndex=$realIndex")
+                    playChannelFromInPlayerServiceList(service, realIndex)
                 }
                 itemView.isFocusable = false
                 itemView.isFocusableInTouchMode = false
@@ -3659,68 +3672,95 @@ private fun showDefaultStartupScreen() {
                 view.performClick()
             }
         syncChannelListPanelBounds()
-        val focusIdx = rows.indexOfFirst { it.realIndex == currentChannelIndex }.takeIf { it >= 0 } ?: 0
+        val focusIdx = rows.indexOfFirst {
+            currentKey != null && "${it.channel.url}\u0000${it.channel.name}" == currentKey
+        }.takeIf { it >= 0 } ?: 0
         if (rows.isNotEmpty()) {
             gvChannelListPanel.setSelection(focusIdx.coerceAtMost(rows.lastIndex))
             gvChannelListPanel.requestFocus()
         }
     }
 
-    private fun resolveInPlayerListCategory(): String {
-        fun usable(name: String?): String? =
-            name?.trim()?.takeIf { it.isNotBlank() && !it.equals("Все каналы", ignoreCase = true) }
-        usable(lastChannelListCategory)?.let { return it }
-        usable(selectedCategoryName)?.let { return it }
-        usable(channels.getOrNull(currentChannelIndex)?.groupTitle)?.let { return it }
-        return "Без категории"
+    /**
+     * Full channel list of the currently selected service/playlist.
+     * Prefer RAM playlist cache (survives home category subsetting of [channels]).
+     */
+    private fun resolveInPlayerServiceChannels(): List<Channel> {
+        val currentUrl = lastLoadedPlaylistUrl.ifBlank { resolveCurrentPlaylistUrl() }
+        if (memCachedChannels.isNotEmpty() &&
+            (memCachedPlaylistUrl.isBlank() ||
+                currentUrl.isBlank() ||
+                memCachedPlaylistUrl == currentUrl)
+        ) {
+            return memCachedChannels
+        }
+        cachedCategoryGroups["Все каналы"]?.takeIf { it.isNotEmpty() }?.let { return it }
+        if (cachedCategoryGroups.isNotEmpty()) {
+            val seen = HashSet<String>(channels.size.coerceAtLeast(16) * 2)
+            val merged = ArrayList<Channel>()
+            cachedCategoryGroups.forEach { (key, list) ->
+                if (key.equals("Все каналы", ignoreCase = true)) return@forEach
+                list.forEach { ch ->
+                    val k = "${ch.url}\u0000${ch.name}"
+                    if (seen.add(k)) merged.add(ch)
+                }
+            }
+            if (merged.isNotEmpty()) return merged
+        }
+        if (currentUrl.isNotBlank()) {
+            val file = playlistCacheFile(currentUrl)
+            if (playlistFileLooksLikeBody(file)) {
+                val parsed = runCatching { M3uParser.parseFile(file) }.getOrNull().orEmpty()
+                if (parsed.isNotEmpty()) {
+                    memCachedPlaylistUrl = currentUrl
+                    memCachedChannels = parsed
+                    return parsed
+                }
+            }
+        }
+        return channels.toList()
     }
 
-    /** Rows for the in-player list: one category (like home), with real indices into [channels]. */
-    private fun resolveInPlayerChannelListRows(): List<Pair<Channel, Int>> {
-        val category = resolveInPlayerListCategory()
-        val fromCache = cachedCategoryGroups[category]
-        if (!fromCache.isNullOrEmpty()) {
-            val mapped = ArrayList<Pair<Channel, Int>>(fromCache.size)
-            // Build url→index once (O(n)), not per row.
-            val indexByKey = HashMap<String, Int>(channels.size * 2)
-            channels.forEachIndexed { i, ch ->
-                indexByKey["${ch.url}\u0000${ch.name}"] = i
-            }
-            fromCache.forEach { ch ->
-                val idx = indexByKey["${ch.url}\u0000${ch.name}"]
-                if (idx != null) mapped.add(ch to idx)
-            }
-            if (mapped.isNotEmpty()) return capInPlayerChannelRows(mapped)
-            // channels list may already be the category subset (home→player path).
-            return capInPlayerChannelRows(channels.mapIndexed { i, ch -> ch to i })
+    private fun playChannelFromInPlayerServiceList(service: List<Channel>, serviceIndex: Int) {
+        if (serviceIndex !in service.indices) return
+        // Zap list must be the full service so channel up/down and indices stay consistent.
+        if (channels.size != service.size ||
+            channels.getOrNull(serviceIndex)?.url != service[serviceIndex].url ||
+            channels.getOrNull(serviceIndex)?.name != service[serviceIndex].name
+        ) {
+            channels.clear()
+            channels.addAll(service)
         }
-        val filtered = ArrayList<Pair<Channel, Int>>()
-        channels.forEachIndexed { i, ch ->
-            val g = ch.groupTitle?.trim()?.takeUnless { it.isNullOrBlank() } ?: "Без категории"
-            if (g.equals(category, ignoreCase = true)) filtered.add(ch to i)
-        }
-        if (filtered.isNotEmpty()) return capInPlayerChannelRows(filtered)
-        // Android 9 TV: never inflate the full 2k+ service list in the modal (OOM).
-        if (isTelevisionDevice() && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
-            val idx = currentChannelIndex.coerceIn(0, (channels.size - 1).coerceAtLeast(0))
-            val ch = channels.getOrNull(idx) ?: return emptyList()
-            return listOf(ch to idx)
-        }
-        return capInPlayerChannelRows(channels.mapIndexed { i, ch -> ch to i })
+        currentChannelIndex = serviceIndex
+        playChannel(forcePlay = true, reason = PlayerOpenReason.CHANNEL_CLICK)
+        hideChannelListPanel()
     }
 
-    /** Keep the in-player modal bounded around the current channel on low-RAM TV. */
-    private fun capInPlayerChannelRows(rows: List<Pair<Channel, Int>>): List<Pair<Channel, Int>> {
-        val maxRows =
-            if (isTelevisionDevice() && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) 120 else 800
-        if (rows.size <= maxRows) return rows
-        val cur = rows.indexOfFirst { it.second == currentChannelIndex }.takeIf { it >= 0 }
-            ?: (rows.size / 2)
-        val half = maxRows / 2
-        val start = (cur - half).coerceAtLeast(0)
-        val end = (start + maxRows).coerceAtMost(rows.size)
-        val from = (end - maxRows).coerceAtLeast(0)
-        return rows.subList(from, end)
+    private var inPlayerTitlePrefetchToken = 0L
+
+    /** Lazy EPG title for one visible row — avoids allocating titles for the whole service up front. */
+    private fun scheduleInPlayerChannelTitle(realIndex: Int, channel: Channel) {
+        if (channelListProgramTitles.containsKey(realIndex)) return
+        if (!channelListTitleInflight.add(realIndex)) return
+        if (!::channelListPanel.isInitialized || channelListPanel.visibility != View.VISIBLE) {
+            channelListTitleInflight.remove(realIndex)
+            return
+        }
+        val token = inPlayerTitlePrefetchToken
+        thread(name = "channel-list-title") {
+            val title = runCatching { getCurrentProgramTitleForChannelList(channel) }.getOrDefault("")
+            handler.post {
+                channelListTitleInflight.remove(realIndex)
+                if (token != inPlayerTitlePrefetchToken) return@post
+                if (!::channelListPanel.isInitialized || channelListPanel.visibility != View.VISIBLE) {
+                    return@post
+                }
+                if (channelListProgramTitles.containsKey(realIndex)) return@post
+                channelListProgramTitles = channelListProgramTitles + (realIndex to title)
+                handler.removeCallbacks(flushChannelListTitlesRunnable)
+                handler.postDelayed(flushChannelListTitlesRunnable, 120L)
+            }
+        }
     }
 
     private fun showChannelListPanel() {
@@ -3729,7 +3769,7 @@ private fun showDefaultStartupScreen() {
             logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=epg_open")
             return
         }
-        if (channels.isEmpty()) {
+        if (channels.isEmpty() && memCachedChannels.isEmpty()) {
             // Offline / after process quirks: restore last cached playlist for the current URL.
             val url = lastLoadedPlaylistUrl.ifBlank { resolveCurrentPlaylistUrl() }
             if (url.isNotBlank()) {
@@ -3740,6 +3780,8 @@ private fun showDefaultStartupScreen() {
                         if (restored.isNotEmpty()) {
                             channels.clear()
                             channels.addAll(restored)
+                            memCachedPlaylistUrl = url
+                            memCachedChannels = restored
                             lastLoadedPlaylistUrl = url
                             logDebug("PLAYLIST_FLOW", "CHANNEL_LIST_CACHE_RESTORE count=${channels.size}")
                         }
@@ -3749,23 +3791,24 @@ private fun showDefaultStartupScreen() {
                 }
             }
         }
-        if (channels.isEmpty()) {
+        if (channels.isEmpty() && memCachedChannels.isEmpty() &&
+            cachedCategoryGroups["Все каналы"].isNullOrEmpty()
+        ) {
             logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=empty_channels")
             return
         }
         runCatching {
-            val category = resolveInPlayerListCategory()
-            val rowsPreview = resolveInPlayerChannelListRows()
+            val service = resolveInPlayerServiceChannels()
             logMemoryStats(
-                "channel_list_open_start total=${channels.size} rows=${rowsPreview.size} category=$category"
+                "channel_list_open_start totalActive=${channels.size} service=${service.size} " +
+                    "memCache=${memCachedChannels.size}"
             )
             // Android 9 TV: free what we can before inflating grid rows (log showed ~1MB free).
             if (isTelevisionDevice() && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
                 runCatching { Glide.get(this).clearMemory() }
                 System.gc()
             }
-            tvChannelListTitle.text =
-                "Список каналов: ${getSelectedPlaylistName()} · $category"
+            tvChannelListTitle.text = "Список каналов: ${getSelectedPlaylistName()}"
             channelListSearchQuery = ""
             if (::etChannelListSearch.isInitialized) {
                 etChannelListSearch.setText("")
@@ -3779,24 +3822,12 @@ private fun showDefaultStartupScreen() {
             handler.removeCallbacks(hideUiRunnable)
             pausePlaybackStallWatchdogForOverlay()
             channelListPanel.visibility = View.VISIBLE
-            // Titles only for the category rows (not the whole service).
+            // Titles load lazily per visible row (full-service lists are too large to prefetch).
+            inPlayerTitlePrefetchToken++
+            channelListTitleInflight.clear()
+            handler.removeCallbacks(flushChannelListTitlesRunnable)
             channelListProgramTitles = emptyMap()
             bindChannelListPanelAdapter()
-            channelListPanel.post {
-                val rowsSnapshot = resolveInPlayerChannelListRows()
-                thread(name = "channel-list-prep") {
-                    val titles = LinkedHashMap<Int, String>(rowsSnapshot.size)
-                    rowsSnapshot.forEach { (ch, realIndex) ->
-                        titles[realIndex] = getCurrentProgramTitleForChannelList(ch)
-                    }
-                    handler.post {
-                        if (channelListPanel.visibility != View.VISIBLE) return@post
-                        channelListProgramTitles = titles
-                        (gvChannelListPanel.adapter as? BaseAdapter)?.notifyDataSetChanged()
-                            ?: bindChannelListPanelAdapter()
-                    }
-                }
-            }
         }.onFailure { err ->
             logDebug("NAV", "CHANNEL_LIST_OPEN_FAIL ${err.message}")
             hideChannelListPanel()
@@ -4817,7 +4848,121 @@ private fun showDefaultStartupScreen() {
 
         configureBackButtonsForSettings("openPlaylistSettingsScreen")
         bindData()
+        // Same TV remote policy as EPG: lock profile chrome, seed focus at the top field.
+        configureSettingsSubFormTvFocus(
+            startFocus = findViewById(R.id.etPlaylistUrl1)
+        )
+        wirePlaylistSettingsTvFocusChain()
         applySettingsViewportLayout()
+    }
+
+    /** Disable profile/auth chrome stealing DPAD while a settings sub-form is open (TV). */
+    private fun configureSettingsSubFormTvFocus(startFocus: View?) {
+        setSettingsAuthFieldsFocusable(false)
+        setProfileHeaderRemoteFocusable(false)
+        listOf(R.id.etUserLoginInline, R.id.etUserTokenInline, R.id.etUserLogin, R.id.etUserToken)
+            .forEach { id -> findViewById<View>(id)?.clearFocus() }
+        findViewById<View>(R.id.tvProfileTokenValue)?.clearFocus()
+        startFocus?.post { startFocus.requestFocus() }
+    }
+
+    /** Playlist form: top→bottom / bottom→top like a single column (URL ↔ toggle ↔ next). */
+    private fun wirePlaylistSettingsTvFocusChain() {
+        val urls = listOf(
+            findViewById<View>(R.id.etPlaylistUrl1),
+            findViewById<View>(R.id.etPlaylistUrl2),
+            findViewById<View>(R.id.etPlaylistUrl3)
+        )
+        val toggles = listOf(
+            findViewById<View>(R.id.ivPlaylistToggle1),
+            findViewById<View>(R.id.ivPlaylistToggle2),
+            findViewById<View>(R.id.ivPlaylistToggle3)
+        )
+        val save = findViewById<View>(R.id.btnSavePlaylistSettings)
+        val back = findViewById<View>(R.id.btnRefreshPlaylistSettings)
+        urls.forEachIndexed { i, et ->
+            val toggle = toggles[i]
+            et?.nextFocusRightId = toggle?.id ?: View.NO_ID
+            toggle?.nextFocusLeftId = et?.id ?: View.NO_ID
+            val nextEt = urls.getOrNull(i + 1)
+            val prevEt = urls.getOrNull(i - 1)
+            et?.nextFocusDownId = nextEt?.id ?: R.id.btnSavePlaylistSettings
+            et?.nextFocusUpId = prevEt?.id ?: View.NO_ID
+            toggle?.nextFocusDownId = nextEt?.id ?: R.id.btnSavePlaylistSettings
+            toggle?.nextFocusUpId = prevEt?.id ?: View.NO_ID
+        }
+        save?.nextFocusUpId = R.id.etPlaylistUrl3
+        back?.nextFocusUpId = R.id.etPlaylistUrl3
+        save?.nextFocusRightId = R.id.btnRefreshPlaylistSettings
+        back?.nextFocusLeftId = R.id.btnSavePlaylistSettings
+        save?.nextFocusLeftId = View.NO_ID
+        back?.nextFocusRightId = View.NO_ID
+        urls.forEach { et ->
+            et?.isFocusable = true
+            et?.isFocusableInTouchMode = false
+        }
+    }
+
+    /** EPG form: same vertical remote flow as playlist settings (fields → refresh → actions). */
+    private fun wireEpgSettingsTvFocusChain() {
+        val urls = listOf(
+            findViewById<View>(R.id.etEpgUrl1),
+            findViewById<View>(R.id.etEpgUrl2),
+            findViewById<View>(R.id.etEpgUrl3)
+        )
+        val toggles = listOf(
+            findViewById<View>(R.id.ivEpgToggle1),
+            findViewById<View>(R.id.ivEpgToggle2),
+            findViewById<View>(R.id.ivEpgToggle3)
+        )
+        val refreshRow = findViewById<View>(R.id.itemEpgRefreshMode)
+        val refreshTb = findViewById<View>(R.id.tbEpgRefreshInterval)
+        val reset = findViewById<View>(R.id.btnResetEpgCache)
+        val sourceMode = findViewById<View>(R.id.tbEpgSourceMode)
+        val save = findViewById<View>(R.id.btnSaveEpgSettings)
+        val back = findViewById<View>(R.id.btnRefreshEpgSettings)
+
+        urls.forEachIndexed { i, et ->
+            val toggle = toggles[i]
+            et?.nextFocusRightId = toggle?.id ?: View.NO_ID
+            toggle?.nextFocusLeftId = et?.id ?: View.NO_ID
+            val nextEt = urls.getOrNull(i + 1)
+            val prevEt = urls.getOrNull(i - 1)
+            if (i < urls.lastIndex) {
+                et?.nextFocusDownId = nextEt?.id ?: View.NO_ID
+                toggle?.nextFocusDownId = nextEt?.id ?: View.NO_ID
+            } else {
+                et?.nextFocusDownId = R.id.itemEpgRefreshMode
+                toggle?.nextFocusDownId = R.id.itemEpgRefreshMode
+            }
+            et?.nextFocusUpId = prevEt?.id ?: View.NO_ID
+            toggle?.nextFocusUpId = prevEt?.id ?: View.NO_ID
+        }
+
+        refreshRow?.nextFocusUpId = R.id.etEpgUrl3
+        refreshRow?.nextFocusDownId = R.id.btnResetEpgCache
+        refreshTb?.nextFocusUpId = R.id.etEpgUrl3
+        refreshTb?.nextFocusDownId = R.id.btnResetEpgCache
+        // Leave the scrollable form into the pinned action row (playlist-style).
+        reset?.nextFocusUpId = R.id.tbEpgRefreshInterval
+        sourceMode?.nextFocusUpId = R.id.tbEpgRefreshInterval
+        save?.nextFocusUpId = R.id.tbEpgRefreshInterval
+        back?.nextFocusUpId = R.id.tbEpgRefreshInterval
+
+        reset?.nextFocusLeftId = View.NO_ID
+        reset?.nextFocusRightId = R.id.tbEpgSourceMode
+        sourceMode?.nextFocusLeftId = R.id.btnResetEpgCache
+        sourceMode?.nextFocusRightId = R.id.btnSaveEpgSettings
+        save?.nextFocusLeftId = R.id.tbEpgSourceMode
+        save?.nextFocusRightId = R.id.btnRefreshEpgSettings
+        back?.nextFocusLeftId = R.id.btnSaveEpgSettings
+        back?.nextFocusRightId = View.NO_ID
+
+        urls.forEach { et ->
+            et?.isFocusable = true
+            et?.isFocusableInTouchMode = false
+            (et as? EditText)?.setOnClickListener(null)
+        }
     }
 
 
@@ -5391,32 +5536,19 @@ private fun showDefaultStartupScreen() {
         syncToggleSizeToUrlField()
 
         
-        // TV: profile token/login fields sit in the parent settings chrome and steal DPAD
-        // when scrolling the EPG form — keep them non-focusable while this sub-screen is open.
-        setSettingsAuthFieldsFocusable(false)
-        setProfileHeaderRemoteFocusable(false)
-        listOf(R.id.etUserLoginInline, R.id.etUserTokenInline, R.id.etUserLogin, R.id.etUserToken)
-            .forEach { id -> findViewById<View>(id)?.clearFocus() }
-        findViewById<View>(R.id.tvProfileTokenValue)?.clearFocus()
-        // Same vertical remote flow as playlist settings: URL fields stay focusable top→bottom.
-        urls.forEach { et ->
-            et.isFocusable = true
-            et.isFocusableInTouchMode = false
-            et.setOnClickListener(null)
-        }
-
+        // TV: same remote policy as playlist settings — lock profile chrome, linear top↔bottom focus.
+        configureSettingsSubFormTvFocus(startFocus = findViewById(R.id.etEpgUrl1))
+        wireEpgSettingsTvFocusChain()
         findViewById<ContentAwareScrollView>(R.id.epgSettingsScroll)?.let { scroll ->
-            // Allow DPAD to leave the form into the bottom action row (Save/Back), like playlist settings.
+            // Page inside the form when needed, but honor nextFocus* into the action row.
             scroll.forceDpadPaging = false
+            scroll.isFocusable = false
+            scroll.isFocusableInTouchMode = false
+            scroll.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             scroll.post { scroll.updateScrollEnabled() }
         }
-        // Start at the first URL field / toggle (top), not the bottom source-mode button.
-        findViewById<View>(R.id.etEpgUrl1)?.post {
-            findViewById<View>(R.id.etEpgUrl1)?.requestFocus()
-                ?: findViewById<View>(R.id.ivEpgToggle1)?.requestFocus()
-                ?: findViewById<View>(R.id.itemEpgRefreshMode)?.requestFocus()
-                ?: tbSourceMode.requestFocus()
-        }
+        epgPanel.isFocusable = false
+        epgPanel.isFocusableInTouchMode = false
         configureBackButtonsForSettings("openEpgSettingsScreen")
         applySettingsViewportLayout()
     }
@@ -10968,7 +11100,93 @@ private fun showDefaultStartupScreen() {
         return false
     }
 
+    /**
+     * TV: from playlists / service categories / channel lists (not the player), move UP toward
+     * breadcrumbs and then the header auth/settings/power icons. Must run in dispatchKeyEvent
+     * so AbsListView/RecyclerView cannot swallow the key at the top row.
+     */
+    private fun tryMoveHomeFocusTowardHeaderIcons(): Boolean {
+        if (!::homePanel.isInitialized || homePanel.visibility != View.VISIBLE) return false
+        if (::tvHomeStartTitle.isInitialized && tvHomeStartTitle.visibility == View.VISIBLE) return false
+        // Settings sub-forms (playlist/EPG) use their own nextFocus* chain.
+        if (::homeSettingsScreen.isInitialized &&
+            homeSettingsScreen.visibility == View.VISIBLE &&
+            isSettingsSubPanelOpen()
+        ) {
+            return false
+        }
+
+        val focused = currentFocus ?: return false
+        val headerIcons = listOf(ivHomeProfile, ivHomeSettings, ivHomePower)
+            .filter { it.visibility == View.VISIBLE }
+        if (headerIcons.isEmpty()) return false
+        if (focused in headerIcons) return false
+
+        val breadcrumbs = listOf(tvHomeBreadcrumbPill, tvHomeBreadcrumbPill2)
+            .filter { it.visibility == View.VISIBLE }
+
+        fun focusHeader(): Boolean {
+            headerIcons.forEach { it.isFocusable = true }
+            (if (ivHomeSettings.visibility == View.VISIBLE) ivHomeSettings else headerIcons.first())
+                .requestFocus()
+            return true
+        }
+
+        if (focused in breadcrumbs) return focusHeader()
+
+        if (::etHomeListSearch.isInitialized &&
+            focused === etHomeListSearch &&
+            etHomeListSearch.visibility == View.VISIBLE
+        ) {
+            if (breadcrumbs.isNotEmpty()) {
+                breadcrumbs.last().requestFocus()
+                return true
+            }
+            return focusHeader()
+        }
+
+        if (::homeSettingsScreen.isInitialized &&
+            homeSettingsScreen.visibility == View.VISIBLE &&
+            !isSettingsSubPanelOpen()
+        ) {
+            val onSettings = generateSequence(focused as View?) { it?.parent as? View }
+                .any { it === homeSettingsScreen }
+            if (onSettings) {
+                if (breadcrumbs.isNotEmpty()) {
+                    breadcrumbs.last().requestFocus()
+                    return true
+                }
+                return focusHeader()
+            }
+        }
+
+        val onChannelGrid = ::gvHomeChannelList.isInitialized &&
+            gvHomeChannelList.visibility == View.VISIBLE
+        val onPlaylistTiles = ::homePlaylistTilesPanel.isInitialized &&
+            homePlaylistTilesPanel.visibility == View.VISIBLE
+        if (onChannelGrid || onPlaylistTiles) {
+            val grid: View = if (onChannelGrid) gvHomeChannelList else rvHomeTiles
+            if (isHomeListAtTopRow(grid, focused)) {
+                if (breadcrumbs.isNotEmpty()) {
+                    breadcrumbs.last().requestFocus()
+                    return true
+                }
+                return focusHeader()
+            }
+        }
+        return false
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Home (not player): intercept UP at the top of categories / channel lists / playlists
+        // before GridView/RecyclerView swallows it — so auth/settings icons stay reachable.
+        if (event.action == KeyEvent.ACTION_DOWN &&
+            event.repeatCount == 0 &&
+            event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
+            tryMoveHomeFocusTowardHeaderIcons()
+        ) {
+            return true
+        }
         // Chrome hidden: OK pauses playback and reveals controls (focus play/pause).
         // Second OK on play/pause resumes via the button listener; chrome auto-hides on timer.
         if (event.action == KeyEvent.ACTION_DOWN &&
@@ -11192,10 +11410,7 @@ private fun showDefaultStartupScreen() {
             ) {
                 val grid = if (homePlaylistTilesPanel.visibility == View.VISIBLE) rvHomeTiles else gvHomeChannelList
                 if (isHomeListAtTopRow(grid, focused)) {
-                    if (etHomeListSearch.visibility == View.VISIBLE) {
-                        etHomeListSearch.requestFocus()
-                        return true
-                    }
+                    // Skip search on the way up — reach breadcrumbs / auth+settings icons directly.
                     if (breadcrumbs.isNotEmpty()) {
                         breadcrumbs.last().requestFocus()
                         return true
@@ -11439,7 +11654,7 @@ private fun showDefaultStartupScreen() {
             logDebug(
                 "NAV",
                 "DPAD_LEFT_OPEN_CHANNEL_LIST sdk=${Build.VERSION.SDK_INT} " +
-                    "channels=${channels.size} category=${resolveInPlayerListCategory()} " +
+                    "channels=${channels.size} memCache=${memCachedChannels.size} " +
                     "focus=${currentFocus?.javaClass?.simpleName}"
             )
             showChannelListPanel()
