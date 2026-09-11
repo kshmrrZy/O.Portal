@@ -585,7 +585,7 @@
             <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Приложение предназначено для просмотра IPTV-каналов с портала O.Portal" android:textColor="#CCFFFFFF" android:textSize="12sp"/>
 
             <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Рекомендуемые параметры" android:textColor="#FFFFFF" android:textSize="16sp" android:textStyle="bold"/>
-            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Операционная система не ниже Android 7.0, не менее 1 ГБ ОЗУ, не менее 500 МБ для установки" android:textColor="#CCFFFFFF" android:textSize="12sp"/>
+            <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Операционная система не ниже Android 9.0, не менее 1 ГБ ОЗУ, не менее 500 МБ для установки" android:textColor="#CCFFFFFF" android:textSize="12sp"/>
 
             <TextView style="@style/AppGolosText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Где взять логин и токен" android:textColor="#FFFFFF" android:textSize="16sp" android:textStyle="bold"/>
             <TextView style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="На сайте o.avff.pw в разделе Профиль после авторизации с помощью VK или Telegram" android:textColor="#CCFFFFFF" android:textSize="12sp"/>
@@ -623,7 +623,7 @@
 
             <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="16dp" android:background="#33FFFFFF"/>
 
-            <TextView android:id="@+id/tvAppInfoVersion" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="end" android:text="O.Portal App v. 0.1" android:textColor="#FFFFFF" android:textSize="12sp"/>
+            <TextView android:id="@+id/tvAppInfoVersion" style="@style/AppGolosText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="end" android:text="O.Portal App v. 1.0" android:textColor="#FFFFFF" android:textSize="12sp"/>
         </LinearLayout>
     </ScrollView>
 <ScrollView
