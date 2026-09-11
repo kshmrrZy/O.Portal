@@ -345,6 +345,15 @@ class MainActivity : AppCompatActivity() {
             (gvChannelListPanel.adapter as? BaseAdapter)?.notifyDataSetChanged()
         }
     }
+    /** Lazy programme titles for the home channel grid (key = url\\0name). */
+    private var homeChannelProgramTitles: Map<String, String> = emptyMap()
+    private val homeChannelTitleInflight = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    private var homeChannelTitleToken = 0L
+    private val flushHomeChannelTitlesRunnable = Runnable {
+        if (::gvHomeChannelList.isInitialized && gvHomeChannelList.visibility == View.VISIBLE) {
+            (gvHomeChannelList.adapter as? BaseAdapter)?.notifyDataSetChanged()
+        }
+    }
     private var homeActionIndex = 0
     private var isSettingsModalVisible = false
 
@@ -1628,8 +1637,15 @@ private fun showDefaultStartupScreen() {
             tvHomeBreadcrumbPill2.nextFocusDownId = tvHomeBreadcrumbPill.nextFocusDownId
             tvHomeBreadcrumbPill.nextFocusRightId = R.id.tvHomeBreadcrumbPill2
             tvHomeBreadcrumbPill2.nextFocusLeftId = R.id.tvHomeBreadcrumbPill
+            // From the last crumb, RIGHT reaches settings (then power via icon L/R).
+            tvHomeBreadcrumbPill2.nextFocusRightId = R.id.ivHomeSettings
+            ivHomeSettings.nextFocusLeftId = R.id.tvHomeBreadcrumbPill2
+            ivHomePower.nextFocusLeftId = R.id.ivHomeSettings
         } else {
-            tvHomeBreadcrumbPill.nextFocusRightId = View.NO_ID
+            // Single crumb (e.g. categories): RIGHT goes straight to settings/power cluster.
+            tvHomeBreadcrumbPill.nextFocusRightId = R.id.ivHomeSettings
+            ivHomeSettings.nextFocusLeftId = R.id.tvHomeBreadcrumbPill
+            ivHomePower.nextFocusLeftId = R.id.ivHomeSettings
         }
     }
 
@@ -2809,17 +2825,30 @@ private fun showDefaultStartupScreen() {
                             categoryOpenInProgress = true
                             selectedCategoryName = category
                             logDebug("NAV", "CATEGORY_OPEN_CHANNELS_START name=$category")
-                            val startedAt = System.currentTimeMillis()
-                            showAppLoadingSpinner()
                             val filtered = cachedCategoryGroups[category].orEmpty()
                             homePlaylistTilesPanel.visibility = View.GONE
-                            val remaining = (220L - (System.currentTimeMillis() - startedAt)).coerceAtLeast(0L)
-                            handler.postDelayed({
+                            // RAM hit: open immediately — the old 220ms spinner floor made cached
+                            // categories feel "slow" on TV even when no disk I/O happened.
+                            if (filtered.isNotEmpty()) {
+                                logDebug(
+                                    "NAV",
+                                    "CATEGORY_OPEN_CACHE_HIT name=$category count=${filtered.size}"
+                                )
                                 showHomeChannelList(category, filtered)
-                                hideAppLoadingSpinner()
                                 logDebug("NAV", "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}")
                                 categoryOpenInProgress = false
-                            }, remaining)
+                            } else {
+                                showAppLoadingSpinner()
+                                handler.post {
+                                    showHomeChannelList(category, filtered)
+                                    hideAppLoadingSpinner()
+                                    logDebug(
+                                        "NAV",
+                                        "CATEGORY_OPEN_CHANNELS_DONE channelsCount=${filtered.size}"
+                                    )
+                                    categoryOpenInProgress = false
+                                }
+                            }
                         }
                     }, source = "categories", requestTileFocus = fromUserSubmit && q.isBlank())
                 }
@@ -2978,7 +3007,10 @@ private fun showDefaultStartupScreen() {
         updateHomeHeaderActions()
         setHomeSearchMode(HomeSearchMode.CATEGORIES, hint = "Поиск категории")
 
-        val allChannels = groupedCategories.values.flatten()
+        val allChannels = when {
+            memCachedChannels.isNotEmpty() -> memCachedChannels
+            else -> groupedCategories.values.flatten()
+        }
         fun categoryGroupOrder(name: String): Int {
             val ch = name.firstOrNull() ?: return 2
             return when {
@@ -3022,6 +3054,10 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun returnToCategoryTilesOnHome() {
+        homeChannelTitleToken++
+        homeChannelTitleInflight.clear()
+        handler.removeCallbacks(flushHomeChannelTitlesRunnable)
+        homeChannelProgramTitles = emptyMap()
         showPlaylistPageHeader(false)
         gvHomeChannelList.visibility = View.GONE
         gvHomeChannelList.adapter = null
@@ -3076,6 +3112,13 @@ private fun showDefaultStartupScreen() {
             !lastUrl.isNullOrBlank() -> lastUrl to lastName
             else -> null
         }
+        // First paint: names only. EPG titles fill in lazily (same idea as in-player list).
+        // Android 9 TV: skip Glide logos — decode spikes were a big part of "cached but slow".
+        val skipLogos = isTelevisionDevice() && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P
+        homeChannelTitleToken++
+        homeChannelTitleInflight.clear()
+        handler.removeCallbacks(flushHomeChannelTitlesRunnable)
+        homeChannelProgramTitles = emptyMap()
         gvHomeChannelList.adapter = object : ArrayAdapter<Channel>(this, 0, channelsForCategory) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val itemView = convertView
@@ -3088,7 +3131,11 @@ private fun showDefaultStartupScreen() {
 
                 tvName.text = channel.name
                 tvName.isSelected = true
-                loadLogoWithGlide(channel.logoFromEpg ?: channel.logoFromPlaylist, ivLogo)
+                if (skipLogos) {
+                    ivLogo.setImageDrawable(null)
+                } else {
+                    loadLogoWithGlide(channel.logoFromEpg ?: channel.logoFromPlaylist, ivLogo)
+                }
 
                 archiveBadge.visibility =
                     if (channel.catchupDays > 0 && !channel.catchupSource.isNullOrBlank()) View.VISIBLE else View.GONE
@@ -3101,16 +3148,15 @@ private fun showDefaultStartupScreen() {
                     else R.drawable.channel_grid_tile_bg
                 )
 
-                val now = System.currentTimeMillis()
-                val realPrograms = getProgramsForChannel(channel)
-                val displayPrograms = realPrograms.ifEmpty { buildArchivePlaceholderPrograms(channel) }
-                val cur = displayPrograms.find { now in it.start until it.stop }
-                if (cur != null) {
-                    tvCurrent.text = cur.title
+                val titleKey = "${channel.url}\u0000${channel.name}"
+                val cachedTitle = homeChannelProgramTitles[titleKey]
+                if (!cachedTitle.isNullOrBlank()) {
+                    tvCurrent.text = cachedTitle
                     tvCurrent.visibility = View.VISIBLE
                 } else {
-                    tvCurrent.text = epgUnavailableMessage(channel.name)
-                    tvCurrent.visibility = View.VISIBLE
+                    tvCurrent.text = ""
+                    tvCurrent.visibility = View.GONE
+                    scheduleHomeChannelTitle(titleKey, channel)
                 }
 
                 itemView.setOnClickListener {
@@ -3145,6 +3191,36 @@ private fun showDefaultStartupScreen() {
                     gvHomeChannelList.setSelection(focusIdx.coerceAtMost(channelsForCategory.lastIndex))
                     gvHomeChannelList.requestFocus()
                 }
+            }
+        }
+    }
+
+    private fun scheduleHomeChannelTitle(titleKey: String, channel: Channel) {
+        if (homeChannelProgramTitles.containsKey(titleKey)) return
+        if (!homeChannelTitleInflight.add(titleKey)) return
+        if (!::gvHomeChannelList.isInitialized || gvHomeChannelList.visibility != View.VISIBLE) {
+            homeChannelTitleInflight.remove(titleKey)
+            return
+        }
+        val token = homeChannelTitleToken
+        thread(name = "home-channel-title") {
+            val now = System.currentTimeMillis()
+            val title = runCatching {
+                val real = getProgramsForChannel(channel)
+                val programs = if (real.isNotEmpty()) real else buildArchivePlaceholderPrograms(channel)
+                programs.find { now in it.start until it.stop }?.title
+                    ?: epgUnavailableMessage(channel.name)
+            }.getOrElse { epgUnavailableMessage(channel.name) }
+            handler.post {
+                homeChannelTitleInflight.remove(titleKey)
+                if (token != homeChannelTitleToken) return@post
+                if (!::gvHomeChannelList.isInitialized || gvHomeChannelList.visibility != View.VISIBLE) {
+                    return@post
+                }
+                if (homeChannelProgramTitles.containsKey(titleKey)) return@post
+                homeChannelProgramTitles = homeChannelProgramTitles + (titleKey to title)
+                handler.removeCallbacks(flushHomeChannelTitlesRunnable)
+                handler.postDelayed(flushHomeChannelTitlesRunnable, 120L)
             }
         }
     }
@@ -3560,6 +3636,7 @@ private fun showDefaultStartupScreen() {
         inPlayerTitlePrefetchToken++
         channelListTitleInflight.clear()
         handler.removeCallbacks(flushChannelListTitlesRunnable)
+        hidePlayerOverlaySpinner()
         channelListPanel.visibility = View.GONE
         gvChannelListPanel.adapter = null
         channelListProgramTitles = emptyMap()
@@ -3769,68 +3846,81 @@ private fun showDefaultStartupScreen() {
             logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=epg_open")
             return
         }
-        if (channels.isEmpty() && memCachedChannels.isEmpty()) {
-            // Offline / after process quirks: restore last cached playlist for the current URL.
-            val url = lastLoadedPlaylistUrl.ifBlank { resolveCurrentPlaylistUrl() }
-            if (url.isNotBlank()) {
-                val file = playlistCacheFile(url)
-                if (playlistFileLooksLikeBody(file)) {
-                    runCatching {
-                        val restored = M3uParser.parseFile(file)
-                        if (restored.isNotEmpty()) {
-                            channels.clear()
-                            channels.addAll(restored)
-                            memCachedPlaylistUrl = url
-                            memCachedChannels = restored
-                            lastLoadedPlaylistUrl = url
-                            logDebug("PLAYLIST_FLOW", "CHANNEL_LIST_CACHE_RESTORE count=${channels.size}")
-                        }
-                    }.onFailure { err ->
-                        logDebug("PLAYLIST_FLOW", "CHANNEL_LIST_CACHE_RESTORE_FAIL ${err.message}")
-                    }
+        showPlayerOverlaySpinner()
+        setPlayerOverlayScrimVisible(true)
+        topInfoPanel.visibility = View.GONE
+        topGradientOverlay.visibility = View.GONE
+        controlsPanel.visibility = View.GONE
+        handler.removeCallbacks(hideUiRunnable)
+        pausePlaybackStallWatchdogForOverlay()
+        channelListPanel.visibility = View.VISIBLE
+        tvChannelListTitle.text = "Список каналов: ${getSelectedPlaylistName()}"
+        channelListSearchQuery = ""
+        if (::etChannelListSearch.isInitialized) {
+            etChannelListSearch.setText("")
+            etChannelListSearch.visibility = View.GONE
+        }
+
+        fun finishOpenWithService() {
+            runCatching {
+                val service = resolveInPlayerServiceChannels()
+                if (service.isEmpty()) {
+                    logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=empty_channels")
+                    hideChannelListPanel()
+                    return
                 }
+                logMemoryStats(
+                    "channel_list_open_start totalActive=${channels.size} service=${service.size} " +
+                        "memCache=${memCachedChannels.size}"
+                )
+                // Titles load lazily per visible row (full-service lists are too large to prefetch).
+                inPlayerTitlePrefetchToken++
+                channelListTitleInflight.clear()
+                handler.removeCallbacks(flushChannelListTitlesRunnable)
+                channelListProgramTitles = emptyMap()
+                bindChannelListPanelAdapter()
+                hidePlayerOverlaySpinner()
+            }.onFailure { err ->
+                logDebug("NAV", "CHANNEL_LIST_OPEN_FAIL ${err.message}")
+                hideChannelListPanel()
             }
         }
-        if (channels.isEmpty() && memCachedChannels.isEmpty() &&
+
+        val needsDiskRestore = channels.isEmpty() &&
+            memCachedChannels.isEmpty() &&
             cachedCategoryGroups["Все каналы"].isNullOrEmpty()
-        ) {
-            logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=empty_channels")
+        if (!needsDiskRestore) {
+            // RAM / category cache hit — bind on next frame so the spinner can paint first.
+            channelListPanel.post { finishOpenWithService() }
             return
         }
-        runCatching {
-            val service = resolveInPlayerServiceChannels()
-            logMemoryStats(
-                "channel_list_open_start totalActive=${channels.size} service=${service.size} " +
-                    "memCache=${memCachedChannels.size}"
-            )
-            // Android 9 TV: free what we can before inflating grid rows (log showed ~1MB free).
-            if (isTelevisionDevice() && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
-                runCatching { Glide.get(this).clearMemory() }
-                System.gc()
-            }
-            tvChannelListTitle.text = "Список каналов: ${getSelectedPlaylistName()}"
-            channelListSearchQuery = ""
-            if (::etChannelListSearch.isInitialized) {
-                etChannelListSearch.setText("")
-                // Search only on home channel grids — hide in the in-player channel list.
-                etChannelListSearch.visibility = View.GONE
-            }
-            setPlayerOverlayScrimVisible(true)
-            topInfoPanel.visibility = View.GONE
-            topGradientOverlay.visibility = View.GONE
-            controlsPanel.visibility = View.GONE
-            handler.removeCallbacks(hideUiRunnable)
-            pausePlaybackStallWatchdogForOverlay()
-            channelListPanel.visibility = View.VISIBLE
-            // Titles load lazily per visible row (full-service lists are too large to prefetch).
-            inPlayerTitlePrefetchToken++
-            channelListTitleInflight.clear()
-            handler.removeCallbacks(flushChannelListTitlesRunnable)
-            channelListProgramTitles = emptyMap()
-            bindChannelListPanelAdapter()
-        }.onFailure { err ->
-            logDebug("NAV", "CHANNEL_LIST_OPEN_FAIL ${err.message}")
+
+        val url = lastLoadedPlaylistUrl.ifBlank { resolveCurrentPlaylistUrl() }
+        if (url.isBlank()) {
+            logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=empty_channels")
             hideChannelListPanel()
+            return
+        }
+        // Disk parse off the UI thread — sync parseFile was a multi-second hitch on TV.
+        thread(name = "channel-list-cache-restore") {
+            val file = playlistCacheFile(url)
+            val restored = if (playlistFileLooksLikeBody(file)) {
+                runCatching { M3uParser.parseFile(file) }.getOrNull().orEmpty()
+            } else {
+                emptyList()
+            }
+            handler.post {
+                if (channelListPanel.visibility != View.VISIBLE) return@post
+                if (restored.isNotEmpty()) {
+                    channels.clear()
+                    channels.addAll(restored)
+                    memCachedPlaylistUrl = url
+                    memCachedChannels = restored
+                    lastLoadedPlaylistUrl = url
+                    logDebug("PLAYLIST_FLOW", "CHANNEL_LIST_CACHE_RESTORE count=${channels.size}")
+                }
+                finishOpenWithService()
+            }
         }
     }
 
@@ -3841,6 +3931,7 @@ private fun showDefaultStartupScreen() {
 
     private fun hideEpgPanel(restorePlayerUi: Boolean = true) {
         logMemoryStats("epg_panel_hide")
+        hidePlayerOverlaySpinner()
         epgPanel.visibility = View.GONE
         epgDatePickedByUser = false
         if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.GONE
@@ -3956,6 +4047,7 @@ private fun showDefaultStartupScreen() {
         }
 
         runCatching {
+            showPlayerOverlaySpinner()
             if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.VISIBLE
             epgPanel.visibility = View.VISIBLE
             topInfoPanel.visibility = View.GONE
@@ -3999,6 +4091,7 @@ private fun showDefaultStartupScreen() {
                             scrollToSelectedEpgDateChip()
                             // TV: do not auto-highlight the first programme — wait for DPAD_DOWN.
                             focusEpgDateStripPreferringSelected()
+                            hidePlayerOverlaySpinner()
                         }.onFailure { err ->
                             logDebug("NAV", "EPG_BIND_FAIL ${err.message}")
                             hideEpgPanel()
@@ -8719,6 +8812,30 @@ private fun showDefaultStartupScreen() {
         panel.isFocusable = false
     }
 
+    /**
+     * Non-blocking spinner over the player (EPG / channel-list open).
+     * Transparent + non-focusable so D-pad keeps working on the overlay underneath.
+     */
+    private fun showPlayerOverlaySpinner() {
+        if (seekSpinnerActive) return
+        showAppLoadingSpinner()
+        findViewById<View>(R.id.loadingPanel)?.apply {
+            isClickable = false
+            isFocusable = false
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+    }
+
+    private fun hidePlayerOverlaySpinner() {
+        if (seekSpinnerActive) return
+        hideAppLoadingSpinner()
+        findViewById<View>(R.id.loadingPanel)?.apply {
+            isClickable = true
+            isFocusable = true
+            setBackgroundColor(Color.parseColor("#99000000"))
+        }
+    }
+
     private var hideSeekSpinnerRunnable: Runnable? = null
 
     /** Spinner for seek/rewind freeze — stays until playback leaves BUFFERING. */
@@ -11316,14 +11433,33 @@ private fun showDefaultStartupScreen() {
             if (breadcrumbHasFocus) {
                 when (keyCode) {
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                        if (breadcrumbs.size < 2) return true
                         val idx = breadcrumbs.indexOf(focused)
-                        val next = if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                            breadcrumbs[(idx + 1) % breadcrumbs.size]
-                        } else {
-                            breadcrumbs[(idx - 1 + breadcrumbs.size) % breadcrumbs.size]
+                        if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                            if (idx >= 0 && idx < breadcrumbs.lastIndex) {
+                                breadcrumbs[idx + 1].requestFocus()
+                                return true
+                            }
+                            // Last (or only) crumb → settings / power icons.
+                            headerIcons.forEach { it.isFocusable = true }
+                            val target = when {
+                                ivHomeSettings.visibility == View.VISIBLE -> ivHomeSettings
+                                ivHomePower.visibility == View.VISIBLE -> ivHomePower
+                                else -> headerIcons.firstOrNull()
+                            }
+                            target?.requestFocus()
+                            return true
                         }
-                        next.requestFocus()
+                        // LEFT
+                        if (idx > 0) {
+                            breadcrumbs[idx - 1].requestFocus()
+                            return true
+                        }
+                        // First crumb LEFT → profile (auth) when visible.
+                        if (ivHomeProfile.visibility == View.VISIBLE) {
+                            headerIcons.forEach { it.isFocusable = true }
+                            ivHomeProfile.requestFocus()
+                            return true
+                        }
                         return true
                     }
                     KeyEvent.KEYCODE_DPAD_DOWN -> {
@@ -11345,10 +11481,18 @@ private fun showDefaultStartupScreen() {
                 when (keyCode) {
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
                         val idx = headerIcons.indexOf(focused)
+                        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT && idx == 0 && breadcrumbs.isNotEmpty()) {
+                            headerIcons.forEach { it.isFocusable = false }
+                            breadcrumbs.last().requestFocus()
+                            return true
+                        }
                         val next = if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                            headerIcons[(idx + 1) % headerIcons.size]
+                            headerIcons.getOrNull(idx + 1) ?: run {
+                                // Stay on last icon (power) — do not wrap away from settings/power.
+                                return true
+                            }
                         } else {
-                            headerIcons[(idx - 1 + headerIcons.size) % headerIcons.size]
+                            headerIcons.getOrNull(idx - 1) ?: return true
                         }
                         next.requestFocus()
                         return true
