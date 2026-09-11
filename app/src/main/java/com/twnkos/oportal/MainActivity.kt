@@ -896,6 +896,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        /** GridLayoutManager spans per logical column so leftover 1–2 tiles can fill the row. */
+        private const val HOME_TILE_SPAN_PER_COLUMN = 2
         private const val EXTRA_OPEN_HOME_PLAYLISTS_FRESH = "extra_open_home_playlists_fresh"
         private const val USE_FFMPEG_AUDIO_FOR_MPEG_L2 = true
         private const val PREF_USE_FFMPEG_AUDIO_FOR_MPEG_L2 = "pref_use_ffmpeg_audio_for_mpeg_l2"
@@ -2290,25 +2292,26 @@ private fun showDefaultStartupScreen() {
      * "прибитой" к левому краю — если категорий не кратно числу колонок, последние 1-2
      * плитки делят строку между собой (или одна занимает её целиком).
      */
+    /**
+     * Logical columns are [columns]; GridLayoutManager uses [columns]*[HOME_TILE_SPAN_PER_COLUMN]
+     * spans so a leftover of 1 or 2 tiles can still divide the row evenly (1 → full width,
+     * 2 → half each) on phone and TV.
+     */
     private inner class HomeTileSpanSizeLookup(
         private val columns: Int,
         private val itemCountProvider: () -> Int
     ) : GridLayoutManager.SpanSizeLookup() {
         init { isSpanIndexCacheEnabled = true }
         override fun getSpanSize(position: Int): Int {
-            // Use spanCount == columns (not columns*2). The doubled span grid made TV
-            // FocusFinder treat the board as 6 micro-columns and skip every other row.
             val total = itemCountProvider()
-            if (columns <= 0 || total <= 0) return 1
-            // On TV keep uniform 1-span cells so DPAD row steps stay predictable.
-            if (isTelevisionDevice()) return 1
+            val perCol = HOME_TILE_SPAN_PER_COLUMN
+            if (columns <= 0 || total <= 0) return perCol
             val leftover = total % columns
             val lastRowStart = total - leftover
-            return if (leftover != 0 && position >= lastRowStart && columns % leftover == 0) {
-                columns / leftover
-            } else {
-                1
-            }
+            if (leftover == 0 || position < lastRowStart) return perCol
+            // Equal share of the full row among leftover tiles (1 or 2).
+            val spanCount = columns * perCol
+            return (spanCount / leftover).coerceAtLeast(1)
         }
     }
 
@@ -2379,6 +2382,28 @@ private fun showDefaultStartupScreen() {
             root.setOnClickListener {
                 logDebug("NAV", "HOME_TILE_ROOT_CLICK_RECEIVED name=${item.title}")
                 item.onClick()
+            }
+            // Logical-column DPAD: FocusFinder skips rows with stretched last-row spans.
+            root.setOnKeyListener { _, keyCode, event ->
+                if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+                val pos = holder.bindingAdapterPosition
+                if (pos == RecyclerView.NO_POSITION) return@setOnKeyListener false
+                val count = tileItems.size
+                val target = when (keyCode) {
+                    KeyEvent.KEYCODE_DPAD_UP -> (pos - columns).takeIf { it >= 0 }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> (pos + columns).takeIf { it < count }
+                    KeyEvent.KEYCODE_DPAD_LEFT ->
+                        (pos - 1).takeIf { it >= 0 && it / columns == pos / columns }
+                    KeyEvent.KEYCODE_DPAD_RIGHT ->
+                        (pos + 1).takeIf { it < count && it / columns == pos / columns }
+                    else -> null
+                } ?: return@setOnKeyListener false
+                val rv = rvHomeTiles
+                rv.scrollToPosition(target)
+                rv.post {
+                    rv.findViewHolderForAdapterPosition(target)?.itemView?.requestFocus()
+                }
+                true
             }
         }
 
@@ -2579,11 +2604,19 @@ private fun showDefaultStartupScreen() {
         rvHomeTiles.setPadding(0, rvHomeTiles.paddingTop, 0, rvHomeTiles.paddingBottom)
         rvHomeTiles.clipToPadding = false
 
-        if (homeTilesColumnsApplied != columns) {
-            val gridLayoutManager = GridLayoutManager(this, columns)
-            gridLayoutManager.spanSizeLookup = HomeTileSpanSizeLookup(columns) { currentHomeTilesItems.size }
+                val gridSpanCount = columns * HOME_TILE_SPAN_PER_COLUMN
+        val existingGlm = rvHomeTiles.layoutManager as? GridLayoutManager
+        if (homeTilesColumnsApplied != columns || existingGlm?.spanCount != gridSpanCount) {
+            val gridLayoutManager = GridLayoutManager(this, gridSpanCount)
+            gridLayoutManager.spanSizeLookup =
+                HomeTileSpanSizeLookup(columns) { currentHomeTilesItems.size }
             rvHomeTiles.layoutManager = gridLayoutManager
             homeTilesColumnsApplied = columns
+        } else {
+            val lookup = existingGlm!!.spanSizeLookup as? HomeTileSpanSizeLookup
+                ?: HomeTileSpanSizeLookup(columns) { currentHomeTilesItems.size }
+                    .also { existingGlm.spanSizeLookup = it }
+            lookup.invalidateSpanIndexCache()
         }
 
         if (homeTilesSpacingApplied != spacing || homeTilesSpacingDecoration == null) {
@@ -2606,6 +2639,9 @@ private fun showDefaultStartupScreen() {
         }
 
         homeTilesAdapter?.submit(items)
+
+        (rvHomeTiles.layoutManager as? GridLayoutManager)?.spanSizeLookup?.invalidateSpanIndexCache()
+        rvHomeTiles.invalidateItemDecorations()
 
         // Explicit content height so ContentAwareScrollView can scroll through all category rows
         // (wrap_content RecyclerView measure can under-report with large grids).
@@ -12734,7 +12770,7 @@ private fun showDefaultStartupScreen() {
         logDebug("NAV", "EXIT_PLAYER_LOCAL_HOME_RESET")
         resetSettingsOverlayState()
 
-        // Restore the channel's own category in the current service — never «Все каналы».
+        // Restore the list the user opened (category / «Все каналы» / Favorites group).
         val restore = resolveCategoryToRestoreAfterPlayerExit()
         if (restore != null) {
             prepareHomeShellAfterPlayerExit()
@@ -12750,14 +12786,11 @@ private fun showDefaultStartupScreen() {
     }
 
     /**
-     * Picks the category list to reopen after leaving the player.
-     * Prefer the current channel's [Channel.groupTitle] within [cachedCategoryGroups];
-     * fall back to the last opened category. Never returns «Все каналы» when a real group exists.
+     * Reopens the list the user played from: «Все каналы», a concrete category, or Favorites
+     * category — whichever was last opened via [showHomeChannelList]. Falls back to the
+     * current channel's group only when that memory is missing.
      */
     private fun resolveCategoryToRestoreAfterPlayerExit(): Pair<String, List<Channel>>? {
-        val allKey = "Все каналы"
-        fun isAllChannels(name: String) = name.equals(allKey, ignoreCase = true)
-
         fun lookup(name: String): Pair<String, List<Channel>>? {
             cachedCategoryGroups[name]?.takeIf { it.isNotEmpty() }?.let { return name to it }
             cachedCategoryGroups.entries
@@ -12766,21 +12799,18 @@ private fun showDefaultStartupScreen() {
             return null
         }
 
+        val candidates = LinkedHashSet<String>()
+        // Prefer the screen the user actually opened (incl. «Все каналы» / Favorites groups).
+        lastChannelListCategory?.takeIf { it.isNotBlank() }?.let { candidates += it }
+        if (homeReturnTarget == HomeReturnTarget.CHANNEL_LIST) {
+            lastChannelListCategory?.takeIf { it.isNotBlank() }?.let { candidates += it }
+        }
+        // Fallback: channel's own group when we have no remembered list.
         val current = channels.getOrNull(currentChannelIndex)
         val fromChannel = current?.groupTitle?.trim()
             ?.takeUnless { it.isNullOrBlank() }
             ?: "Без категории"
-
-        val candidates = LinkedHashSet<String>()
-        if (!isAllChannels(fromChannel)) candidates += fromChannel
-        lastChannelListCategory
-            ?.takeIf { it.isNotBlank() && !isAllChannels(it) }
-            ?.let { candidates += it }
-        // Keep homeReturnTarget path: last opened category even if channel group is unknown.
-        if (homeReturnTarget == HomeReturnTarget.CHANNEL_LIST) {
-            lastChannelListCategory?.takeIf { it.isNotBlank() && !isAllChannels(it) }
-                ?.let { candidates += it }
-        }
+        if (candidates.isEmpty()) candidates += fromChannel
 
         for (name in candidates) {
             lookup(name)?.let { return it }
