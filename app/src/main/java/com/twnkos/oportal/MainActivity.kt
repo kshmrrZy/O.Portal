@@ -1,5 +1,7 @@
 package com.twnkos.oportal
 
+import com.twnkos.oportal.BuildConfig
+
 import android.content.Context
 import android.content.res.Configuration
 import android.content.res.ColorStateList
@@ -5200,6 +5202,8 @@ private fun showDefaultStartupScreen() {
         appInfoPanel.isFocusableInTouchMode = true
         appInfoPanel.post { appInfoPanel.requestFocus() }
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "О приложении")
+        findViewById<TextView>(R.id.tvAppInfoVersion)?.text =
+            "O.Portal App v. ${BuildConfig.VERSION_NAME}"
 
         configureBackButtonsForSettings("showAppInfoScreen")
     }
@@ -9559,15 +9563,25 @@ private fun showDefaultStartupScreen() {
         updateTimelineUi()
     }
 
+    /** Portal M3U often ships this generic favicon when a channel has no real logo. */
+    private fun isGenericPortalLogoUrl(url: String?): Boolean {
+        if (url.isNullOrBlank()) return true
+        val normalized = url.trim().lowercase()
+            .removePrefix("http://")
+            .removePrefix("https://")
+        return normalized == "o.avff.pw/icons/favicon-96x96.png" ||
+            normalized.endsWith("/icons/favicon-96x96.png")
+    }
+
     private fun loadLogoWithGlide(url: String?, target: ImageView) {
-        val placeholder = R.drawable.bg_channel_logo_placeholder
-        if (url.isNullOrBlank()) {
+        val placeholder = R.drawable.ic_channel_logo_default
+        if (isGenericPortalLogoUrl(url)) {
             Glide.with(this).clear(target)
             target.setImageResource(placeholder)
             return
         }
         val glideUrl = GlideUrl(
-            url,
+            url!!,
             LazyHeaders.Builder().addHeader("User-Agent", userAgent).build()
         )
         // Small decode size keeps Android 9 TV under OOM while still showing logos.
@@ -12720,28 +12734,58 @@ private fun showDefaultStartupScreen() {
         logDebug("NAV", "EXIT_PLAYER_LOCAL_HOME_RESET")
         resetSettingsOverlayState()
 
-        val returnCategory = lastChannelListCategory
-        val categoryChannels = returnCategory
-            ?.takeIf { it.isNotBlank() }
-            ?.let { cachedCategoryGroups[it] }
-            .orEmpty()
-        val restoreCategoryList =
-            homeReturnTarget == HomeReturnTarget.CHANNEL_LIST &&
-                !returnCategory.isNullOrBlank() &&
-                categoryChannels.isNotEmpty()
-        // Avoid showHomeOnly()'s playlist-tiles focus dance when we must reopen the category list —
-        // that race periodically left users on «Все каналы» / full service instead of the category.
-        if (restoreCategoryList) {
+        // Restore the channel's own category in the current service — never «Все каналы».
+        val restore = resolveCategoryToRestoreAfterPlayerExit()
+        if (restore != null) {
             prepareHomeShellAfterPlayerExit()
-            showHomeChannelList(returnCategory!!, categoryChannels)
+            showHomeChannelList(restore.first, restore.second)
             logDebug(
                 "NAV",
-                "EXIT_PLAYER_RESTORE_CATEGORY name=$returnCategory count=${categoryChannels.size}"
+                "EXIT_PLAYER_RESTORE_CATEGORY name=${restore.first} count=${restore.second.size}"
             )
         } else {
             showHomeOnly()
         }
         homeReturnTarget = HomeReturnTarget.PLAYLISTS
+    }
+
+    /**
+     * Picks the category list to reopen after leaving the player.
+     * Prefer the current channel's [Channel.groupTitle] within [cachedCategoryGroups];
+     * fall back to the last opened category. Never returns «Все каналы» when a real group exists.
+     */
+    private fun resolveCategoryToRestoreAfterPlayerExit(): Pair<String, List<Channel>>? {
+        val allKey = "Все каналы"
+        fun isAllChannels(name: String) = name.equals(allKey, ignoreCase = true)
+
+        fun lookup(name: String): Pair<String, List<Channel>>? {
+            cachedCategoryGroups[name]?.takeIf { it.isNotEmpty() }?.let { return name to it }
+            cachedCategoryGroups.entries
+                .firstOrNull { it.key.equals(name, ignoreCase = true) && it.value.isNotEmpty() }
+                ?.let { return it.key to it.value }
+            return null
+        }
+
+        val current = channels.getOrNull(currentChannelIndex)
+        val fromChannel = current?.groupTitle?.trim()
+            ?.takeUnless { it.isNullOrBlank() }
+            ?: "Без категории"
+
+        val candidates = LinkedHashSet<String>()
+        if (!isAllChannels(fromChannel)) candidates += fromChannel
+        lastChannelListCategory
+            ?.takeIf { it.isNotBlank() && !isAllChannels(it) }
+            ?.let { candidates += it }
+        // Keep homeReturnTarget path: last opened category even if channel group is unknown.
+        if (homeReturnTarget == HomeReturnTarget.CHANNEL_LIST) {
+            lastChannelListCategory?.takeIf { it.isNotBlank() && !isAllChannels(it) }
+                ?.let { candidates += it }
+        }
+
+        for (name in candidates) {
+            lookup(name)?.let { return it }
+        }
+        return null
     }
 
     private fun bindRealPlayerExitButtonListener() {
