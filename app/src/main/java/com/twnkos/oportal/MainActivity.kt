@@ -3008,25 +3008,12 @@ private fun showDefaultStartupScreen() {
         setHomeSearchMode(HomeSearchMode.CATEGORIES, hint = "Поиск категории")
 
         val allChannels = when {
+            groupedCategories["Все каналы"] != null -> groupedCategories["Все каналы"].orEmpty()
             memCachedChannels.isNotEmpty() -> memCachedChannels
             else -> groupedCategories.values.flatten()
         }
-        fun categoryGroupOrder(name: String): Int {
-            val ch = name.firstOrNull() ?: return 2
-            return when {
-                ch in 'А'..'я' || ch == 'Ё' || ch == 'ё' -> 0
-                ch in 'A'..'Z' || ch in 'a'..'z' -> 1
-                else -> 2
-            }
-        }
-        val grouped = linkedMapOf<String, List<Channel>>()
-        grouped["Все каналы"] = allChannels
-        groupedCategories
-            .filterKeys { it != "Все каналы" }
-            .entries
-            .sortedWith(compareBy<Map.Entry<String, List<Channel>>> { categoryGroupOrder(it.key) }
-                .thenBy { it.key.lowercase(Locale.getDefault()) })
-            .forEach { (key, value) -> grouped[key] = value }
+        // Prefer already-warm map (incl. from applyParsedPlaylist) — skip sort/rebuild on UI.
+        val grouped = buildWarmCategoryGroups(allChannels, groupedCategories)
         // Always open categories (incl. Избранные) from the top — do not keep prior ScrollView Y.
         (homePlaylistTilesPanel as? android.widget.ScrollView)?.scrollTo(0, 0)
         if (::rvHomeTiles.isInitialized) {
@@ -3077,12 +3064,11 @@ private fun showDefaultStartupScreen() {
     private fun showHomeChannelList(category: String, channelsForCategory: List<Channel>) {
         hidePlayerChromeFully()
         showPlaylistPageHeader(showWelcome = true, showTitle = false)
-        channels.clear()
-        channels.addAll(channelsForCategory)
         selectedCategoryName = category
         lastChannelListCategory = category
         homeChannelListCategory = category
-        homeChannelListSource = channelsForCategory.toList()
+        // Keep the caller's list — avoid an extra toList() copy of large categories.
+        homeChannelListSource = channelsForCategory
         applyHomeAppTitleStyle(
             settingsMode = true,
             settingsTitle = getSelectedPlaylistName(),
@@ -3098,7 +3084,62 @@ private fun showDefaultStartupScreen() {
         if (selectedEpgSources.isNotEmpty()) {
             ensureEpgLoadedLazy()
         }
+        // Paint the grid first; sync the playable [channels] list after first layout.
+        // Copying 2k+ Channel refs on the UI thread before setAdapter was a major TV hitch.
         bindHomeChannelListAdapter(category, channelsForCategory, requestListFocus = true)
+        syncHomeChannelsAfterListPaint(channelsForCategory)
+    }
+
+    /** Updates [channels] for playback/zap after the home grid has been given a chance to paint. */
+    private fun syncHomeChannelsAfterListPaint(channelsForCategory: List<Channel>) {
+        val alreadySame = channels.size == channelsForCategory.size &&
+            channels.firstOrNull()?.url == channelsForCategory.firstOrNull()?.url &&
+            channels.lastOrNull()?.url == channelsForCategory.lastOrNull()?.url &&
+            (channels.size < 3 ||
+                channels[channels.size / 2].url == channelsForCategory[channelsForCategory.size / 2].url)
+        if (alreadySame) return
+        val apply = Runnable {
+            // Still on this category list (or left and came back quickly) — skip if navigated away
+            // only when a different non-empty category is active with a different source size.
+            if (homeChannelListCategory.isNotBlank() &&
+                homeChannelListSource !== channelsForCategory &&
+                homeChannelListSource.isNotEmpty() &&
+                homeChannelListSource.size != channelsForCategory.size
+            ) {
+                return@Runnable
+            }
+            channels.clear()
+            channels.addAll(channelsForCategory)
+        }
+        if (channelsForCategory.size > 180) {
+            val host = if (::gvHomeChannelList.isInitialized) gvHomeChannelList else homePanel
+            host.post(apply)
+        } else {
+            apply.run()
+        }
+    }
+
+    /** Sync full service into [channels] after category tiles paint (opening a playlist). */
+    private fun syncPlayableChannelsAfterCategoriesPaint(parsedChannels: List<Channel>) {
+        val alreadySame = channels.size == parsedChannels.size &&
+            channels.firstOrNull()?.url == parsedChannels.firstOrNull()?.url &&
+            channels.lastOrNull()?.url == parsedChannels.lastOrNull()?.url
+        if (alreadySame) return
+        val apply = Runnable {
+            try {
+                channels.clear()
+                channels.addAll(parsedChannels)
+            } catch (oom: OutOfMemoryError) {
+                Log.e("PLAYLIST_FLOW", "OOM syncing channel list after categories", oom)
+                channels.clear()
+            }
+        }
+        if (parsedChannels.size > 180) {
+            val host = if (::homePlaylistTilesPanel.isInitialized) homePlaylistTilesPanel else homePanel
+            host.post(apply)
+        } else {
+            apply.run()
+        }
     }
 
     private fun bindHomeChannelListAdapter(
@@ -3649,11 +3690,11 @@ private fun showDefaultStartupScreen() {
         resumePlaybackStallWatchdogIfNeeded()
     }
 
-    private fun bindChannelListPanelAdapter() {
+    private fun bindChannelListPanelAdapter(preResolvedService: List<Channel>? = null) {
         val q = channelListSearchQuery.trim()
         data class Row(val channel: Channel, val realIndex: Int)
-        // Full current service (mem/disk cache), not a single home category.
-        val service = resolveInPlayerServiceChannels()
+        // Prefer list already resolved off the UI thread (avoid second merge/parse).
+        val service = preResolvedService ?: resolveInPlayerServiceChannels()
         val baseRows = service.mapIndexed { index, ch -> Row(ch, index) }
         val rows: List<Row> = if (q.isBlank()) {
             baseRows
@@ -3846,7 +3887,7 @@ private fun showDefaultStartupScreen() {
             logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=epg_open")
             return
         }
-        showPlayerOverlaySpinner()
+        // Instant shell: panel chrome first, grid empty, spinner on top until bind finishes.
         setPlayerOverlayScrimVisible(true)
         topInfoPanel.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
@@ -3854,74 +3895,104 @@ private fun showDefaultStartupScreen() {
         handler.removeCallbacks(hideUiRunnable)
         pausePlaybackStallWatchdogForOverlay()
         channelListPanel.visibility = View.VISIBLE
+        gvChannelListPanel.adapter = null
+        gvChannelListPanel.visibility = View.INVISIBLE
         tvChannelListTitle.text = "Список каналов: ${getSelectedPlaylistName()}"
         channelListSearchQuery = ""
         if (::etChannelListSearch.isInitialized) {
             etChannelListSearch.setText("")
             etChannelListSearch.visibility = View.GONE
         }
+        showPlayerOverlaySpinner()
 
-        fun finishOpenWithService() {
+        fun finishWithService(service: List<Channel>) {
+            if (!::channelListPanel.isInitialized || channelListPanel.visibility != View.VISIBLE) {
+                return
+            }
+            if (service.isEmpty()) {
+                logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=empty_channels")
+                hideChannelListPanel()
+                return
+            }
             runCatching {
-                val service = resolveInPlayerServiceChannels()
-                if (service.isEmpty()) {
-                    logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=empty_channels")
-                    hideChannelListPanel()
-                    return
-                }
                 logMemoryStats(
                     "channel_list_open_start totalActive=${channels.size} service=${service.size} " +
                         "memCache=${memCachedChannels.size}"
                 )
-                // Titles load lazily per visible row (full-service lists are too large to prefetch).
                 inPlayerTitlePrefetchToken++
                 channelListTitleInflight.clear()
                 handler.removeCallbacks(flushChannelListTitlesRunnable)
                 channelListProgramTitles = emptyMap()
-                bindChannelListPanelAdapter()
-                hidePlayerOverlaySpinner()
+                bindChannelListPanelAdapter(preResolvedService = service)
+                gvChannelListPanel.visibility = View.VISIBLE
+                // Hide spinner only after the grid has laid out — avoids "spinner after list".
+                gvChannelListPanel.post { hidePlayerOverlaySpinner() }
             }.onFailure { err ->
                 logDebug("NAV", "CHANNEL_LIST_OPEN_FAIL ${err.message}")
                 hideChannelListPanel()
             }
         }
 
-        val needsDiskRestore = channels.isEmpty() &&
-            memCachedChannels.isEmpty() &&
-            cachedCategoryGroups["Все каналы"].isNullOrEmpty()
-        if (!needsDiskRestore) {
-            // RAM / category cache hit — bind on next frame so the spinner can paint first.
-            channelListPanel.post { finishOpenWithService() }
-            return
-        }
-
-        val url = lastLoadedPlaylistUrl.ifBlank { resolveCurrentPlaylistUrl() }
-        if (url.isBlank()) {
-            logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=empty_channels")
-            hideChannelListPanel()
-            return
-        }
-        // Disk parse off the UI thread — sync parseFile was a multi-second hitch on TV.
-        thread(name = "channel-list-cache-restore") {
-            val file = playlistCacheFile(url)
-            val restored = if (playlistFileLooksLikeBody(file)) {
-                runCatching { M3uParser.parseFile(file) }.getOrNull().orEmpty()
-            } else {
-                emptyList()
+        fun loadAndBind() {
+            if (!::channelListPanel.isInitialized || channelListPanel.visibility != View.VISIBLE) {
+                return
             }
-            handler.post {
-                if (channelListPanel.visibility != View.VISIBLE) return@post
+            val needsDiskRestore = channels.isEmpty() &&
+                memCachedChannels.isEmpty() &&
+                cachedCategoryGroups["Все каналы"].isNullOrEmpty()
+            if (!needsDiskRestore) {
+                thread(name = "channel-list-bind") {
+                    val service = resolveInPlayerServiceChannels()
+                    handler.post { finishWithService(service) }
+                }
+                return
+            }
+            val url = lastLoadedPlaylistUrl.ifBlank { resolveCurrentPlaylistUrl() }
+            if (url.isBlank()) {
+                logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=empty_channels")
+                hideChannelListPanel()
+                return
+            }
+            thread(name = "channel-list-cache-restore") {
+                val file = playlistCacheFile(url)
+                val restored = if (playlistFileLooksLikeBody(file)) {
+                    runCatching { M3uParser.parseFile(file) }.getOrNull().orEmpty()
+                } else {
+                    emptyList()
+                }
                 if (restored.isNotEmpty()) {
-                    channels.clear()
-                    channels.addAll(restored)
                     memCachedPlaylistUrl = url
                     memCachedChannels = restored
                     lastLoadedPlaylistUrl = url
-                    logDebug("PLAYLIST_FLOW", "CHANNEL_LIST_CACHE_RESTORE count=${channels.size}")
+                    logDebug("PLAYLIST_FLOW", "CHANNEL_LIST_CACHE_RESTORE count=${restored.size}")
                 }
-                finishOpenWithService()
+                val service = when {
+                    restored.isNotEmpty() -> restored
+                    else -> resolveInPlayerServiceChannels()
+                }
+                handler.post {
+                    if (channelListPanel.visibility != View.VISIBLE) return@post
+                    if (restored.isNotEmpty() && channels.isEmpty()) {
+                        // Defer full copy until after first grid paint when list is huge.
+                        if (restored.size <= 180) {
+                            channels.clear()
+                            channels.addAll(restored)
+                        } else {
+                            gvChannelListPanel.post {
+                                if (channels.isEmpty()) {
+                                    channels.clear()
+                                    channels.addAll(restored)
+                                }
+                            }
+                        }
+                    }
+                    finishWithService(service)
+                }
             }
         }
+
+        // Two UI frames so the spinner actually paints before heavy bind work.
+        runAfterOverlaySpinnerPainted { loadAndBind() }
     }
 
 
@@ -4047,7 +4118,7 @@ private fun showDefaultStartupScreen() {
         }
 
         runCatching {
-            showPlayerOverlaySpinner()
+            // Instant shell: panel chrome first, content hidden, spinner until prep finishes.
             if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.VISIBLE
             epgPanel.visibility = View.VISIBLE
             topInfoPanel.visibility = View.GONE
@@ -4055,8 +4126,40 @@ private fun showDefaultStartupScreen() {
             controlsPanel.visibility = View.GONE
             handler.removeCallbacks(hideUiRunnable)
             pausePlaybackStallWatchdogForOverlay()
+            tvEpgEmptyState.visibility = View.GONE
+            epgDateRow.visibility = View.INVISIBLE
+            lvEpgPrograms.visibility = View.INVISIBLE
+            lvEpgPrograms.adapter = null
+            showPlayerOverlaySpinner()
 
-            epgPanel.post {
+            fun bindPrepared(
+                dateKeys: List<String>,
+                programsByDate: Map<String, List<Program>>,
+                selectedDate: String
+            ) {
+                if (epgPanel.visibility != View.VISIBLE) return
+                runCatching {
+                    tvEpgEmptyState.visibility = View.GONE
+                    epgDateRow.visibility = View.VISIBLE
+                    lvEpgPrograms.visibility = View.VISIBLE
+                    epgPanelProgramsByDate = programsByDate
+                    epgPanelDateKeys = dateKeys
+                    epgPanelSelectedDate = selectedDate
+                    renderEpgDateChips()
+                    renderEpgProgramsForSelectedDate()
+                    syncEpgPanelBounds()
+                    scrollToSelectedEpgDateChip()
+                    // TV: do not auto-highlight the first programme — wait for DPAD_DOWN.
+                    focusEpgDateStripPreferringSelected()
+                    lvEpgPrograms.post { hidePlayerOverlaySpinner() }
+                }.onFailure { err ->
+                    logDebug("NAV", "EPG_BIND_FAIL ${err.message}")
+                    hideEpgPanel()
+                }
+            }
+
+            runAfterOverlaySpinnerPainted {
+                if (epgPanel.visibility != View.VISIBLE) return@runAfterOverlaySpinnerPainted
                 thread(name = "epg-panel-prep") {
                     val emptyTitle = epgUnavailableMessage(ch.name)
                     val realPrograms = getProgramsForChannel(ch)
@@ -4075,27 +4178,8 @@ private fun showDefaultStartupScreen() {
                         } else {
                             epgPanelSelectedDate
                         }
-
                     handler.post {
-                        if (epgPanel.visibility != View.VISIBLE) return@post
-                        runCatching {
-                            tvEpgEmptyState.visibility = View.GONE
-                            epgDateRow.visibility = View.VISIBLE
-                            lvEpgPrograms.visibility = View.VISIBLE
-                            epgPanelProgramsByDate = programsByDate
-                            epgPanelDateKeys = dateKeys
-                            epgPanelSelectedDate = selectedDate
-                            renderEpgDateChips()
-                            renderEpgProgramsForSelectedDate()
-                            syncEpgPanelBounds()
-                            scrollToSelectedEpgDateChip()
-                            // TV: do not auto-highlight the first programme — wait for DPAD_DOWN.
-                            focusEpgDateStripPreferringSelected()
-                            hidePlayerOverlaySpinner()
-                        }.onFailure { err ->
-                            logDebug("NAV", "EPG_BIND_FAIL ${err.message}")
-                            hideEpgPanel()
-                        }
+                        bindPrepared(dateKeys, programsByDate, selectedDate)
                     }
                 }
             }
@@ -6472,6 +6556,34 @@ private fun showDefaultStartupScreen() {
                 "PLAYLIST_FLOW",
                 "PLAYLIST_MEM_CACHE_HIT count=${memCachedChannels.size} urlHash=${playlistUrlEarly.hashCode()}"
             )
+            // Warm categories already in RAM: open instantly — skip re-group / re-copy of 2k+ channels.
+            if (!autoPlay && cachedCategoryGroups.isNotEmpty()) {
+                playlistOpenInProgress = false
+                selectedPlaylistDisplayName = getSelectedPlaylistName()
+                logDebug(
+                    "PLAYLIST_FLOW",
+                    "PLAYLIST_MEM_CACHE_CATEGORIES_INSTANT groups=${cachedCategoryGroups.size}"
+                )
+                if (!isSettingsModalVisible) {
+                    showCategoryTilesOnHome(selectedPlaylistDisplayName, cachedCategoryGroups)
+                }
+                return
+            }
+            // Mem channels exist but groups are cold — group/sort off the UI thread.
+            if (!autoPlay) {
+                showAppLoadingSpinner(progressPercent = null)
+                thread(name = "playlist-mem-apply") {
+                    applyParsedPlaylist(
+                        playlistUrl = playlistUrlEarly,
+                        parsedChannels = memCachedChannels,
+                        headerText = currentPlaylistText,
+                        parsedEpgUrls = availableEpgSources,
+                        autoPlay = false,
+                        showErrors = showErrors
+                    )
+                }
+                return
+            }
             applyParsedPlaylist(
                 playlistUrl = playlistUrlEarly,
                 parsedChannels = memCachedChannels,
@@ -6637,6 +6749,38 @@ private fun showDefaultStartupScreen() {
         }
     }
 
+    /**
+     * Builds the home category map with «Все каналы» first and sorted group keys.
+     * Call off the UI thread for large playlists — groupBy/sort of 2k+ entries hitch TVs.
+     */
+    private fun buildWarmCategoryGroups(
+        allChannels: List<Channel>,
+        rawGrouped: Map<String, List<Channel>>
+    ): Map<String, List<Channel>> {
+        fun categoryGroupOrder(name: String): Int {
+            val ch = name.firstOrNull() ?: return 2
+            return when {
+                ch in 'А'..'я' || ch == 'Ё' || ch == 'ё' -> 0
+                ch in 'A'..'Z' || ch in 'a'..'z' -> 1
+                else -> 2
+            }
+        }
+        if (rawGrouped.containsKey("Все каналы") && rawGrouped.keys.firstOrNull() == "Все каналы") {
+            return rawGrouped
+        }
+        val rebuilt = linkedMapOf<String, List<Channel>>()
+        rebuilt["Все каналы"] = allChannels
+        rawGrouped
+            .filterKeys { it != "Все каналы" }
+            .entries
+            .sortedWith(
+                compareBy<Map.Entry<String, List<Channel>>> { categoryGroupOrder(it.key) }
+                    .thenBy { it.key.lowercase(Locale.getDefault()) }
+            )
+            .forEach { (key, value) -> rebuilt[key] = value }
+        return rebuilt
+    }
+
     private fun applyParsedPlaylist(
         playlistUrl: String,
         parsedChannels: List<Channel>,
@@ -6645,9 +6789,11 @@ private fun showDefaultStartupScreen() {
         autoPlay: Boolean,
         showErrors: Boolean
     ) {
-        val groupedCategories = parsedChannels
+        // Heavy grouping/sort stays on the caller thread (playlist-load / playlist-mem-apply).
+        val rawGrouped = parsedChannels
             .groupBy { ch -> ch.groupTitle?.trim().takeUnless { g -> g.isNullOrBlank() } ?: "Без категории" }
             .filterKeys { key -> key != "{region_name}" }
+        val groupedCategories = buildWarmCategoryGroups(parsedChannels, rawGrouped)
         val selectedPlaylist = getSelectedPlaylistName()
         logDebug(
             "PLAYLIST_FLOW",
@@ -6657,25 +6803,12 @@ private fun showDefaultStartupScreen() {
         logDebug("NAV", "playlist_click name=$selectedPlaylist")
 
         handler.post {
-            try {
-                channels.clear()
-                channels.addAll(parsedChannels)
-            } catch (oom: OutOfMemoryError) {
-                Log.e("PLAYLIST_FLOW", "OOM applying channel list", oom)
-                playlistOpenInProgress = false
-                hideAppLoadingSpinner()
-                channels.clear()
-                cachedCategoryGroups = emptyMap()
-                showPlaylistMemoryErrorAlert()
-                showHomeAfterPlaylistFailure()
-                return@post
-            }
             // Keep only a tiny header in RAM for Built-in EPG forms.
             currentPlaylistText = headerText.take(16 * 1024)
             lastLoadedPlaylistUrl = playlistUrl
-            // One in-memory playlist for instant reopen (avoids multi-second re-parse).
+            // Reuse the parsed list — avoid an extra toList() copy of 2k+ channels.
             memCachedPlaylistUrl = playlistUrl
-            memCachedChannels = channels.toList()
+            memCachedChannels = parsedChannels
             availableEpgSources = parsedEpgUrls
             val savedSelection = getSelectedEpgSources()
             selectedEpgSources = savedSelection.toMutableSet()
@@ -6685,13 +6818,27 @@ private fun showDefaultStartupScreen() {
                 clearEpgRuntimeData()
             }
 
-            if (channels.isEmpty()) {
+            if (parsedChannels.isEmpty()) {
                 playlistOpenInProgress = false
                 hideAppLoadingSpinner()
+                channels.clear()
                 tvEpg.text = "Каналы не найдены в плейлисте"
                 if (showErrors) showAppToast("В плейлисте нет каналов", 3500L)
                 showHomeAfterPlaylistFailure()
             } else if (shouldOpenLastChannelOnStart && autoPlay) {
+                try {
+                    channels.clear()
+                    channels.addAll(parsedChannels)
+                } catch (oom: OutOfMemoryError) {
+                    Log.e("PLAYLIST_FLOW", "OOM applying channel list", oom)
+                    playlistOpenInProgress = false
+                    hideAppLoadingSpinner()
+                    channels.clear()
+                    cachedCategoryGroups = emptyMap()
+                    showPlaylistMemoryErrorAlert()
+                    showHomeAfterPlaylistFailure()
+                    return@post
+                }
                 playlistOpenInProgress = false
                 hideAppLoadingSpinner()
                 if (!restoreLastChannelAndPlay()) {
@@ -6702,13 +6849,26 @@ private fun showDefaultStartupScreen() {
                 selectedPlaylistDisplayName = getSelectedPlaylistName()
                 if (!isSettingsModalVisible) {
                     logDebug("NAV", "open_categories_screen")
-                    // Switch to categories while spinner still covers the services grid,
-                    // then dismiss — avoids a one-frame flash of the services page.
+                    // Paint categories first; sync playable [channels] after first layout.
                     showCategoryTilesOnHome(selectedPlaylistDisplayName, groupedCategories)
                 }
                 playlistOpenInProgress = false
                 hideAppLoadingSpinner()
+                syncPlayableChannelsAfterCategoriesPaint(parsedChannels)
             } else {
+                try {
+                    channels.clear()
+                    channels.addAll(parsedChannels)
+                } catch (oom: OutOfMemoryError) {
+                    Log.e("PLAYLIST_FLOW", "OOM applying channel list", oom)
+                    playlistOpenInProgress = false
+                    hideAppLoadingSpinner()
+                    channels.clear()
+                    cachedCategoryGroups = emptyMap()
+                    showPlaylistMemoryErrorAlert()
+                    showHomeAfterPlaylistFailure()
+                    return@post
+                }
                 playlistOpenInProgress = false
                 hideAppLoadingSpinner()
                 logDebug("NAV", "startup_load_ready_without_autonavigation")
@@ -8823,6 +8983,8 @@ private fun showDefaultStartupScreen() {
             isClickable = false
             isFocusable = false
             setBackgroundColor(Color.TRANSPARENT)
+            bringToFront()
+            invalidate()
         }
     }
 
@@ -8833,6 +8995,25 @@ private fun showDefaultStartupScreen() {
             isClickable = true
             isFocusable = true
             setBackgroundColor(Color.parseColor("#99000000"))
+        }
+    }
+
+    /**
+     * Ensures at least one frame paints with the overlay spinner visible before [action].
+     * Without this, heavy bind on the next looper message can run before Choreographer draws,
+     * so the spinner appears only after the list is already on screen.
+     */
+    private fun runAfterOverlaySpinnerPainted(action: () -> Unit) {
+        val panel = findViewById<View>(R.id.loadingPanel)
+        panel?.bringToFront()
+        val host = window?.decorView ?: run {
+            action()
+            return
+        }
+        host.post {
+            host.post {
+                action()
+            }
         }
     }
 
