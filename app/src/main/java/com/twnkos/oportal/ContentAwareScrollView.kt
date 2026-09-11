@@ -7,8 +7,8 @@ import android.view.FocusFinder
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
-import android.view.View.MeasureSpec
 import android.widget.ScrollView
+import androidx.recyclerview.widget.RecyclerView
 
 /**
  * ScrollView that only intercepts/scrolls when its content is taller than the viewport.
@@ -90,29 +90,50 @@ class ContentAwareScrollView @JvmOverloads constructor(
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
                     if (!canScrollVertically(1) && !forceDpadPaging) return false
-                    val before = scrollY
-                    val handled = super.executeKeyEvent(event)
-                    if (scrollY == before) {
-                        arrowScroll(FOCUS_DOWN)
-                        if (scrollY != before) return true
-                        if (forceDpadPaging && pageScrollByDirection(1)) return true
-                    }
-                    return handled || scrollY != before
+                    return handleVerticalDpad(event, FOCUS_DOWN, +1)
                 }
                 KeyEvent.KEYCODE_DPAD_UP -> {
                     if (!canScrollVertically(-1) && !forceDpadPaging) return false
-                    val before = scrollY
-                    val handled = super.executeKeyEvent(event)
-                    if (scrollY == before) {
-                        arrowScroll(FOCUS_UP)
-                        if (scrollY != before) return true
-                        if (forceDpadPaging && pageScrollByDirection(-1)) return true
-                    }
-                    return handled || scrollY != before
+                    return handleVerticalDpad(event, FOCUS_UP, -1)
                 }
             }
         }
         return super.executeKeyEvent(event)
+    }
+
+    /**
+     * ScrollView.arrowScroll moves focus once. A second arrowScroll when scrollY did not
+     * change (focused row already on-screen) skipped every other category/service row on TV.
+     */
+    private fun handleVerticalDpad(event: KeyEvent, focusDirection: Int, scrollDirection: Int): Boolean {
+        val focusedBefore = findFocus()
+        val scrollBefore = scrollY
+        val handled = super.executeKeyEvent(event)
+        val focusedAfter = findFocus()
+        if (focusedAfter != null && focusedAfter !== focusedBefore) {
+            // Focus already advanced one step — do not arrowScroll again.
+            return true
+        }
+        if (scrollY != scrollBefore) {
+            return true
+        }
+        // Nested RecyclerView may have consumed the key without moving focus (custom handler).
+        if (focusedBefore != null && isInsideRecyclerView(focusedBefore)) {
+            return handled
+        }
+        arrowScroll(focusDirection)
+        if (scrollY != scrollBefore || findFocus() !== focusedBefore) return true
+        if (forceDpadPaging && pageScrollByDirection(scrollDirection)) return true
+        return handled
+    }
+
+    private fun isInsideRecyclerView(view: View): Boolean {
+        var v: View? = view
+        while (v != null) {
+            if (v is RecyclerView) return true
+            v = v.parent as? View
+        }
+        return false
     }
 
     private fun moveFocusInside(direction: Int): Boolean {
