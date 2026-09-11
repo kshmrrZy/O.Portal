@@ -629,7 +629,9 @@
         android:background="@drawable/epg_panel_bg"
         android:padding="16dp"
         android:clickable="true"
-        android:focusable="true"
+        android:focusable="false"
+        android:focusableInTouchMode="false"
+        android:descendantFocusability="afterDescendants"
         android:visibility="gone">
 
         <LinearLayout
@@ -685,17 +687,42 @@
             android:textSize="15sp"
             android:visibility="gone" />
 
-        <ListView
-            android:id="@+id/lvEpgPrograms"
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginTop="12dp"
-            android:divider="@null"
-            android:dividerHeight="0dp"
-            android:listSelector="@drawable/grid_item_selector"
-            android:drawSelectorOnTop="true"
-            android:scrollbars="none" />
+            android:layout_marginTop="12dp">
+
+            <ListView
+                android:id="@+id/lvEpgPrograms"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:divider="@null"
+                android:dividerHeight="0dp"
+                android:listSelector="@drawable/grid_item_selector"
+                android:drawSelectorOnTop="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:descendantFocusability="blocksDescendants"
+                android:nextFocusDown="@id/btnEpgBackToWatch"
+                android:scrollbars="none" />
+
+            <FrameLayout
+                android:id="@+id/epgLoadingOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clickable="false"
+                android:focusable="false"
+                android:visibility="gone">
+
+                <include
+                    android:id="@+id/epgLoadingSpinner"
+                    layout="@layout/view_loading_spinner"
+                    android:layout_width="@dimen/portal_spinner_size"
+                    android:layout_height="@dimen/portal_spinner_size"
+                    android:layout_gravity="center" />
+            </FrameLayout>
+        </FrameLayout>
 
         <TextView
             android:id="@+id/btnEpgBackToWatch"
@@ -727,7 +754,9 @@
         android:background="@drawable/epg_panel_bg"
         android:padding="16dp"
         android:clickable="true"
-        android:focusable="true"
+        android:focusable="false"
+        android:focusableInTouchMode="false"
+        android:descendantFocusability="afterDescendants"
         android:visibility="gone">
 
         <TextView
@@ -759,25 +788,47 @@
             android:textSize="14sp"
             android:nextFocusDown="@id/gvChannelListPanel" />
 
-        <GridView
-            android:id="@+id/gvChannelListPanel"
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginTop="12dp"
-            android:numColumns="4"
-            android:columnWidth="0dp"
-            android:horizontalSpacing="12dp"
-            android:verticalSpacing="12dp"
-            android:stretchMode="columnWidth"
-            android:gravity="start"
-            android:focusable="true"
-            android:focusableInTouchMode="true"
-            android:descendantFocusability="blocksDescendants"
-            android:listSelector="@drawable/grid_item_selector"
-            android:drawSelectorOnTop="true"
-            android:nextFocusUp="@id/tvChannelListTitle"
-            android:scrollbars="none" />
+            android:layout_marginTop="12dp">
+
+            <GridView
+                android:id="@+id/gvChannelListPanel"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:numColumns="4"
+                android:columnWidth="0dp"
+                android:horizontalSpacing="12dp"
+                android:verticalSpacing="12dp"
+                android:stretchMode="columnWidth"
+                android:gravity="start"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:descendantFocusability="blocksDescendants"
+                android:listSelector="@drawable/grid_item_selector"
+                android:drawSelectorOnTop="true"
+                android:nextFocusUp="@id/tvChannelListTitle"
+                android:nextFocusDown="@id/btnChannelListBackToWatch"
+                android:scrollbars="none" />
+
+            <FrameLayout
+                android:id="@+id/channelListLoadingOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clickable="false"
+                android:focusable="false"
+                android:visibility="gone">
+
+                <include
+                    android:id="@+id/channelListLoadingSpinner"
+                    layout="@layout/view_loading_spinner"
+                    android:layout_width="@dimen/portal_spinner_size"
+                    android:layout_height="@dimen/portal_spinner_size"
+                    android:layout_gravity="center" />
+            </FrameLayout>
+        </FrameLayout>
 
         <TextView
             android:id="@+id/btnChannelListBackToWatch"
