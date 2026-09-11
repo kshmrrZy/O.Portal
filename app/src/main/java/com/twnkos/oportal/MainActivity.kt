@@ -3677,6 +3677,7 @@ private fun showDefaultStartupScreen() {
         inPlayerTitlePrefetchToken++
         channelListTitleInflight.clear()
         handler.removeCallbacks(flushChannelListTitlesRunnable)
+        setChannelListPanelSpinnerVisible(false)
         hidePlayerOverlaySpinner()
         channelListPanel.visibility = View.GONE
         gvChannelListPanel.adapter = null
@@ -3795,7 +3796,10 @@ private fun showDefaultStartupScreen() {
         }.takeIf { it >= 0 } ?: 0
         if (rows.isNotEmpty()) {
             gvChannelListPanel.setSelection(focusIdx.coerceAtMost(rows.lastIndex))
-            gvChannelListPanel.requestFocus()
+            // Focus is requested by showChannelListPanel after the grid becomes VISIBLE.
+            if (gvChannelListPanel.visibility == View.VISIBLE) {
+                gvChannelListPanel.requestFocus()
+            }
         }
     }
 
@@ -3887,14 +3891,17 @@ private fun showDefaultStartupScreen() {
             logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=epg_open")
             return
         }
-        // Instant shell: panel chrome first, grid empty, spinner on top until bind finishes.
+        // Instant window: panel chrome first. Spinner lives INSIDE the panel until bind finishes.
         setPlayerOverlayScrimVisible(true)
         topInfoPanel.visibility = View.GONE
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = View.GONE
         handler.removeCallbacks(hideUiRunnable)
         pausePlaybackStallWatchdogForOverlay()
+        channelListPanel.isFocusable = false
+        (channelListPanel as ViewGroup).descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
         channelListPanel.visibility = View.VISIBLE
+        channelListPanel.bringToFront()
         gvChannelListPanel.adapter = null
         gvChannelListPanel.visibility = View.INVISIBLE
         tvChannelListTitle.text = "Список каналов: ${getSelectedPlaylistName()}"
@@ -3903,7 +3910,9 @@ private fun showDefaultStartupScreen() {
             etChannelListSearch.setText("")
             etChannelListSearch.visibility = View.GONE
         }
-        showPlayerOverlaySpinner()
+        // Never use the fullscreen loadingPanel here — it delays the window and steals TV focus.
+        hidePlayerOverlaySpinner()
+        setChannelListPanelSpinnerVisible(true)
 
         fun finishWithService(service: List<Channel>) {
             if (!::channelListPanel.isInitialized || channelListPanel.visibility != View.VISIBLE) {
@@ -3925,8 +3934,16 @@ private fun showDefaultStartupScreen() {
                 channelListProgramTitles = emptyMap()
                 bindChannelListPanelAdapter(preResolvedService = service)
                 gvChannelListPanel.visibility = View.VISIBLE
-                // Hide spinner only after the grid has laid out — avoids "spinner after list".
-                gvChannelListPanel.post { hidePlayerOverlaySpinner() }
+                setChannelListPanelSpinnerVisible(false)
+                // Request focus only after the grid is visible — INVISIBLE requestFocus is a no-op on TV.
+                val focusIdx = gvChannelListPanel.selectedItemPosition.takeIf { it >= 0 } ?: 0
+                gvChannelListPanel.post {
+                    if (channelListPanel.visibility != View.VISIBLE) return@post
+                    if (gvChannelListPanel.adapter != null && gvChannelListPanel.count > 0) {
+                        gvChannelListPanel.setSelection(focusIdx.coerceAtMost(gvChannelListPanel.count - 1))
+                        gvChannelListPanel.requestFocus()
+                    }
+                }
             }.onFailure { err ->
                 logDebug("NAV", "CHANNEL_LIST_OPEN_FAIL ${err.message}")
                 hideChannelListPanel()
@@ -3941,6 +3958,21 @@ private fun showDefaultStartupScreen() {
                 memCachedChannels.isEmpty() &&
                 cachedCategoryGroups["Все каналы"].isNullOrEmpty()
             if (!needsDiskRestore) {
+                // Prefer already-warm RAM list — bind on next frame without artificial multi-frame wait.
+                val warm = when {
+                    memCachedChannels.isNotEmpty() -> memCachedChannels
+                    !cachedCategoryGroups["Все каналы"].isNullOrEmpty() ->
+                        cachedCategoryGroups["Все каналы"].orEmpty()
+                    else -> null
+                }
+                if (warm != null) {
+                    thread(name = "channel-list-bind") {
+                        // Keep resolve off UI for filter/merge edge cases.
+                        val service = warm.ifEmpty { resolveInPlayerServiceChannels() }
+                        handler.post { finishWithService(service) }
+                    }
+                    return
+                }
                 thread(name = "channel-list-bind") {
                     val service = resolveInPlayerServiceChannels()
                     handler.post { finishWithService(service) }
@@ -3954,12 +3986,7 @@ private fun showDefaultStartupScreen() {
                 return
             }
             thread(name = "channel-list-cache-restore") {
-                val file = playlistCacheFile(url)
-                val restored = if (playlistFileLooksLikeBody(file)) {
-                    runCatching { M3uParser.parseFile(file) }.getOrNull().orEmpty()
-                } else {
-                    emptyList()
-                }
+                val restored = loadChannelsFromFastCacheOrM3u(url)
                 if (restored.isNotEmpty()) {
                     memCachedPlaylistUrl = url
                     memCachedChannels = restored
@@ -3973,7 +4000,6 @@ private fun showDefaultStartupScreen() {
                 handler.post {
                     if (channelListPanel.visibility != View.VISIBLE) return@post
                     if (restored.isNotEmpty() && channels.isEmpty()) {
-                        // Defer full copy until after first grid paint when list is huge.
                         if (restored.size <= 180) {
                             channels.clear()
                             channels.addAll(restored)
@@ -3991,9 +4017,10 @@ private fun showDefaultStartupScreen() {
             }
         }
 
-        // Two UI frames so the spinner actually paints before heavy bind work.
-        runAfterOverlaySpinnerPainted { loadAndBind() }
+        // Start loading immediately — window + in-panel spinner are already on screen.
+        loadAndBind()
     }
+
 
 
     private var epgPanelDateKeys: List<String> = emptyList()
@@ -4002,6 +4029,7 @@ private fun showDefaultStartupScreen() {
 
     private fun hideEpgPanel(restorePlayerUi: Boolean = true) {
         logMemoryStats("epg_panel_hide")
+        setEpgPanelSpinnerVisible(false)
         hidePlayerOverlaySpinner()
         epgPanel.visibility = View.GONE
         epgDatePickedByUser = false
@@ -4118,9 +4146,12 @@ private fun showDefaultStartupScreen() {
         }
 
         runCatching {
-            // Instant shell: panel chrome first, content hidden, spinner until prep finishes.
+            // Instant window: panel chrome first; spinner INSIDE the panel until prep finishes.
             if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.VISIBLE
+            epgPanel.isFocusable = false
+            (epgPanel as ViewGroup).descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             epgPanel.visibility = View.VISIBLE
+            epgPanel.bringToFront()
             topInfoPanel.visibility = View.GONE
             topGradientOverlay.visibility = View.GONE
             controlsPanel.visibility = View.GONE
@@ -4130,7 +4161,8 @@ private fun showDefaultStartupScreen() {
             epgDateRow.visibility = View.INVISIBLE
             lvEpgPrograms.visibility = View.INVISIBLE
             lvEpgPrograms.adapter = null
-            showPlayerOverlaySpinner()
+            hidePlayerOverlaySpinner()
+            setEpgPanelSpinnerVisible(true)
 
             fun bindPrepared(
                 dateKeys: List<String>,
@@ -4149,38 +4181,35 @@ private fun showDefaultStartupScreen() {
                     renderEpgProgramsForSelectedDate()
                     syncEpgPanelBounds()
                     scrollToSelectedEpgDateChip()
+                    setEpgPanelSpinnerVisible(false)
                     // TV: do not auto-highlight the first programme — wait for DPAD_DOWN.
                     focusEpgDateStripPreferringSelected()
-                    lvEpgPrograms.post { hidePlayerOverlaySpinner() }
                 }.onFailure { err ->
                     logDebug("NAV", "EPG_BIND_FAIL ${err.message}")
                     hideEpgPanel()
                 }
             }
 
-            runAfterOverlaySpinnerPainted {
-                if (epgPanel.visibility != View.VISIBLE) return@runAfterOverlaySpinnerPainted
-                thread(name = "epg-panel-prep") {
-                    val emptyTitle = epgUnavailableMessage(ch.name)
-                    val realPrograms = getProgramsForChannel(ch)
-                    val programsSource = when {
-                        realPrograms.isNotEmpty() -> realPrograms
-                        else -> {
-                            val archive = buildArchivePlaceholderPrograms(ch)
-                            if (archive.isNotEmpty()) archive
-                            else buildPlaceholderPrograms(title = emptyTitle)
-                        }
+            thread(name = "epg-panel-prep") {
+                val emptyTitle = epgUnavailableMessage(ch.name)
+                val realPrograms = getProgramsForChannel(ch)
+                val programsSource = when {
+                    realPrograms.isNotEmpty() -> realPrograms
+                    else -> {
+                        val archive = buildArchivePlaceholderPrograms(ch)
+                        if (archive.isNotEmpty()) archive
+                        else buildPlaceholderPrograms(title = emptyTitle)
                     }
-                    val (dateKeys, programsByDate) = buildEpgPanelDateModel(programsSource, emptyTitle)
-                    val selectedDate =
-                        if (epgPanelSelectedDate.isEmpty() || !dateKeys.contains(epgPanelSelectedDate)) {
-                            resolveEpgDefaultDateKey(dateKeys)
-                        } else {
-                            epgPanelSelectedDate
-                        }
-                    handler.post {
-                        bindPrepared(dateKeys, programsByDate, selectedDate)
+                }
+                val (dateKeys, programsByDate) = buildEpgPanelDateModel(programsSource, emptyTitle)
+                val selectedDate =
+                    if (epgPanelSelectedDate.isEmpty() || !dateKeys.contains(epgPanelSelectedDate)) {
+                        resolveEpgDefaultDateKey(dateKeys)
+                    } else {
+                        epgPanelSelectedDate
                     }
+                handler.post {
+                    bindPrepared(dateKeys, programsByDate, selectedDate)
                 }
             }
         }.onFailure { err ->
@@ -4188,6 +4217,7 @@ private fun showDefaultStartupScreen() {
             hideEpgPanel()
         }
     }
+
 
 
     private fun focusEpgDateStripPreferringSelected() {
@@ -6658,7 +6688,20 @@ private fun showDefaultStartupScreen() {
                 )
 
                 val parsedChannels = try {
-                    M3uParser.parseFile(cacheFile)
+                    if (!forceReload) {
+                        val fast = readChannelsBinaryCache(playlistUrl)
+                        if (fast.isNotEmpty()) {
+                            logDebug(
+                                "PLAYLIST_FLOW",
+                                "PLAYLIST_CHANNELS_BIN_HIT count=${fast.size}"
+                            )
+                            fast
+                        } else {
+                            M3uParser.parseFile(cacheFile)
+                        }
+                    } else {
+                        M3uParser.parseFile(cacheFile)
+                    }
                 } catch (oom: OutOfMemoryError) {
                     System.gc()
                     throw oom
@@ -6809,6 +6852,10 @@ private fun showDefaultStartupScreen() {
             // Reuse the parsed list — avoid an extra toList() copy of 2k+ channels.
             memCachedPlaylistUrl = playlistUrl
             memCachedChannels = parsedChannels
+            // Persist a binary channel snapshot so the next cold open skips slow M3U re-parse.
+            thread(name = "channels-bin-cache-write") {
+                writeChannelsBinaryCache(playlistUrl, parsedChannels)
+            }
             availableEpgSources = parsedEpgUrls
             val savedSelection = getSelectedEpgSources()
             selectedEpgSources = savedSelection.toMutableSet()
@@ -6928,6 +6975,124 @@ private fun showDefaultStartupScreen() {
 
     private fun playlistCacheDir(): File =
         File(filesDir, "playlist_cache").also { if (!it.exists()) it.mkdirs() }
+
+
+    private fun playlistChannelsBinFile(url: String): File {
+        val key = Integer.toHexString(url.trim().lowercase(Locale.getDefault()).hashCode())
+        return File(playlistCacheDir(), "$key.channels.bin")
+    }
+
+    /**
+     * Fast on-disk channel list for TV: avoids re-parsing multi-MB M3U on every service open.
+     * Written after a successful M3U parse; read before falling back to [M3uParser.parseFile].
+     */
+    private fun writeChannelsBinaryCache(url: String, list: List<Channel>) {
+        if (url.isBlank() || list.isEmpty()) return
+        val dest = playlistChannelsBinFile(url)
+        val tmp = File(dest.parentFile, dest.name + ".tmp")
+        runCatching {
+            java.io.DataOutputStream(
+                java.io.BufferedOutputStream(java.io.FileOutputStream(tmp), 64 * 1024)
+            ).use { out ->
+                out.writeInt(0x4F504348) // 'OPCH'
+                out.writeInt(1) // version
+                out.writeInt(list.size)
+                fun writeNullable(s: String?) {
+                    if (s == null) {
+                        out.writeBoolean(false)
+                    } else {
+                        out.writeBoolean(true)
+                        out.writeUTF(s.take(8_000))
+                    }
+                }
+                for (ch in list) {
+                    out.writeUTF(ch.name.take(2_000))
+                    out.writeUTF(ch.url.take(8_000))
+                    writeNullable(ch.tvgId)
+                    writeNullable(ch.tvgName)
+                    writeNullable(ch.logoFromPlaylist)
+                    writeNullable(ch.groupTitle)
+                    out.writeInt(ch.catchupDays)
+                    writeNullable(ch.catchupSource)
+                    writeNullable(ch.logoFromEpg)
+                }
+            }
+            if (dest.exists()) dest.delete()
+            if (!tmp.renameTo(dest)) {
+                tmp.copyTo(dest, overwrite = true)
+                tmp.delete()
+            }
+            logDebug("PLAYLIST_FLOW", "CHANNELS_BIN_CACHE_WRITE count=${list.size} bytes=${dest.length()}")
+        }.onFailure { err ->
+            runCatching { tmp.delete() }
+            logDebug("PLAYLIST_FLOW", "CHANNELS_BIN_CACHE_WRITE_FAIL ${err.message}")
+        }
+    }
+
+    private fun readChannelsBinaryCache(url: String): List<Channel> {
+        if (url.isBlank()) return emptyList()
+        val file = playlistChannelsBinFile(url)
+        if (!file.exists() || file.length() < 16L) return emptyList()
+        return runCatching {
+            java.io.DataInputStream(
+                java.io.BufferedInputStream(java.io.FileInputStream(file), 64 * 1024)
+            ).use { inp ->
+                val magic = inp.readInt()
+                if (magic != 0x4F504348) return@use emptyList()
+                val version = inp.readInt()
+                if (version != 1) return@use emptyList()
+                val count = inp.readInt()
+                if (count <= 0 || count > 200_000) return@use emptyList()
+                fun readNullable(): String? =
+                    if (inp.readBoolean()) inp.readUTF() else null
+                val out = ArrayList<Channel>(count)
+                repeat(count) {
+                    val name = inp.readUTF()
+                    val chUrl = inp.readUTF()
+                    val tvgId = readNullable()
+                    val tvgName = readNullable()
+                    val logo = readNullable()
+                    val group = readNullable()
+                    val catchupDays = inp.readInt()
+                    val catchupSource = readNullable()
+                    val logoEpg = readNullable()
+                    out.add(
+                        Channel(
+                            name = name,
+                            url = chUrl,
+                            tvgId = tvgId,
+                            tvgName = tvgName,
+                            logoFromPlaylist = logo,
+                            groupTitle = group,
+                            catchupDays = catchupDays,
+                            catchupSource = catchupSource,
+                            logoFromEpg = logoEpg
+                        )
+                    )
+                }
+                out
+            }
+        }.getOrElse { err ->
+            logDebug("PLAYLIST_FLOW", "CHANNELS_BIN_CACHE_READ_FAIL ${err.message}")
+            emptyList()
+        }
+    }
+
+    /** Prefer binary channel cache; fall back to streaming M3U parse. */
+    private fun loadChannelsFromFastCacheOrM3u(url: String): List<Channel> {
+        val bin = readChannelsBinaryCache(url)
+        if (bin.isNotEmpty()) {
+            logDebug("PLAYLIST_FLOW", "CHANNELS_BIN_CACHE_HIT count=${bin.size}")
+            return bin
+        }
+        val file = playlistCacheFile(url)
+        if (!playlistFileLooksLikeBody(file)) return emptyList()
+        val parsed = runCatching { M3uParser.parseFile(file) }.getOrNull().orEmpty()
+        if (parsed.isNotEmpty()) {
+            writeChannelsBinaryCache(url, parsed)
+        }
+        return parsed
+    }
 
     private fun playlistCacheFile(url: String): File {
         val key = Integer.toHexString(url.trim().lowercase().hashCode())
@@ -8976,6 +9141,29 @@ private fun showDefaultStartupScreen() {
      * Non-blocking spinner over the player (EPG / channel-list open).
      * Transparent + non-focusable so D-pad keeps working on the overlay underneath.
      */
+
+    private fun setChannelListPanelSpinnerVisible(visible: Boolean) {
+        val overlay = findViewById<View>(R.id.channelListLoadingOverlay) ?: return
+        if (visible) {
+            overlay.visibility = View.VISIBLE
+            startCompositeSpinner(findViewById(R.id.channelListLoadingSpinner))
+        } else {
+            stopCompositeSpinner(findViewById(R.id.channelListLoadingSpinner))
+            overlay.visibility = View.GONE
+        }
+    }
+
+    private fun setEpgPanelSpinnerVisible(visible: Boolean) {
+        val overlay = findViewById<View>(R.id.epgLoadingOverlay) ?: return
+        if (visible) {
+            overlay.visibility = View.VISIBLE
+            startCompositeSpinner(findViewById(R.id.epgLoadingSpinner))
+        } else {
+            stopCompositeSpinner(findViewById(R.id.epgLoadingSpinner))
+            overlay.visibility = View.GONE
+        }
+    }
+
     private fun showPlayerOverlaySpinner() {
         if (seekSpinnerActive) return
         showAppLoadingSpinner()
@@ -11914,6 +12102,9 @@ private fun showDefaultStartupScreen() {
                 pendingChromeHiddenRightRunnable?.let { handler.removeCallbacks(it) }
                 pendingChromeHiddenRightRunnable = null
                 logDebug("NAV", "DPAD_RIGHT_DOUBLE_SEEK")
+                if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
+                    hideEpgPanel()
+                }
                 if (!isArchivePlayback) {
                     showAppToast("Перемотка вперёд недоступна в прямом эфире")
                     return true
@@ -11923,7 +12114,6 @@ private fun showDefaultStartupScreen() {
                     return true
                 }
                 queueSeekDeltaSeconds(60, fromUser = true)
-                // Keep chrome up with focus on the timeline — do not jump to seek buttons.
                 if (::timelineTrack.isInitialized) {
                     showUI(preferFocus = timelineTrack)
                 } else {
@@ -11932,20 +12122,12 @@ private fun showDefaultStartupScreen() {
                 return true
             }
             lastChromeHiddenDpadRightElapsedMs = now
-            val token = now
-            val open = Runnable {
-                if (lastChromeHiddenDpadRightElapsedMs != token) return@Runnable
-                lastChromeHiddenDpadRightElapsedMs = 0L
-                pendingChromeHiddenRightRunnable = null
-                logDebug(
-                    "NAV",
-                    "DPAD_RIGHT_OPEN_EPG sdk=${Build.VERSION.SDK_INT} " +
-                        "channels=${channels.size} focus=${currentFocus?.javaClass?.simpleName}"
-                )
-                toggleEpgPanel()
-            }
-            pendingChromeHiddenRightRunnable = open
-            handler.postDelayed(open, chromeHiddenDoubleTapMs)
+            logDebug(
+                "NAV",
+                "DPAD_RIGHT_OPEN_EPG_INSTANT sdk=${Build.VERSION.SDK_INT} " +
+                    "channels=${channels.size} focus=${currentFocus?.javaClass?.simpleName}"
+            )
+            showEpgPanel()
             return true
         }
 
@@ -11958,6 +12140,9 @@ private fun showDefaultStartupScreen() {
             pendingChromeHiddenLeftRunnable?.let { handler.removeCallbacks(it) }
             pendingChromeHiddenLeftRunnable = null
             logDebug("NAV", "DPAD_LEFT_DOUBLE_SEEK")
+            if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
+                hideChannelListPanel()
+            }
             if (!channelSupportsArchiveSeek()) {
                 showAppToast("Архив недоступен")
                 return true
@@ -11971,23 +12156,16 @@ private fun showDefaultStartupScreen() {
             return true
         }
         lastChromeHiddenDpadLeftElapsedMs = now
-        val token = now
-        val open = Runnable {
-            if (lastChromeHiddenDpadLeftElapsedMs != token) return@Runnable
-            lastChromeHiddenDpadLeftElapsedMs = 0L
-            pendingChromeHiddenLeftRunnable = null
-            logDebug(
-                "NAV",
-                "DPAD_LEFT_OPEN_CHANNEL_LIST sdk=${Build.VERSION.SDK_INT} " +
-                    "channels=${channels.size} memCache=${memCachedChannels.size} " +
-                    "focus=${currentFocus?.javaClass?.simpleName}"
-            )
-            showChannelListPanel()
-        }
-        pendingChromeHiddenLeftRunnable = open
-        handler.postDelayed(open, chromeHiddenDoubleTapMs)
+        logDebug(
+            "NAV",
+            "DPAD_LEFT_OPEN_CHANNEL_LIST_INSTANT sdk=${Build.VERSION.SDK_INT} " +
+                "channels=${channels.size} memCache=${memCachedChannels.size} " +
+                "focus=${currentFocus?.javaClass?.simpleName}"
+        )
+        showChannelListPanel()
         return true
     }
+
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (::scaleGestureDetector.isInitialized) {
