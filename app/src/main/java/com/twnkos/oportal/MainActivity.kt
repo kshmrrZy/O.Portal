@@ -342,7 +342,11 @@ class MainActivity : AppCompatActivity() {
     private val channelListTitleInflight = java.util.Collections.synchronizedSet(mutableSetOf<Int>())
     private val flushChannelListTitlesRunnable = Runnable {
         if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
+            val selected = gvChannelListPanel.selectedItemPosition
             (gvChannelListPanel.adapter as? BaseAdapter)?.notifyDataSetChanged()
+            if (selected >= 0 && selected < (gvChannelListPanel.adapter?.count ?: 0)) {
+                gvChannelListPanel.setSelection(selected)
+            }
         }
     }
     /** Lazy programme titles for the home channel grid (key = url\\0name). */
@@ -351,7 +355,12 @@ class MainActivity : AppCompatActivity() {
     private var homeChannelTitleToken = 0L
     private val flushHomeChannelTitlesRunnable = Runnable {
         if (::gvHomeChannelList.isInitialized && gvHomeChannelList.visibility == View.VISIBLE) {
+            // Preserve selection — bare notifyDataSetChanged on TV GridView often jumps a full row.
+            val selected = gvHomeChannelList.selectedItemPosition
             (gvHomeChannelList.adapter as? BaseAdapter)?.notifyDataSetChanged()
+            if (selected >= 0 && selected < (gvHomeChannelList.adapter?.count ?: 0)) {
+                gvHomeChannelList.setSelection(selected)
+            }
         }
     }
     private var homeActionIndex = 0
@@ -2285,15 +2294,18 @@ private fun showDefaultStartupScreen() {
     ) : GridLayoutManager.SpanSizeLookup() {
         init { isSpanIndexCacheEnabled = true }
         override fun getSpanSize(position: Int): Int {
-            val spanCount = columns * 2
+            // Use spanCount == columns (not columns*2). The doubled span grid made TV
+            // FocusFinder treat the board as 6 micro-columns and skip every other row.
             val total = itemCountProvider()
-            if (columns <= 0 || total <= 0) return spanCount
+            if (columns <= 0 || total <= 0) return 1
+            // On TV keep uniform 1-span cells so DPAD row steps stay predictable.
+            if (isTelevisionDevice()) return 1
             val leftover = total % columns
             val lastRowStart = total - leftover
-            return if (leftover != 0 && position >= lastRowStart) {
-                spanCount / leftover
+            return if (leftover != 0 && position >= lastRowStart && columns % leftover == 0) {
+                columns / leftover
             } else {
-                spanCount / columns
+                1
             }
         }
     }
@@ -2566,7 +2578,7 @@ private fun showDefaultStartupScreen() {
         rvHomeTiles.clipToPadding = false
 
         if (homeTilesColumnsApplied != columns) {
-            val gridLayoutManager = GridLayoutManager(this, columns * 2)
+            val gridLayoutManager = GridLayoutManager(this, columns)
             gridLayoutManager.spanSizeLookup = HomeTileSpanSizeLookup(columns) { currentHomeTilesItems.size }
             rvHomeTiles.layoutManager = gridLayoutManager
             homeTilesColumnsApplied = columns
@@ -3067,6 +3079,8 @@ private fun showDefaultStartupScreen() {
         selectedCategoryName = category
         lastChannelListCategory = category
         homeChannelListCategory = category
+        // Remember that playback started from a category list so exit restores it (not «Все каналы»).
+        homeReturnTarget = HomeReturnTarget.CHANNEL_LIST
         // Keep the caller's list — avoid an extra toList() copy of large categories.
         homeChannelListSource = channelsForCategory
         applyHomeAppTitleStyle(
@@ -3111,7 +3125,9 @@ private fun showDefaultStartupScreen() {
             channels.clear()
             channels.addAll(channelsForCategory)
         }
-        if (channelsForCategory.size > 180) {
+        // Always apply on the next frame at most — never leave [channels] as the full service
+        // while the UI shows a category (exit-from-player restore depends on this).
+        if (channelsForCategory.size > 40) {
             val host = if (::gvHomeChannelList.isInitialized) gvHomeChannelList else homePanel
             host.post(apply)
         } else {
@@ -3154,8 +3170,6 @@ private fun showDefaultStartupScreen() {
             else -> null
         }
         // First paint: names only. EPG titles fill in lazily (same idea as in-player list).
-        // Android 9 TV: skip Glide logos — decode spikes were a big part of "cached but slow".
-        val skipLogos = isTelevisionDevice() && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P
         homeChannelTitleToken++
         homeChannelTitleInflight.clear()
         handler.removeCallbacks(flushHomeChannelTitlesRunnable)
@@ -3172,11 +3186,7 @@ private fun showDefaultStartupScreen() {
 
                 tvName.text = channel.name
                 tvName.isSelected = true
-                if (skipLogos) {
-                    ivLogo.setImageDrawable(null)
-                } else {
-                    loadLogoWithGlide(channel.logoFromEpg ?: channel.logoFromPlaylist, ivLogo)
-                }
+                loadLogoWithGlide(channel.logoFromEpg ?: channel.logoFromPlaylist, ivLogo)
 
                 archiveBadge.visibility =
                     if (channel.catchupDays > 0 && !channel.catchupSource.isNullOrBlank()) View.VISIBLE else View.GONE
@@ -3709,8 +3719,6 @@ private fun showDefaultStartupScreen() {
                 "activeChannels=${channels.size} sdk=${Build.VERSION.SDK_INT} " +
                 "memCache=${memCachedChannels.size}"
         )
-        // Android 9 TV: skip Glide logos (home card + recycled GridView is enough to stay under OOM).
-        val skipLogos = isTelevisionDevice() && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P
         gvChannelListPanel.adapter = object : ArrayAdapter<Row>(this@MainActivity, 0, rows) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val holder: ChannelGridItemViewHolder
@@ -3743,14 +3751,10 @@ private fun showDefaultStartupScreen() {
                     holder.tvName.typeface = golosWeight(500) ?: golosTypeface
                 }
 
-                if (skipLogos) {
-                    holder.ivLogo.setImageDrawable(null)
-                } else {
-                    loadLogoWithGlide(
-                        channel.logoFromEpg ?: channel.logoFromPlaylist,
-                        holder.ivLogo
-                    )
-                }
+                loadLogoWithGlide(
+                    channel.logoFromEpg ?: channel.logoFromPlaylist,
+                    holder.ivLogo
+                )
 
                 val isCurrent = currentKey != null &&
                     "${channel.url}\u0000${channel.name}" == currentKey
@@ -9556,17 +9560,24 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun loadLogoWithGlide(url: String?, target: ImageView) {
+        val placeholder = R.drawable.bg_channel_logo_placeholder
         if (url.isNullOrBlank()) {
             Glide.with(this).clear(target)
-            target.setImageDrawable(null)
+            target.setImageResource(placeholder)
             return
         }
         val glideUrl = GlideUrl(
             url,
             LazyHeaders.Builder().addHeader("User-Agent", userAgent).build()
         )
+        // Small decode size keeps Android 9 TV under OOM while still showing logos.
+        val logoPx = dpToPx(40)
         Glide.with(this)
             .load(glideUrl)
+            .override(logoPx, logoPx)
+            .placeholder(placeholder)
+            .error(placeholder)
+            .fallback(placeholder)
             .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.ALL)
             .into(target)
     }
@@ -12708,13 +12719,27 @@ private fun showDefaultStartupScreen() {
         hasStartedPlaybackFromChannelClick = false
         logDebug("NAV", "EXIT_PLAYER_LOCAL_HOME_RESET")
         resetSettingsOverlayState()
-        showHomeOnly()
-        val category = lastChannelListCategory
-        if (homeReturnTarget == HomeReturnTarget.CHANNEL_LIST && category != null &&
-            cachedCategoryGroups.containsKey(category)
-        ) {
-            returnToCategoryTilesOnHome()
-            showHomeChannelList(category, cachedCategoryGroups[category].orEmpty())
+
+        val returnCategory = lastChannelListCategory
+        val categoryChannels = returnCategory
+            ?.takeIf { it.isNotBlank() }
+            ?.let { cachedCategoryGroups[it] }
+            .orEmpty()
+        val restoreCategoryList =
+            homeReturnTarget == HomeReturnTarget.CHANNEL_LIST &&
+                !returnCategory.isNullOrBlank() &&
+                categoryChannels.isNotEmpty()
+        // Avoid showHomeOnly()'s playlist-tiles focus dance when we must reopen the category list —
+        // that race periodically left users on «Все каналы» / full service instead of the category.
+        if (restoreCategoryList) {
+            prepareHomeShellAfterPlayerExit()
+            showHomeChannelList(returnCategory!!, categoryChannels)
+            logDebug(
+                "NAV",
+                "EXIT_PLAYER_RESTORE_CATEGORY name=$returnCategory count=${categoryChannels.size}"
+            )
+        } else {
+            showHomeOnly()
         }
         homeReturnTarget = HomeReturnTarget.PLAYLISTS
     }
@@ -12744,6 +12769,55 @@ private fun showDefaultStartupScreen() {
         findViewById<View>(R.id.playlistSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.epgSettingsPanel).visibility = View.GONE
         findViewById<View>(R.id.userSettingsPanel).visibility = View.GONE
+    }
+
+
+    /** Chrome reset when leaving the player without bouncing through the playlist grid. */
+    private fun prepareHomeShellAfterPlayerExit() {
+        resetSettingsOverlayState()
+        findViewById<View>(R.id.btnBackToMenu)?.apply {
+            visibility = View.GONE
+            isClickable = false
+            isFocusable = false
+            isEnabled = false
+            setOnClickListener(null)
+        }
+        disableHomeCategoryBack("prepareHomeShellAfterPlayerExit")
+        tvReloadingStatus.visibility = View.GONE
+        tvReloadingStatus.isClickable = false
+        tvReloadingStatus.isFocusable = false
+        tvReloadingStatus.isEnabled = false
+        listBackgroundOverlay.visibility = View.GONE
+        listBackgroundOverlay.isClickable = false
+        listBackgroundOverlay.isFocusable = false
+        listBackgroundOverlay.isEnabled = false
+        timerWarningPanel.visibility = View.GONE
+        timerWarningPanel.isClickable = false
+        timerWarningPanel.isFocusable = false
+        timerWarningPanel.isEnabled = false
+        homePanel.setBackgroundResource(R.drawable.bg_home_screen)
+        topInfoPanel.visibility = View.GONE
+        topInfoPanel.isClickable = false
+        topInfoPanel.isFocusable = false
+        topInfoPanel.isEnabled = false
+        topGradientOverlay.visibility = View.GONE
+        topGradientOverlay.isClickable = false
+        topGradientOverlay.isFocusable = false
+        topGradientOverlay.isEnabled = false
+        controlsPanel.visibility = View.GONE
+        controlsPanel.isClickable = false
+        controlsPanel.isFocusable = false
+        controlsPanel.isEnabled = false
+        setPlayerVideoVisible(false)
+        tvHomeAppTitle.visibility = View.VISIBLE
+        tvHomeSystemTime.visibility = View.VISIBLE
+        ivHomeProfile.visibility = View.VISIBLE
+        ivHomeSettings.visibility = View.VISIBLE
+        ivHomePower.visibility = View.VISIBLE
+        homePanel.visibility = View.VISIBLE
+        homePanel.alpha = 1f
+        homePanel.translationX = 0f
+        homePanel.translationY = 0f
     }
 
     private fun showHomeOnly() {
