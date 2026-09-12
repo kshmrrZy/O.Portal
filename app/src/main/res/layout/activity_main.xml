@@ -1312,7 +1312,8 @@
                         android:background="@drawable/bg_playlist_tile"
                         android:clickable="true"
                         android:focusable="true"
-                        android:focusableInTouchMode="false">
+                        android:focusableInTouchMode="false"
+                        android:nextFocusUp="@id/rvHomeTiles">
 
                         <include layout="@layout/item_home_bottom_action" />
                     </FrameLayout>
@@ -1325,7 +1326,8 @@
                         android:background="@drawable/bg_playlist_tile"
                         android:clickable="true"
                         android:focusable="true"
-                        android:focusableInTouchMode="false">
+                        android:focusableInTouchMode="false"
+                        android:nextFocusUp="@id/rvHomeTiles">
 
                         <include layout="@layout/item_home_bottom_action" />
                     </FrameLayout>

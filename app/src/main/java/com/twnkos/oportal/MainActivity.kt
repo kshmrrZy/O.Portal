@@ -2563,15 +2563,55 @@ private fun showDefaultStartupScreen() {
                 findViewById<View>(R.id.btnFavoritesTile)?.visibility == View.VISIBLE)
     }
 
+    private fun isDescendantOfView(view: View?, ancestor: View?): Boolean {
+        if (view == null || ancestor == null) return false
+        return generateSequence(view) { it.parent as? View }.any { it === ancestor }
+    }
+
+    private fun isFocusOnHomeBottomActionTiles(focused: View?): Boolean {
+        if (focused == null) return false
+        val btnOwn = findViewById<View>(R.id.btnOwnPlaylistsTile)
+        val btnFav = findViewById<View>(R.id.btnFavoritesTile)
+        val row = findViewById<View>(R.id.homeBottomTilesRow)
+        if (focused === btnOwn || focused === btnFav || focused === row) return true
+        return isDescendantOfView(focused, btnOwn) ||
+            isDescendantOfView(focused, btnFav) ||
+            isDescendantOfView(focused, row)
+    }
+
+    /** DPAD_UP from Own playlists / Favorites → last row of the services grid (not header). */
+    private fun tryMoveFocusFromHomeBottomTilesToServices(): Boolean {
+        val focused = currentFocus ?: return false
+        if (!isFocusOnHomeBottomActionTiles(focused)) return false
+        val hint = when {
+            focused.id == R.id.btnFavoritesTile -> 1
+            focused.id == R.id.btnOwnPlaylistsTile -> 0
+            else -> {
+                // Child of a bottom tile (e.g. label) — prefer Favorites if that branch owns focus.
+                val btnFav = findViewById<View>(R.id.btnFavoritesTile)
+                if (btnFav != null && isDescendantOfView(focused, btnFav)) 1
+                else 0
+            }
+        }
+        focusLastHomeTileRowFromBottom(hint)
+        return true
+    }
+
+
     private fun focusHomeTileAt(index: Int) {
         val rv = rvHomeTiles
         if (index !in 0 until (rv.adapter?.itemCount ?: 0)) return
         rv.scrollToPosition(index)
-        rv.post {
-            val target = rv.findViewHolderForAdapterPosition(index)?.itemView ?: return@post
+        fun requestTileFocus(retriesLeft: Int) {
+            val target = rv.findViewHolderForAdapterPosition(index)?.itemView
+            if (target == null) {
+                if (retriesLeft > 0) rv.post { requestTileFocus(retriesLeft - 1) }
+                return
+            }
             target.requestFocus()
             scrollHomePanelToShow(target)
         }
+        rv.post { requestTileFocus(8) }
     }
 
     private fun focusHomeBottomTilesFromGrid(columnHint: Int) {
@@ -2617,6 +2657,12 @@ private fun showDefaultStartupScreen() {
     private fun wireHomeBottomTilesDpadUp() {
         val btnOwn = findViewById<View>(R.id.btnOwnPlaylistsTile) ?: return
         val btnFav = findViewById<View>(R.id.btnFavoritesTile) ?: return
+        listOf(btnOwn, btnFav).forEach { tile ->
+            (tile as? ViewGroup)?.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+            tile.isFocusable = true
+            tile.isClickable = true
+            tile.nextFocusUpId = R.id.rvHomeTiles
+        }
         val upListener = View.OnKeyListener { v, keyCode, event ->
             if (event.action != KeyEvent.ACTION_DOWN) return@OnKeyListener false
             if (keyCode != KeyEvent.KEYCODE_DPAD_UP) return@OnKeyListener false
@@ -2626,8 +2672,6 @@ private fun showDefaultStartupScreen() {
         }
         btnOwn.setOnKeyListener(upListener)
         btnFav.setOnKeyListener(upListener)
-        btnOwn.nextFocusUpId = R.id.rvHomeTiles
-        btnFav.nextFocusUpId = R.id.rvHomeTiles
     }
 
     private fun applyHomeBottomTilesGeometry() {
@@ -2932,6 +2976,8 @@ private fun showDefaultStartupScreen() {
                 return pos < cols
             }
             is RecyclerView -> {
+                // Focus outside the grid (e.g. Own/Favorites below) is NOT the top row —
+                // callers must route that UP to services, not to settings/power.
                 val focusedChild = when {
                     focused != null && grid.indexOfChild(focused) >= 0 -> focused
                     focused != null -> {
@@ -2942,9 +2988,10 @@ private fun showDefaultStartupScreen() {
                         p
                     }
                     else -> grid.focusedChild
-                } ?: return true
+                } ?: return false
                 val pos = grid.getChildAdapterPosition(focusedChild)
-                if (pos == RecyclerView.NO_POSITION || pos <= 0) return true
+                if (pos == RecyclerView.NO_POSITION) return false
+                if (pos <= 0) return true
                 val columns = computeHomeTileColumns().coerceAtLeast(1)
                 return pos < columns
             }
@@ -11811,10 +11858,24 @@ private fun showDefaultStartupScreen() {
             }
         }
 
+        // Own playlists / Favorites sit below the services grid inside the same panel.
+        // UP from those tiles must return to services — not jump to settings/power.
+        if (isFocusOnHomeBottomActionTiles(focused)) {
+            return tryMoveFocusFromHomeBottomTilesToServices()
+        }
+
         val onChannelGrid = ::gvHomeChannelList.isInitialized &&
             gvHomeChannelList.visibility == View.VISIBLE
         val onPlaylistTiles = ::homePlaylistTilesPanel.isInitialized &&
             homePlaylistTilesPanel.visibility == View.VISIBLE
+        // Focus in the scroll panel but outside the services RecyclerView (bottom row) —
+        // never treat as "leave list to header".
+        if (onPlaylistTiles &&
+            isDescendantOfView(focused, homePlaylistTilesPanel) &&
+            !isDescendantOfView(focused, rvHomeTiles)
+        ) {
+            return tryMoveFocusFromHomeBottomTilesToServices()
+        }
         if (onChannelGrid || onPlaylistTiles) {
             val grid: View = if (onChannelGrid) gvHomeChannelList else rvHomeTiles
             if (isHomeListAtTopRow(grid, focused)) {
@@ -11834,7 +11895,7 @@ private fun showDefaultStartupScreen() {
         if (event.action == KeyEvent.ACTION_DOWN &&
             event.repeatCount == 0 &&
             event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
-            tryMoveHomeFocusTowardHeaderIcons()
+            (tryMoveFocusFromHomeBottomTilesToServices() || tryMoveHomeFocusTowardHeaderIcons())
         ) {
             return true
         }
@@ -12086,6 +12147,9 @@ private fun showDefaultStartupScreen() {
             } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP &&
                 (homePlaylistTilesPanel.visibility == View.VISIBLE || gvHomeChannelList.visibility == View.VISIBLE)
             ) {
+                if (isFocusOnHomeBottomActionTiles(focused)) {
+                    return tryMoveFocusFromHomeBottomTilesToServices()
+                }
                 val grid = if (homePlaylistTilesPanel.visibility == View.VISIBLE) rvHomeTiles else gvHomeChannelList
                 if (isHomeListAtTopRow(grid, focused)) {
                     // Skip search on the way up — reach breadcrumbs / auth+settings icons directly.
