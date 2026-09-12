@@ -497,7 +497,7 @@ class MainActivity : AppCompatActivity() {
                         "isPlaying=${player.isPlaying} state=${player.playbackState}"
                 )
                 if (tvReloadingStatus.visibility != View.VISIBLE && homePanel.visibility != View.VISIBLE) {
-                    markStallSpinnerVisible()
+                    markStallSpinnerVisible("Нет видеокадра")
                 }
                 notifyPlaybackStall("Нет видеокадра", immediate = true)
             }
@@ -526,7 +526,12 @@ class MainActivity : AppCompatActivity() {
                     tvReloadingStatus.visibility != View.VISIBLE &&
                     homePanel.visibility != View.VISIBLE
                 ) {
-                    markStallSpinnerVisible()
+                    val earlyReason = if (!isNetworkConnected()) {
+                        "Проблемы с интернетом"
+                    } else {
+                        "Буферизация потока"
+                    }
+                    markStallSpinnerVisible(earlyReason)
                 }
                 if (!inGrace && bufferingFor > PLAYBACK_STALL_BUFFERING_MS) {
                     val reason = if (!isNetworkConnected()) {
@@ -546,7 +551,7 @@ class MainActivity : AppCompatActivity() {
                 ) {
                     logDebug("PLAYER_STATE", "watchdog hard-stop stall state=${player.playbackState}")
                     if (tvReloadingStatus.visibility != View.VISIBLE) {
-                        markStallSpinnerVisible()
+                        markStallSpinnerVisible("Воспроизведение остановилось")
                     }
                     notifyPlaybackStall("Воспроизведение остановилось", immediate = true)
                 }
@@ -560,7 +565,7 @@ class MainActivity : AppCompatActivity() {
                     tvReloadingStatus.visibility != View.VISIBLE &&
                     homePanel.visibility != View.VISIBLE
                 ) {
-                    markStallSpinnerVisible()
+                    markStallSpinnerVisible("Звук/картинка пропали")
                 }
                 if (!inGrace && gapFor > PLAYBACK_STALL_BUFFERING_MS) {
                     logDebug("PLAYER_STATE", "watchdog ready-not-playing stall gapFor=$gapFor")
@@ -577,12 +582,16 @@ class MainActivity : AppCompatActivity() {
             stopReloadingPlateSpinner()
             tvReloadingStatus.visibility = View.GONE
         }
-        // Stream resumed after a stall/buffer — drop spinner only after sustained progress.
-        // Brief isPlaying / single ticks (common on Only4) must NOT reset the 10s stall timer,
-        // or spinner↔frozen-frame loops forever without reaching recovery.
+        // Stream resumed after a stall/buffer — dismiss spinner/banner as soon as playback
+        // is healthy again (do not leave the spinner up for 2–3s after the picture returns).
         val loadingSpinner = findViewById<View>(R.id.playerLoadingSpinner)
-        if (loadingSpinner?.visibility == View.VISIBLE && !playbackRecoveryActive) {
-            if (consecutiveForwardProgressTicks >= 1) {
+        val stallChromeVisible =
+            loadingSpinner?.visibility == View.VISIBLE ||
+                (::tvReloadingStatus.isInitialized && tvReloadingStatus.visibility == View.VISIBLE)
+        if (stallChromeVisible && firstFrameRendered && consecutiveForwardProgressTicks >= 1) {
+            if (playbackRecoveryActive) {
+                onPlaybackRecoverySucceeded()
+            } else {
                 clearStallSpinnerTimer()
                 hidePlayerLoadingUi()
                 if (::tvReloadingStatus.isInitialized && tvReloadingStatus.visibility == View.VISIBLE) {
@@ -590,7 +599,6 @@ class MainActivity : AppCompatActivity() {
                     tvReloadingStatus.visibility = View.GONE
                 }
                 if (controlsPanel.visibility == View.VISIBLE) {
-                    // Stall path kept chrome up and cancelled the idle hide timer — restart it.
                     scheduleHidePlayerChrome()
                 } else {
                     hideUI()
@@ -651,7 +659,7 @@ class MainActivity : AppCompatActivity() {
             tvReloadingStatus.visibility != View.VISIBLE &&
             homePanel.visibility != View.VISIBLE
         ) {
-            markStallSpinnerVisible()
+            markStallSpinnerVisible("Поток завис (нет прогресса)")
         }
         val progressStallReason = when {
             stuckNow -> "Поток завис (нет прогресса)"
@@ -674,7 +682,8 @@ class MainActivity : AppCompatActivity() {
         reschedulePlaybackFreezeWatchdog()
     }
 
-    private fun markStallSpinnerVisible() {
+    private fun markStallSpinnerVisible(reason: String = "") {
+        if (reason.isNotBlank()) lastPlaybackStallReason = reason
         if (stallSpinnerShownAtMs == 0L) {
             stallSpinnerShownAtMs = System.currentTimeMillis()
             // Freeze the left live clock for this stall episode (network loss / freeze).
@@ -682,7 +691,14 @@ class MainActivity : AppCompatActivity() {
                 liveTimelineFrozenForStallMs = getLiveTimelinePositionMs()
             }
         }
-        showPlayerLoadingUi(keepControlsVisible = true)
+        // Prefer the status banner immediately on freeze — the center spinner often lingered
+        // 2–3s after the picture returned.
+        val detail = lastPlaybackStallReason.ifBlank { "Ожидание потока…" }
+        if (::tvReloadingStatus.isInitialized) {
+            showReloadingStatus("Проблемы с трансляцией", detail)
+        } else {
+            showPlayerLoadingUi(keepControlsVisible = true)
+        }
     }
 
     private fun clearStallSpinnerTimer() {
@@ -694,11 +710,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun stallSpinnerVisibleLongEnough(now: Long = System.currentTimeMillis()): Boolean {
-        val shownAt = stallSpinnerShownAtMs
-        return shownAt > 0L && now - shownAt >= PLAYBACK_STALL_SPINNER_BEFORE_RECOVERY_MS
-    }
-
     private fun notifyPlaybackStall(reason: String, immediate: Boolean = false) {
         if (isSettingsModalVisible || homePanel.visibility == View.VISIBLE) return
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) return
@@ -708,10 +719,13 @@ class MainActivity : AppCompatActivity() {
         if (!immediate && now < stallWatchdogGraceUntilMs) return
         if (now < suppressReloadOverlayUntilMs) return
         lastPlaybackStallReason = reason
-        // Always show spinner first; do not alert / reload until it has been up for 10s.
-        markStallSpinnerVisible()
-        if (!stallSpinnerVisibleLongEnough(now)) {
-            return
+        // Prefer the recovery banner immediately on freeze — do not sit on a center spinner
+        // for another 10s before reloading.
+        if (stallSpinnerShownAtMs == 0L) {
+            stallSpinnerShownAtMs = now
+            if (liveTimelineFrozenForStallMs == 0L && !isArchivePlayback) {
+                liveTimelineFrozenForStallMs = getLiveTimelinePositionMs()
+            }
         }
         if (!playbackRecoveryActive) {
             playbackRecoveryActive = true
@@ -912,8 +926,6 @@ class MainActivity : AppCompatActivity() {
         /** Show spinner after this much continuous buffering/freeze. */
         private const val PLAYBACK_STALL_SPINNER_BUFFERING_MS = 1_500L
         private const val PLAYBACK_STALL_SPINNER_BUFFERING_TV_MS = 2_500L
-        /** Recovery / alerts only after spinner has been visible this long while still stalled. */
-        private const val PLAYBACK_STALL_SPINNER_BEFORE_RECOVERY_MS = 10_000L
         private const val PLAYBACK_STALL_BUFFERING_MS = 10_000L
         // Fallback: no forward progress (includes a frozen picture whose live timeline only slides).
         private const val PLAYBACK_STALL_PROGRESS_MS = 10_000L
@@ -1291,16 +1303,8 @@ class MainActivity : AppCompatActivity() {
         startEpgTicker()
         scheduleEpgRefreshAlarm()
         applyLockButtonVisibility()
-        // Seed public Download/O.Portal log early (Android 9 TV may need WRITE_EXTERNAL_STORAGE).
+        // Crash details stay in app-private storage; public export is manual only.
         installPublicCrashLogHook()
-        handler.post {
-            ensureLegacyWriteStoragePermission()
-            logDebug(
-                "LOG",
-                "public debug log target=Download/$PUBLIC_LOG_DIR_NAME/$PUBLIC_LOG_FILE_NAME " +
-                    "sdk=${Build.VERSION.SDK_INT} tv=${isTelevisionDevice()}"
-            )
-        }
         // Never precache all services at startup (Wink/Only4 OOMs Android 9 TV).
         // Percent progress is only shown when the user opens a specific service.
         if (shouldOpenLastChannelOnStart) {
@@ -9067,7 +9071,13 @@ private fun showDefaultStartupScreen() {
             refreshLogo()
             updateEpgDisplay()
             refreshOpenOverlayPanelsAfterEpgUpdate()
-            showPlayerLoadingUi()
+            // Recovery already shows the status banner — stacking the center spinner leaves it
+            // visible for seconds after the picture returns.
+            if (reason != PlayerOpenReason.RECOVERY ||
+                !(::tvReloadingStatus.isInitialized && tvReloadingStatus.visibility == View.VISIBLE)
+            ) {
+                showPlayerLoadingUi()
+            }
         }.onFailure { e ->
             Log.e("PLAYER", "Ошибка воспроизведения канала: ${redactThrowableChain(e)}")
             hidePlayerLoadingUi()
@@ -10490,11 +10500,23 @@ private fun showDefaultStartupScreen() {
     private fun refreshLogo() = updateLiveStatusBadge()
 
     private fun startClockUpdater() {
+        // Updating translucent time-plate text every second re-blends over video and looks like
+        // the clock background "blinks". Only rewrite when HH:mm actually changes, and pin a
+        // hardware layer on the plate so redraws do not flash the frosted rect.
+        findViewById<View>(R.id.playerTopTimePlate)?.let { plate ->
+            if (plate.layerType != View.LAYER_TYPE_HARDWARE) {
+                plate.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            }
+        }
         handler.post(object : Runnable {
+            private var lastShownTime: String? = null
             override fun run() {
                 val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                tvSystemTime.text = time
-                tvHomeSystemTime.text = time
+                if (time != lastShownTime) {
+                    lastShownTime = time
+                    tvSystemTime.text = time
+                    tvHomeSystemTime.text = time
+                }
                 handler.postDelayed(this, 1000)
             }
         })
@@ -14107,7 +14129,7 @@ private fun showDefaultStartupScreen() {
                 val line = "$ts [FATAL] thread=${thread.name} $safe\n"
                 val bytes = line.toByteArray(Charsets.UTF_8)
                 runCatching { privateDebugLogFile().appendBytes(bytes) }
-                appendPublicDebugLog(bytes)
+                // Do not auto-create Download/O.Portal — only "Экспорт лога" writes there.
             }
             previous?.uncaughtException(thread, error)
         }
@@ -14119,12 +14141,11 @@ private fun showDefaultStartupScreen() {
         val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
         val line = "$ts [$tag] $safeMessage\n"
         val bytes = line.toByteArray(Charsets.UTF_8)
-        // App-private backup (always writable).
+        // Keep an app-private ring only. Public Download/O.Portal is written solely
+        // when the user taps "Экспорт лога" in settings.
         runCatching {
             privateDebugLogFile().appendBytes(bytes)
         }
-        // User-visible Download/O.Portal — same folder on phones and Android 9 TV.
-        appendPublicDebugLog(bytes)
     }
 
     private fun appendPublicDebugLog(bytes: ByteArray) {
