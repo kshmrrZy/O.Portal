@@ -169,6 +169,8 @@ class ContentAwareScrollView @JvmOverloads constructor(
         rectangle: Rect,
         immediate: Boolean
     ): Boolean {
+        // Refresh — content height can change after category grid bind before the next layout.
+        updateScrollEnabled()
         // When content already fits, do not shift tiles up on TV focus to the last card.
         if (!scrollingEnabled) return false
         return super.requestChildRectangleOnScreen(child, rectangle, immediate)

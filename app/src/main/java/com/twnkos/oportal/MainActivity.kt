@@ -943,6 +943,7 @@ class MainActivity : AppCompatActivity() {
         private const val EPG_MODE_BUILTIN = "builtin"
         private const val EPG_MODE_CUSTOM = "custom"
         private const val PREF_EPG_REFRESH_MODE = "pref_epg_refresh_mode"
+        private const val EPG_REFRESH_NEVER = "never"
         private const val EPG_REFRESH_WEEKLY = "weekly"
         private const val EPG_REFRESH_DAILY = "daily"
         private const val EPG_REFRESH_CUSTOM = "custom"
@@ -2182,7 +2183,14 @@ private fun showDefaultStartupScreen() {
         val authorized = isAuthorizedUser()
         ivHomeProfile.visibility = if (authorized) View.GONE else View.VISIBLE
         ivHomeSettings.visibility = View.VISIBLE
+        // Authorized users must never keep focus / highlight on the auth icon.
         if (authorized) {
+            ivHomeProfile.isFocusable = false
+            ivHomeProfile.isClickable = false
+            ivHomeProfile.setOnClickListener(null)
+            if (currentFocus === ivHomeProfile) {
+                ivHomeSettings.requestFocus()
+            }
             homeActionIndex = 0
         }
         if (!authorized) {
@@ -2236,6 +2244,7 @@ private fun showDefaultStartupScreen() {
     private data class HomeTileItem(val title: String, val onClick: () -> Unit)
     private var homeTilesAdapter: HomeTilesAdapter? = null
     private var homeTilesColumnsApplied: Int = -1
+    private var homeTilesAdapterColumnsApplied: Int = -1
     private var homeTilesWidthApplied: Int = -1
     private var homeTilesHeightApplied: Int = -1
     private var homeTilesTitleSizeApplied: Float = -1f
@@ -2384,25 +2393,34 @@ private fun showDefaultStartupScreen() {
                 item.onClick()
             }
             // Logical-column DPAD: FocusFinder skips rows with stretched last-row spans.
+            // Always use live column count (services vs categories grids differ).
             root.setOnKeyListener { _, keyCode, event ->
                 if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
                 val pos = holder.bindingAdapterPosition
                 if (pos == RecyclerView.NO_POSITION) return@setOnKeyListener false
+                val cols = computeHomeTileColumns().coerceAtLeast(1)
                 val count = tileItems.size
                 val target = when (keyCode) {
-                    KeyEvent.KEYCODE_DPAD_UP -> (pos - columns).takeIf { it >= 0 }
-                    KeyEvent.KEYCODE_DPAD_DOWN -> (pos + columns).takeIf { it < count }
+                    KeyEvent.KEYCODE_DPAD_UP -> (pos - cols).takeIf { it >= 0 }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        val down = pos + cols
+                        when {
+                            down < count -> down
+                            // Last service row → bottom action tiles (Own / Favorites).
+                            homeBottomTilesRowVisible() -> {
+                                focusHomeBottomTilesFromGrid(pos % cols)
+                                return@setOnKeyListener true
+                            }
+                            else -> null
+                        }
+                    }
                     KeyEvent.KEYCODE_DPAD_LEFT ->
-                        (pos - 1).takeIf { it >= 0 && it / columns == pos / columns }
+                        (pos - 1).takeIf { it >= 0 && it / cols == pos / cols }
                     KeyEvent.KEYCODE_DPAD_RIGHT ->
-                        (pos + 1).takeIf { it < count && it / columns == pos / columns }
+                        (pos + 1).takeIf { it < count && it / cols == pos / cols }
                     else -> null
                 } ?: return@setOnKeyListener false
-                val rv = rvHomeTiles
-                rv.scrollToPosition(target)
-                rv.post {
-                    rv.findViewHolderForAdapterPosition(target)?.itemView?.requestFocus()
-                }
+                focusHomeTileAt(target)
                 true
             }
         }
@@ -2537,6 +2555,81 @@ private fun showDefaultStartupScreen() {
         )
     }
 
+
+    private fun homeBottomTilesRowVisible(): Boolean {
+        val row = findViewById<View>(R.id.homeBottomTilesRow) ?: return false
+        return row.visibility == View.VISIBLE &&
+            (findViewById<View>(R.id.btnOwnPlaylistsTile)?.visibility == View.VISIBLE ||
+                findViewById<View>(R.id.btnFavoritesTile)?.visibility == View.VISIBLE)
+    }
+
+    private fun focusHomeTileAt(index: Int) {
+        val rv = rvHomeTiles
+        if (index !in 0 until (rv.adapter?.itemCount ?: 0)) return
+        rv.scrollToPosition(index)
+        rv.post {
+            val target = rv.findViewHolderForAdapterPosition(index)?.itemView ?: return@post
+            target.requestFocus()
+            scrollHomePanelToShow(target)
+        }
+    }
+
+    private fun focusHomeBottomTilesFromGrid(columnHint: Int) {
+        val btnOwn = findViewById<View>(R.id.btnOwnPlaylistsTile)
+        val btnFav = findViewById<View>(R.id.btnFavoritesTile)
+        val target = when {
+            btnOwn?.visibility == View.VISIBLE && btnFav?.visibility == View.VISIBLE ->
+                if (columnHint <= 0) btnOwn else btnFav
+            btnOwn?.visibility == View.VISIBLE -> btnOwn
+            btnFav?.visibility == View.VISIBLE -> btnFav
+            else -> null
+        } ?: return
+        target.requestFocus()
+        scrollHomePanelToShow(target)
+    }
+
+    private fun focusLastHomeTileRowFromBottom(columnHint: Int = 0) {
+        val count = rvHomeTiles.adapter?.itemCount ?: return
+        if (count <= 0) return
+        val cols = computeHomeTileColumns().coerceAtLeast(1)
+        val lastRowStart = ((count - 1) / cols) * cols
+        val target = (lastRowStart + columnHint.coerceIn(0, cols - 1)).coerceAtMost(count - 1)
+        focusHomeTileAt(target)
+    }
+
+    private fun scrollHomePanelToShow(target: View) {
+        val sv = homePlaylistTilesPanel as? ContentAwareScrollView ?: return
+        sv.updateScrollEnabled()
+        val rect = android.graphics.Rect()
+        target.getDrawingRect(rect)
+        sv.offsetDescendantRectToMyCoords(target, rect)
+        val topGap = (sv.height * 0.2f).toInt()
+        val bottomGap = (sv.height * 0.25f).toInt()
+        val visibleTop = sv.scrollY + topGap
+        val visibleBottom = sv.scrollY + sv.height - bottomGap
+        when {
+            rect.top < visibleTop -> sv.smoothScrollTo(0, (rect.top - topGap).coerceAtLeast(0))
+            rect.bottom > visibleBottom ->
+                sv.smoothScrollTo(0, (rect.bottom - sv.height + bottomGap).coerceAtLeast(0))
+        }
+    }
+
+    private fun wireHomeBottomTilesDpadUp() {
+        val btnOwn = findViewById<View>(R.id.btnOwnPlaylistsTile) ?: return
+        val btnFav = findViewById<View>(R.id.btnFavoritesTile) ?: return
+        val upListener = View.OnKeyListener { v, keyCode, event ->
+            if (event.action != KeyEvent.ACTION_DOWN) return@OnKeyListener false
+            if (keyCode != KeyEvent.KEYCODE_DPAD_UP) return@OnKeyListener false
+            val hint = if (v.id == R.id.btnFavoritesTile) 1 else 0
+            focusLastHomeTileRowFromBottom(hint)
+            true
+        }
+        btnOwn.setOnKeyListener(upListener)
+        btnFav.setOnKeyListener(upListener)
+        btnOwn.nextFocusUpId = R.id.rvHomeTiles
+        btnFav.nextFocusUpId = R.id.rvHomeTiles
+    }
+
     private fun applyHomeBottomTilesGeometry() {
         val bottomRow = findViewById<View>(R.id.homeBottomTilesRow)
         if (bottomRow.visibility != View.VISIBLE) return
@@ -2576,6 +2669,7 @@ private fun showDefaultStartupScreen() {
         }
         val contentScale = computeContentDpScale()
         setupHomeBottomActionTiles(contentScale, HOME_BOTTOM_TILE_TEXT_SP)
+            wireHomeBottomTilesDpadUp()
     }
 
     private fun bindHomeTiles(
@@ -2627,14 +2721,22 @@ private fun showDefaultStartupScreen() {
         }
         logDebug("NAV", "HOME_GRID_DECORATION_COUNT source=$source count=${rvHomeTiles.itemDecorationCount} spacing=$spacing")
 
-        if (homeTilesAdapter == null || homeTilesWidthApplied != tileWidth || homeTilesHeightApplied != tileHeight || homeTilesTitleSizeApplied != titleSizeSp) {
+        if (homeTilesAdapter == null ||
+            homeTilesWidthApplied != tileWidth ||
+            homeTilesHeightApplied != tileHeight ||
+            homeTilesTitleSizeApplied != titleSizeSp ||
+            homeTilesAdapterColumnsApplied != columns
+        ) {
             // false: panel height changes when search appears under the header (categories).
+            // Recreate when columns change so DPAD row steps match the visible grid
+            // (services=3 vs categories=5–7); a stale adapter skipped rows on TV.
             rvHomeTiles.setHasFixedSize(false)
             rvHomeTiles.itemAnimator = null
             homeTilesAdapter = HomeTilesAdapter(tileWidth, tileHeight, spacing, columns, titleSizeSp)
             homeTilesWidthApplied = tileWidth
             homeTilesHeightApplied = tileHeight
             homeTilesTitleSizeApplied = titleSizeSp
+            homeTilesAdapterColumnsApplied = columns
             rvHomeTiles.adapter = homeTilesAdapter
         }
 
@@ -5333,9 +5435,9 @@ private fun showDefaultStartupScreen() {
         val states = MutableList(3) { false }
         val tbInterval = findViewById<ToggleButton>(R.id.tbEpgRefreshInterval)
         val tvRefreshHint = findViewById<TextView>(R.id.tvEpgRefreshHint)
-        val refreshModes = listOf(EPG_REFRESH_WEEKLY, EPG_REFRESH_DAILY, EPG_REFRESH_CUSTOM)
-        var refreshMode = prefs.getString(PREF_EPG_REFRESH_MODE, EPG_REFRESH_WEEKLY) ?: EPG_REFRESH_WEEKLY
-        if (refreshMode !in refreshModes) refreshMode = EPG_REFRESH_WEEKLY
+        val refreshModes = listOf(EPG_REFRESH_NEVER, EPG_REFRESH_WEEKLY, EPG_REFRESH_DAILY, EPG_REFRESH_CUSTOM)
+        var refreshMode = prefs.getString(PREF_EPG_REFRESH_MODE, EPG_REFRESH_NEVER) ?: EPG_REFRESH_NEVER
+        if (refreshMode !in refreshModes) refreshMode = EPG_REFRESH_NEVER
 
         val customSources = getCustomEpgSources()
         val savedMode = prefs.getString(PREF_EPG_SOURCE_MODE, null)
@@ -5517,6 +5619,7 @@ private fun showDefaultStartupScreen() {
 
         fun updateRefreshModeUi() {
             val label = when (refreshMode) {
+                EPG_REFRESH_NEVER -> "Не обновлять"
                 EPG_REFRESH_DAILY -> "Каждый день"
                 EPG_REFRESH_CUSTOM -> {
                     val at = prefs.getLong(PREF_EPG_REFRESH_CUSTOM_AT, 0L)
@@ -5533,6 +5636,7 @@ private fun showDefaultStartupScreen() {
             tbInterval.textOff = label
             tbInterval.text = label
             tvRefreshHint.text = when (refreshMode) {
+                EPG_REFRESH_NEVER -> "EPG не обновляется автоматически"
                 EPG_REFRESH_DAILY -> "Обновление каждый день в 03:00"
                 EPG_REFRESH_CUSTOM -> "Однократное обновление в выбранные дату и время"
                 else -> "По умолчанию: вторник в 03:00"
@@ -12284,7 +12388,10 @@ private fun showDefaultStartupScreen() {
             it.contains("Загрузка") || it.contains("Распаковка") || it.contains("Чтение") ||
                 it.contains("Каталог") || it.contains("Сопоставление") || it.contains("Подготовка")
         }
-        if (versionChanged || hasIncompleteEpgProgress || isEpgDataEmpty()) ensureEpgLoadedLazy()
+        // App update must keep unpacked EPG on disk; only reload into memory if needed.
+        if (versionChanged || hasIncompleteEpgProgress || isEpgDataEmpty()) {
+            ensureEpgLoadedLazy()
+        }
         if (mediaPlayer != null && isPlaybackPaused) {
             mediaPlayer?.play()
             handler.postDelayed(startupSlowStreamRunnable, 45_000L)
@@ -12885,9 +12992,9 @@ private fun showDefaultStartupScreen() {
         setPlayerVideoVisible(false)
         tvHomeAppTitle.visibility = View.VISIBLE
         tvHomeSystemTime.visibility = View.VISIBLE
-        ivHomeProfile.visibility = View.VISIBLE
         ivHomeSettings.visibility = View.VISIBLE
         ivHomePower.visibility = View.VISIBLE
+        updateHomeHeaderActions()
         homePanel.visibility = View.VISIBLE
         homePanel.alpha = 1f
         homePanel.translationX = 0f
@@ -12932,9 +13039,9 @@ private fun showDefaultStartupScreen() {
         setPlayerVideoVisible(false)
         tvHomeAppTitle.visibility = View.VISIBLE
         tvHomeSystemTime.visibility = View.VISIBLE
-        ivHomeProfile.visibility = View.VISIBLE
         ivHomeSettings.visibility = View.VISIBLE
         ivHomePower.visibility = View.VISIBLE
+        updateHomeHeaderActions()
         showPlaylistPageOnHome(source = "exit_player")
         homePanel.alpha = 1f
         homePanel.translationX = 0f
@@ -13324,22 +13431,30 @@ private fun showDefaultStartupScreen() {
         return now >= computeNextEpgRefreshAt(fromMillis = last)
     }
 
-    private fun shouldRefreshEpgNow(): Boolean {
+        private fun shouldRefreshEpgNow(): Boolean {
         if (selectedEpgSources.isEmpty()) return false
+        if (getEpgRefreshMode() == EPG_REFRESH_NEVER) {
+            // Interval "Не обновлять": only reload when sources fingerprint changed.
+            return getEpgSourceFingerprint() != buildEpgSourceFingerprint(selectedEpgSources.toList())
+        }
         if (shouldDailyRefreshEpg()) return true
         return getEpgSourceFingerprint() != buildEpgSourceFingerprint(selectedEpgSources.toList())
     }
 
     private fun getEpgRefreshMode(): String {
-        val mode = prefs.getString(PREF_EPG_REFRESH_MODE, EPG_REFRESH_WEEKLY) ?: EPG_REFRESH_WEEKLY
+        val mode = prefs.getString(PREF_EPG_REFRESH_MODE, EPG_REFRESH_NEVER) ?: EPG_REFRESH_NEVER
         return mode.takeIf {
-            it == EPG_REFRESH_WEEKLY || it == EPG_REFRESH_DAILY || it == EPG_REFRESH_CUSTOM
-        } ?: EPG_REFRESH_WEEKLY
+            it == EPG_REFRESH_NEVER ||
+                it == EPG_REFRESH_WEEKLY ||
+                it == EPG_REFRESH_DAILY ||
+                it == EPG_REFRESH_CUSTOM
+        } ?: EPG_REFRESH_NEVER
     }
 
     /** Next refresh instant. Default weekly = Tuesday 03:00. */
     private fun computeNextEpgRefreshAt(fromMillis: Long = System.currentTimeMillis()): Long {
         return when (getEpgRefreshMode()) {
+            EPG_REFRESH_NEVER -> Long.MAX_VALUE
             EPG_REFRESH_DAILY -> nextDayAtThree(fromMillis)
             EPG_REFRESH_CUSTOM -> {
                 val at = prefs.getLong(PREF_EPG_REFRESH_CUSTOM_AT, 0L)
@@ -13369,6 +13484,10 @@ private fun showDefaultStartupScreen() {
 
     private fun scheduleEpgRefreshAlarm() {
         handler.removeCallbacks(epgRefreshRunnable)
+        if (getEpgRefreshMode() == EPG_REFRESH_NEVER) {
+            logDebug("EPG_DEBUG", "EPG_REFRESH_SCHEDULED skipped mode=never")
+            return
+        }
         if (selectedEpgSources.isEmpty()) {
             selectedEpgSources = getSelectedEpgSources()
         }
@@ -13385,6 +13504,10 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun runScheduledEpgRefresh() {
+        if (getEpgRefreshMode() == EPG_REFRESH_NEVER) {
+            logDebug("EPG_DEBUG", "EPG_REFRESH_FIRE skipped mode=never")
+            return
+        }
         val sources = selectedEpgSources.ifEmpty { getSelectedEpgSources() }.toList()
         if (sources.isEmpty()) {
             scheduleEpgRefreshAlarm()
@@ -13395,7 +13518,12 @@ private fun showDefaultStartupScreen() {
             return
         }
         val last = prefs.getLong(PREF_EPG_LAST_REFRESH, 0L)
-        val due = System.currentTimeMillis() >= computeNextEpgRefreshAt(if (last > 0L) last else 0L)
+        // Never treat "never refreshed" as overdue — that wiped local EPG on every cold start.
+        if (last <= 0L && getEpgRefreshMode() != EPG_REFRESH_CUSTOM) {
+            scheduleEpgRefreshAlarm()
+            return
+        }
+        val due = System.currentTimeMillis() >= computeNextEpgRefreshAt(last)
         if (!due && getEpgRefreshMode() != EPG_REFRESH_CUSTOM) {
             scheduleEpgRefreshAlarm()
             return
