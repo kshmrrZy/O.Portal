@@ -691,14 +691,12 @@ class MainActivity : AppCompatActivity() {
                 liveTimelineFrozenForStallMs = getLiveTimelinePositionMs()
             }
         }
-        // Prefer the status banner immediately on freeze — the center spinner often lingered
-        // 2–3s after the picture returned.
-        val detail = lastPlaybackStallReason.ifBlank { "Ожидание потока…" }
-        if (::tvReloadingStatus.isInitialized) {
-            showReloadingStatus("Проблемы с трансляцией", detail)
-        } else {
-            showPlayerLoadingUi(keepControlsVisible = true)
+        // Stall UX: center spinner only — never raise bottom player chrome during freeze/recovery.
+        if (::tvReloadingStatus.isInitialized && tvReloadingStatus.visibility == View.VISIBLE) {
+            stopReloadingPlateSpinner()
+            tvReloadingStatus.visibility = View.GONE
         }
+        showPlayerLoadingUi(keepControlsVisible = false)
     }
 
     private fun clearStallSpinnerTimer() {
@@ -719,14 +717,9 @@ class MainActivity : AppCompatActivity() {
         if (!immediate && now < stallWatchdogGraceUntilMs) return
         if (now < suppressReloadOverlayUntilMs) return
         lastPlaybackStallReason = reason
-        // Prefer the recovery banner immediately on freeze — do not sit on a center spinner
-        // for another 10s before reloading.
-        if (stallSpinnerShownAtMs == 0L) {
-            stallSpinnerShownAtMs = now
-            if (liveTimelineFrozenForStallMs == 0L && !isArchivePlayback) {
-                liveTimelineFrozenForStallMs = getLiveTimelinePositionMs()
-            }
-        }
+        // Show center spinner immediately (no bottom chrome). Recovery reloads without waiting
+        // another 10s on a banner-only path.
+        markStallSpinnerVisible(reason)
         if (!playbackRecoveryActive) {
             playbackRecoveryActive = true
             playbackRecoveryStartedAtMs = now
@@ -783,10 +776,11 @@ class MainActivity : AppCompatActivity() {
         playbackRecoveryAttemptCount++
         lastRecoveryAttemptAtMs = System.currentTimeMillis()
         val attempt = playbackRecoveryAttemptCount
-        val title = "Обновление трансляции"
-        val subtitle = "Попытка $attempt из $PLAYBACK_RECOVERY_MAX_ATTEMPTS"
         try {
-            showReloadingStatus(title, subtitle)
+            // Keep the center spinner only — no status plate / bottom transport during recovery.
+            markStallSpinnerVisible(
+                "Восстановление… попытка $attempt из $PLAYBACK_RECOVERY_MAX_ATTEMPTS"
+            )
             forceFreshPlayerSession = true
             playChannel(forcePlay = true, reason = PlayerOpenReason.RECOVERY)
         } catch (t: Throwable) {
@@ -811,8 +805,18 @@ class MainActivity : AppCompatActivity() {
             tvReloadingStatus.visibility = View.GONE
         }
         hidePlayerLoadingUi()
+        // Unstick scrubber state that otherwise required an EPG reset after a long freeze.
+        timelineUserSeeking = false
+        pendingSeekTargetAbsMs = 0L
+        pendingSeekDeltaSec = 0
+        seekGestureBaseAbsMs = 0L
+        pendingArchiveSeekTargetMs = 0L
+        liveTimelineFrozenForStallMs = 0L
+        if (::sbTimeline.isInitialized) {
+            sbTimeline.isEnabled = true
+        }
         updateTimelineUi()
-        // Recovery used showUI() for the reload plate — clear spinner and top/controls overlay.
+        // Never raise bottom chrome after stall recovery — spinner path must end on clock-only UI.
         hideUI()
     }
 
@@ -1253,6 +1257,34 @@ class MainActivity : AppCompatActivity() {
         val programs = if (real.isNotEmpty()) real else buildArchivePlaceholderPrograms(ch)
         programs.find { now in it.start until it.stop }?.title?.let { return it }
         return epgUnavailableMessage(ch.name)
+    }
+
+    /**
+     * Programme under the scrubber at [atMs]. Real EPG can have gaps around "now"; without a
+     * fallback the left/right timestamps disappear and live rewind dies until EPG reset.
+     */
+    private fun resolveTimelineProgramAt(ch: Channel?, atMs: Long): Program? {
+        if (ch == null) return currentArchiveProgram
+        val programs = getProgramsForDisplay(ch)
+        programs.find { atMs in it.start until it.stop }?.let { return it }
+        // Prefer the nearest past programme if the gap is short (common after partial EPG loads).
+        val nearestPast = programs.filter { it.start <= atMs }.maxByOrNull { it.start }
+        if (nearestPast != null && atMs - nearestPast.start <= 6L * 60L * 60L * 1000L) {
+            val stop = maxOf(nearestPast.stop, atMs + 60_000L)
+            return if (stop == nearestPast.stop) nearestPast
+            else nearestPast.copy(stop = stop)
+        }
+        val nearestFuture = programs.filter { it.stop > atMs }.minByOrNull { it.start }
+        if (nearestFuture != null && nearestFuture.start - atMs <= 2L * 60L * 60L * 1000L) {
+            return nearestFuture.copy(start = minOf(nearestFuture.start, atMs))
+        }
+        // Synthetic hour window so the scrubber stays usable until EPG is healthy again.
+        val hourStart = atMs - (atMs % 3_600_000L)
+        return Program(
+            title = epgUnavailableMessage(ch.name),
+            start = hourStart,
+            stop = hourStart + 3_600_000L
+        )
     }
 
     private fun getProgramsForDisplay(ch: Channel): List<Program> {
@@ -4096,9 +4128,15 @@ private fun showDefaultStartupScreen() {
         channelListPanel.isFocusable = false
         (channelListPanel as ViewGroup).descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
         channelListPanel.visibility = View.VISIBLE
+        if (channelListPanel.layerType != View.LAYER_TYPE_HARDWARE) {
+            channelListPanel.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        }
         channelListPanel.bringToFront()
-        gvChannelListPanel.adapter = null
-        gvChannelListPanel.visibility = View.INVISIBLE
+        // Keep any previous grid visible under the in-panel spinner — blanking the adapter
+        // (GONE/INVISIBLE + null) made the section flash on every open.
+        if (gvChannelListPanel.visibility != View.VISIBLE) {
+            gvChannelListPanel.visibility = View.VISIBLE
+        }
         tvChannelListTitle.text = "Список каналов: ${getSelectedPlaylistName()}"
         channelListSearchQuery = ""
         if (::etChannelListSearch.isInitialized) {
@@ -4291,18 +4329,51 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun refreshOpenOverlayPanelsAfterEpgUpdate() {
+        // Soft refresh only — re-calling showEpgPanel()/showChannelListPanel() rebuilt the whole
+        // overlay (adapter=null, INVISIBLE list, spinner) and looked like the section "blinked".
         if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) {
-            val keepUserDate = epgDatePickedByUser
-            val keepDate = epgPanelSelectedDate
-            showEpgPanel()
-            if (keepUserDate && keepDate.isNotEmpty() && epgPanelDateKeys.contains(keepDate)) {
-                epgPanelSelectedDate = keepDate
-                renderEpgDateChips()
-                renderEpgProgramsForSelectedDate()
+            val ch = epgPanelChannel ?: channels.getOrNull(currentChannelIndex)
+            if (ch != null) {
+                val keepUserDate = epgDatePickedByUser
+                val keepDate = epgPanelSelectedDate
+                thread(name = "epg-panel-soft-refresh") {
+                    val emptyTitle = epgUnavailableMessage(ch.name)
+                    val realPrograms = getProgramsForChannel(ch)
+                    val programsSource = when {
+                        realPrograms.isNotEmpty() -> realPrograms
+                        else -> {
+                            val archive = buildArchivePlaceholderPrograms(ch)
+                            if (archive.isNotEmpty()) archive
+                            else buildPlaceholderPrograms(title = emptyTitle)
+                        }
+                    }
+                    val (dateKeys, programsByDate) = buildEpgPanelDateModel(programsSource, emptyTitle)
+                    val selectedDate =
+                        if (keepUserDate && keepDate.isNotEmpty() && dateKeys.contains(keepDate)) keepDate
+                        else if (epgPanelSelectedDate.isNotEmpty() && dateKeys.contains(epgPanelSelectedDate)) {
+                            epgPanelSelectedDate
+                        } else {
+                            resolveEpgDefaultDateKey(dateKeys)
+                        }
+                    handler.post {
+                        if (!::epgPanel.isInitialized || epgPanel.visibility != View.VISIBLE) return@post
+                        epgPanelProgramsByDate = programsByDate
+                        epgPanelDateKeys = dateKeys
+                        epgPanelSelectedDate = selectedDate
+                        renderEpgDateChips()
+                        renderEpgProgramsForSelectedDate()
+                    }
+                }
             }
         }
         if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
-            showChannelListPanel()
+            // Rebind titles in place — do not tear down the grid.
+            val adapter = gvChannelListPanel.adapter
+            if (adapter is android.widget.BaseAdapter) {
+                adapter.notifyDataSetChanged()
+            } else {
+                gvChannelListPanel.invalidateViews()
+            }
         }
         // Refresh home channel cards so programme titles appear after EPG finishes.
         if (::gvHomeChannelList.isInitialized &&
@@ -4346,6 +4417,9 @@ private fun showDefaultStartupScreen() {
             epgPanel.isFocusable = false
             (epgPanel as ViewGroup).descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             epgPanel.visibility = View.VISIBLE
+            if (epgPanel.layerType != View.LAYER_TYPE_HARDWARE) {
+                epgPanel.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            }
             epgPanel.bringToFront()
             topInfoPanel.visibility = View.GONE
             topGradientOverlay.visibility = View.GONE
@@ -4353,9 +4427,9 @@ private fun showDefaultStartupScreen() {
             handler.removeCallbacks(hideUiRunnable)
             pausePlaybackStallWatchdogForOverlay()
             tvEpgEmptyState.visibility = View.GONE
-            epgDateRow.visibility = View.INVISIBLE
-            lvEpgPrograms.visibility = View.INVISIBLE
-            lvEpgPrograms.adapter = null
+            // Keep previous chips/list under the in-panel spinner — blanking caused a visible flash.
+            if (epgDateRow.visibility != View.VISIBLE) epgDateRow.visibility = View.VISIBLE
+            if (lvEpgPrograms.visibility != View.VISIBLE) lvEpgPrograms.visibility = View.VISIBLE
             hidePlayerOverlaySpinner()
             setEpgPanelSpinnerVisible(true)
 
@@ -9221,14 +9295,27 @@ private fun showDefaultStartupScreen() {
         tvReloadingStatus.visibility = View.VISIBLE
         tvReloadingStatus.bringToFront()
         tvReloadingStatus.parent?.let { (it as? View)?.requestLayout() }
-        // Keep top/bottom player chrome; only suppress the stacked center loading spinner.
-        hidePlayerLoadingUi()
+        // Stall/recovery: never raise bottom controls. Keep a center spinner under the plate
+        // so freeze feedback stays on-screen without the transport bar flashing.
+        if (!isError) {
+            showPlayerLoadingUi(keepControlsVisible = false)
+        } else {
+            hidePlayerLoadingUi()
+        }
+        if (::controlsPanel.isInitialized) controlsPanel.visibility = View.GONE
+        if (::topGradientOverlay.isInitialized) topGradientOverlay.visibility = View.GONE
         if (homePanel.visibility != View.VISIBLE &&
             !(::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) &&
             !(::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE)
         ) {
+            // Top clock only — channel/LIVE chrome stays hidden during recovery.
             if (topInfoPanel.visibility != View.VISIBLE) topInfoPanel.visibility = View.VISIBLE
-            if (controlsPanel.visibility != View.VISIBLE) controlsPanel.visibility = View.VISIBLE
+            findViewById<View>(R.id.liveStatusBadge)?.visibility = View.INVISIBLE
+            findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.INVISIBLE
+            findViewById<View>(R.id.btnBackToMenu)?.visibility = View.INVISIBLE
+            findViewById<View>(R.id.playerTopTimePlate)?.let { plate ->
+                if (plate.visibility != View.VISIBLE) plate.visibility = View.VISIBLE
+            }
         }
     }
 
@@ -9482,14 +9569,22 @@ private fun showDefaultStartupScreen() {
         }
         // На этапе спиннера: назад, LIVE/Архив, имя канала и время — без программы передач
         // (как при переключении канала номерами с пульта).
-        // Stall path may keep bottom controls so the frozen left timestamp stays visible.
+        // Stall/recovery: never show bottom transport unless explicitly requested.
         playerLoadingUiActive = true
         topGradientOverlay.visibility = View.GONE
         controlsPanel.visibility = if (keepControlsVisible) View.VISIBLE else View.GONE
         topInfoPanel.visibility = View.VISIBLE
-        findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
-        findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
-        findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
+        // Clock-only top chrome during stall — hide LIVE/channel row to avoid chrome flash.
+        if (keepControlsVisible) {
+            findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
+            findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
+            findViewById<View>(R.id.btnBackToMenu)?.visibility = View.VISIBLE
+        } else {
+            findViewById<View>(R.id.liveStatusBadge)?.visibility = View.INVISIBLE
+            findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.INVISIBLE
+            findViewById<View>(R.id.btnBackToMenu)?.visibility = View.INVISIBLE
+        }
+        findViewById<View>(R.id.playerTopTimePlate)?.setVisibleIfChanged(View.VISIBLE)
         if (::tvChannelName.isInitialized) {
             val ch = channels.getOrNull(currentChannelIndex)
             if (ch != null) {
@@ -9544,12 +9639,12 @@ private fun showDefaultStartupScreen() {
             findViewById<View>(R.id.liveStatusBadge)?.visibility = View.INVISIBLE
             findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.INVISIBLE
             findViewById<View>(R.id.btnBackToMenu)?.visibility = View.INVISIBLE
-            findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
+            findViewById<View>(R.id.playerTopTimePlate)?.setVisibleIfChanged(View.VISIBLE)
         } else {
             findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
             findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
             findViewById<View>(R.id.btnBackToMenu)?.visibility = View.VISIBLE
-            findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
+            findViewById<View>(R.id.playerTopTimePlate)?.setVisibleIfChanged(View.VISIBLE)
         }
     }
 
@@ -10499,14 +10594,26 @@ private fun showDefaultStartupScreen() {
     }
     private fun refreshLogo() = updateLiveStatusBadge()
 
+
+    private fun View.setVisibleIfChanged(newVisibility: Int) {
+        if (visibility != newVisibility) visibility = newVisibility
+    }
+
     private fun startClockUpdater() {
-        // Updating translucent time-plate text every second re-blends over video and looks like
-        // the clock background "blinks". Only rewrite when HH:mm actually changes, and pin a
-        // hardware layer on the plate so redraws do not flash the frosted rect.
+        // Translucent plate + parent invalidates looked like the clock "blinked". Use an opaque
+        // fill, pin a hardware layer once, give the TextView a fixed width, and only rewrite
+        // text when HH:mm changes.
         findViewById<View>(R.id.playerTopTimePlate)?.let { plate ->
+            plate.setBackgroundResource(R.drawable.bg_player_time_rect)
             if (plate.layerType != View.LAYER_TYPE_HARDWARE) {
                 plate.setLayerType(View.LAYER_TYPE_HARDWARE, null)
             }
+            plate.setWillNotDraw(false)
+        }
+        if (::tvSystemTime.isInitialized) {
+            tvSystemTime.minEms = 4
+            tvSystemTime.maxLines = 1
+            tvSystemTime.includeFontPadding = false
         }
         handler.post(object : Runnable {
             private var lastShownTime: String? = null
@@ -10514,8 +10621,12 @@ private fun showDefaultStartupScreen() {
                 val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                 if (time != lastShownTime) {
                     lastShownTime = time
-                    tvSystemTime.text = time
-                    tvHomeSystemTime.text = time
+                    if (::tvSystemTime.isInitialized && tvSystemTime.text?.toString() != time) {
+                        tvSystemTime.text = time
+                    }
+                    if (::tvHomeSystemTime.isInitialized && tvHomeSystemTime.text?.toString() != time) {
+                        tvHomeSystemTime.text = time
+                    }
                 }
                 handler.postDelayed(this, 1000)
             }
@@ -10635,7 +10746,9 @@ private fun showDefaultStartupScreen() {
                         resetPlaybackProgressBaseline(extendGrace = false)
                         suppressEndedRecoveryUntilMs =
                             System.currentTimeMillis() + PLAYBACK_STALL_GRACE_AFTER_RECOVERY_MS
-                        if (playbackRecoveryActive || stallSpinnerShownAtMs > 0L) {
+                        val wasStallOrRecovery =
+                            playbackRecoveryActive || stallSpinnerShownAtMs > 0L
+                        if (wasStallOrRecovery) {
                             onPlaybackRecoverySucceeded()
                         }
                         armPlaybackFreezeWatchdog(2000L, withStartGrace = false)
@@ -10647,9 +10760,9 @@ private fun showDefaultStartupScreen() {
                         }
                         if (homePanel.visibility != View.VISIBLE && !isPlayerOverlayOpen()) {
                             suppressAutoPlayerUiOnce = false
-                            if (isTelevisionDevice()) {
-                                // TV: keep chrome briefly after tune-in so pause is reachable, then auto-hide.
-                                // Phone keeps the existing immediate dismiss.
+                            // Stall recovery must not flash bottom transport when the picture returns.
+                            if (isTelevisionDevice() && !wasStallOrRecovery) {
+                                // Normal tune-in: brief chrome then auto-hide.
                                 showUI(preferFocus = btnPlayPause)
                                 btnPlayPause.post {
                                     if (controlsPanel.visibility == View.VISIBLE) {
@@ -11399,7 +11512,7 @@ private fun showDefaultStartupScreen() {
         controlsPanel.visibility = View.VISIBLE
         findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
         findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
-        findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.playerTopTimePlate)?.setVisibleIfChanged(View.VISIBLE)
         if (::tvEpg.isInitialized && inputNumber.isEmpty()) {
             tvEpg.visibility = View.VISIBLE
             updateEpgDisplay()
@@ -11472,7 +11585,7 @@ private fun showDefaultStartupScreen() {
             findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
             findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
             findViewById<View>(R.id.btnBackToMenu)?.visibility = View.INVISIBLE
-            findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
+            findViewById<View>(R.id.playerTopTimePlate)?.setVisibleIfChanged(View.VISIBLE)
             updateChannelNumberInputDisplay()
             sbTimeline.isEnabled = false
             hideSystemUI()
@@ -11492,7 +11605,7 @@ private fun showDefaultStartupScreen() {
         findViewById<View>(R.id.liveStatusBadge)?.visibility = View.INVISIBLE
         findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.INVISIBLE
         findViewById<View>(R.id.btnBackToMenu)?.visibility = View.INVISIBLE
-        findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.playerTopTimePlate)?.setVisibleIfChanged(View.VISIBLE)
         sbTimeline.isEnabled = false
         // Drop focus from now-hidden control buttons so the next TV OK is a clean showUI().
         currentFocus?.clearFocus()
@@ -11678,10 +11791,11 @@ private fun showDefaultStartupScreen() {
             val p = currentArchiveProgram ?: return true
             return isArchiveAvailable(ch, p)
         }
-        val cur = getProgramsForDisplay(ch)
-            .find { getLiveTimelinePositionMs() in it.start until it.stop }
+        val at = getLiveTimelinePositionMs()
+        val cur = resolveTimelineProgramAt(ch, at)
             ?: return true // catchup exists; program-level check happens on commit
-        return isArchiveAvailable(ch, cur)
+        // Synthetic/gap fillers still allow live rewind when catchup is configured.
+        return isArchiveAvailable(ch, cur) || ch.catchupDays > 0
     }
 
     /** Queue relative seek; updates thumb immediately. Returns false if archive blocks. */
@@ -11771,7 +11885,7 @@ private fun showDefaultStartupScreen() {
                     topInfoPanel.visibility = View.VISIBLE
                     findViewById<View>(R.id.playerTopChannelInfo)?.visibility = View.VISIBLE
                     findViewById<View>(R.id.liveStatusBadge)?.visibility = View.VISIBLE
-                    findViewById<View>(R.id.playerTopTimePlate)?.visibility = View.VISIBLE
+                    findViewById<View>(R.id.playerTopTimePlate)?.setVisibleIfChanged(View.VISIBLE)
                 } else {
                     showUI()
                 }
@@ -12524,15 +12638,25 @@ private fun showDefaultStartupScreen() {
         } else if (isArchivePlayback) {
             currentArchiveProgram
         } else {
-            channels.getOrNull(currentChannelIndex)?.let { ch ->
-                getProgramsForDisplay(ch).find { System.currentTimeMillis() in it.start until it.stop }
-            }
+            val ch = channels.getOrNull(currentChannelIndex)
+            resolveTimelineProgramAt(ch, System.currentTimeMillis())
         }
         if (p == null) {
-            tvCurrentTime.visibility = View.INVISIBLE
-            tvProgramEndTime.visibility = View.INVISIBLE
+            // Last-resort synthetic window — never leave the scrubber without timestamps.
+            val now = System.currentTimeMillis()
+            val hourStart = now - (now % 3_600_000L)
+            val fallback = Program("Эфир", hourStart, hourStart + 3_600_000L)
+            tvCurrentTime.visibility = View.VISIBLE
+            tvProgramEndTime.visibility = View.VISIBLE
+            val fmtFallback = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+            tvCurrentTime.text = fmtFallback.format(Date(now))
+            tvProgramEndTime.text = fmtFallback.format(Date(fallback.stop))
             if (!timelineUserSeeking) {
-                sbTimeline.progress = 0
+                val progress = (((now - fallback.start).toDouble() /
+                    (fallback.stop - fallback.start).toDouble()) * 1000.0).toInt().coerceIn(0, 1000)
+                sbTimeline.progress = progress
+                applyTimelineProgressUi(progress)
+                sbTimeline.isEnabled = true
             }
             return
         }
@@ -12608,11 +12732,10 @@ private fun showDefaultStartupScreen() {
     private fun maxTimelineProgressForLiveSeek(): Int? {
         if (isArchivePlayback) return null
         val ch = channels.getOrNull(currentChannelIndex) ?: return null
-        val cur =
-            getProgramsForDisplay(ch).find { getLiveTimelinePositionMs() in it.start until it.stop }
-                ?: return null
+        val at = getLiveTimelinePositionMs()
+        val cur = resolveTimelineProgramAt(ch, at) ?: return null
         val duration = (cur.stop - cur.start).coerceAtLeast(1L)
-        return (((getLiveTimelinePositionMs() - cur.start).toDouble() / duration) * 1000.0)
+        return (((at - cur.start).toDouble() / duration) * 1000.0)
             .toInt().coerceIn(0, 1000)
     }
 
@@ -12685,10 +12808,9 @@ private fun showDefaultStartupScreen() {
             Triple(p.start, p.stop, absNow.coerceIn(p.start, p.stop))
         } else {
             val ch = channels.getOrNull(currentChannelIndex) ?: return null
-            val cur =
-                getProgramsForDisplay(ch).find { getLiveTimelinePositionMs() in it.start until it.stop }
-                    ?: return null
-            Triple(cur.start, cur.stop, getLiveTimelinePositionMs())
+            val at = getLiveTimelinePositionMs()
+            val cur = resolveTimelineProgramAt(ch, at) ?: return null
+            Triple(cur.start, cur.stop, at.coerceIn(cur.start, cur.stop))
         }
     }
 
