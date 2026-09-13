@@ -1626,20 +1626,6 @@ private fun showDefaultStartupScreen() {
         updatePlayPauseButton()
     }
 
-    /** TV: OK with chrome hidden — pause stream, then showUI focuses play/pause for resume. */
-    private fun pausePlaybackForTvOkReveal() {
-        if (isPlaybackPaused) return
-        mediaPlayer?.pause()
-        isPlaybackPaused = true
-        if (!isArchivePlayback) {
-            liveTimelinePausedContentMs = getLiveTimelinePositionMs()
-            liveTimelinePlayerPosAtPauseMs = mediaPlayer?.currentPosition ?: 0L
-            liveTimelineAnchorMs = liveTimelinePausedContentMs
-            liveTimelineFollowFromPause = true
-            updateTimelineUi()
-        }
-        updatePlayPauseButton()
-    }
 
     private fun buildPortalWordmarkSpan(): CharSequence {
         val logo = SpannableString("O.Portal")
@@ -12053,8 +12039,8 @@ private fun showDefaultStartupScreen() {
         ) {
             return true
         }
-        // Chrome hidden: OK pauses playback and reveals controls (focus play/pause).
-        // Second OK on play/pause resumes via the button listener; chrome auto-hides on timer.
+        // Chrome hidden: first OK only reveals player controls (no pause).
+        // Next OK (chrome visible) toggles pause/play on the focused play/pause control.
         if (event.action == KeyEvent.ACTION_DOWN &&
             event.repeatCount == 0 &&
             (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
@@ -12072,7 +12058,6 @@ private fun showDefaultStartupScreen() {
             pendingChromeHiddenRightRunnable = null
             lastChromeHiddenDpadLeftElapsedMs = 0L
             lastChromeHiddenDpadRightElapsedMs = 0L
-            pausePlaybackForTvOkReveal()
             showUI(preferFocus = if (::btnPlayPause.isInitialized) btnPlayPause else null)
             return true
         }
@@ -12443,7 +12428,7 @@ private fun showDefaultStartupScreen() {
             keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER ||
                 keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                 // Fallback if dispatchKeyEvent did not run (some Android 9 TV remotes).
-                pausePlaybackForTvOkReveal()
+                // First OK with chrome hidden: reveal player only; pause/play starts on the next OK.
                 showUI(preferFocus = if (::btnPlayPause.isInitialized) btnPlayPause else null)
                 return true
             }
