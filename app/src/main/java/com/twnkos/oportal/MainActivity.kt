@@ -3913,7 +3913,8 @@ private fun showDefaultStartupScreen() {
         setChannelListPanelSpinnerVisible(false)
         hidePlayerOverlaySpinner()
         channelListPanel.visibility = View.GONE
-        gvChannelListPanel.adapter = null
+        // Keep the last adapter — next open shows prior grid under the in-panel spinner
+        // (EPG-style instant chrome) instead of a blank panel while rebinding.
         channelListProgramTitles = emptyMap()
         channelListSearchQuery = ""
         if (::etChannelListSearch.isInitialized) {
@@ -4119,14 +4120,10 @@ private fun showDefaultStartupScreen() {
             return
         }
         runCatching {
-            // Instant window: panel chrome first; spinner INSIDE the panel until bind finishes.
-            // Same contract as showEpgPanel — TV remote and phone swipe both land here.
+            // Instant window — same order as showEpgPanel: scrim + panel chrome first so the
+            // section paints immediately; spinner lives INSIDE the panel until bind finishes.
+            // TV remote and phone swipe both land here.
             setPlayerOverlayScrimVisible(true)
-            topInfoPanel.visibility = View.GONE
-            topGradientOverlay.visibility = View.GONE
-            controlsPanel.visibility = View.GONE
-            handler.removeCallbacks(hideUiRunnable)
-            pausePlaybackStallWatchdogForOverlay()
             channelListPanel.isFocusable = false
             (channelListPanel as ViewGroup).descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             channelListPanel.visibility = View.VISIBLE
@@ -4134,6 +4131,11 @@ private fun showDefaultStartupScreen() {
                 channelListPanel.setLayerType(View.LAYER_TYPE_HARDWARE, null)
             }
             channelListPanel.bringToFront()
+            topInfoPanel.visibility = View.GONE
+            topGradientOverlay.visibility = View.GONE
+            controlsPanel.visibility = View.GONE
+            handler.removeCallbacks(hideUiRunnable)
+            pausePlaybackStallWatchdogForOverlay()
             // Keep any previous grid under the in-panel spinner — blanking caused a visible flash.
             if (gvChannelListPanel.visibility != View.VISIBLE) {
                 gvChannelListPanel.visibility = View.VISIBLE
@@ -4168,9 +4170,9 @@ private fun showDefaultStartupScreen() {
                     channelListProgramTitles = emptyMap()
                     bindChannelListPanelAdapter(preResolvedService = service)
                     gvChannelListPanel.visibility = View.VISIBLE
-                    // Hide spinner in the same UI turn as the list bind (EPG-identical).
+                    // Same turn as EPG: list is bound → spinner gone immediately (no post-delay).
                     setChannelListPanelSpinnerVisible(false)
-                    // Focus after the grid paints — never gate spinner dismiss on focus.
+                    // Focus after paint — never gate spinner dismiss on focus.
                     gvChannelListPanel.post {
                         if (channelListPanel.visibility != View.VISIBLE) return@post
                         if (gvChannelListPanel.adapter != null && gvChannelListPanel.count > 0) {
@@ -4196,39 +4198,47 @@ private fun showDefaultStartupScreen() {
                 channels.isNotEmpty() -> channels.toList()
                 else -> emptyList()
             }
-            if (warm.isNotEmpty()) {
-                // Next message: let chrome + spinner paint first, then bind and drop spinner
-                // in the same turn (EPG-identical dismiss timing).
-                handler.post { bindPrepared(warm) }
-                return
-            }
-
-            // Slow path: list not in RAM — keep in-panel spinner until restore finishes.
             val url = lastLoadedPlaylistUrl.ifBlank { resolveCurrentPlaylistUrl() }
-            if (url.isBlank()) {
-                logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=empty_channels")
-                hideChannelListPanel()
-                return
-            }
-            thread(name = "channel-list-cache-restore") {
-                val restored = loadChannelsFromFastCacheOrM3u(url)
-                if (restored.isNotEmpty()) {
-                    memCachedPlaylistUrl = url
-                    memCachedChannels = restored
-                    lastLoadedPlaylistUrl = url
-                    logDebug("PLAYLIST_FLOW", "CHANNEL_LIST_CACHE_RESTORE count=${restored.size}")
+
+            // EPG-identical: wait until chrome+spinner have painted, prep off the UI thread,
+            // then bind and drop the spinner in one UI turn. A plain handler.post can still run
+            // before Choreographer draws and make the whole section feel delayed.
+            runAfterInPanelSpinnerPainted(channelListPanel) {
+                if (!::channelListPanel.isInitialized || channelListPanel.visibility != View.VISIBLE) {
+                    return@runAfterInPanelSpinnerPainted
                 }
-                val service = when {
-                    restored.isNotEmpty() -> restored
-                    else -> resolveInPlayerServiceChannels()
-                }
-                handler.post {
-                    if (channelListPanel.visibility != View.VISIBLE) return@post
-                    if (restored.isNotEmpty() && channels.isEmpty() && restored.size <= 180) {
-                        channels.clear()
-                        channels.addAll(restored)
+                if (warm.isNotEmpty()) {
+                    thread(name = "channel-list-prep") {
+                        val service = warm
+                        handler.post { bindPrepared(service) }
                     }
-                    bindPrepared(service)
+                    return@runAfterInPanelSpinnerPainted
+                }
+                if (url.isBlank()) {
+                    logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=empty_channels")
+                    hideChannelListPanel()
+                    return@runAfterInPanelSpinnerPainted
+                }
+                thread(name = "channel-list-cache-restore") {
+                    val restored = loadChannelsFromFastCacheOrM3u(url)
+                    if (restored.isNotEmpty()) {
+                        memCachedPlaylistUrl = url
+                        memCachedChannels = restored
+                        lastLoadedPlaylistUrl = url
+                        logDebug("PLAYLIST_FLOW", "CHANNEL_LIST_CACHE_RESTORE count=${restored.size}")
+                    }
+                    val service = when {
+                        restored.isNotEmpty() -> restored
+                        else -> resolveInPlayerServiceChannels()
+                    }
+                    handler.post {
+                        if (channelListPanel.visibility != View.VISIBLE) return@post
+                        if (restored.isNotEmpty() && channels.isEmpty() && restored.size <= 180) {
+                            channels.clear()
+                            channels.addAll(restored)
+                        }
+                        bindPrepared(service)
+                    }
                 }
             }
         }.onFailure { err ->
@@ -9475,6 +9485,19 @@ private fun showDefaultStartupScreen() {
         }
         host.post {
             host.post {
+                action()
+            }
+        }
+    }
+
+    /**
+     * Ensures at least one frame paints with the in-panel spinner visible before [action].
+     * Without this, a warm-cache bind posted on the same looper turn can run before
+     * Choreographer draws — the section appears late and the spinner lingers over the list.
+     */
+    private fun runAfterInPanelSpinnerPainted(panel: View, action: () -> Unit) {
+        panel.post {
+            panel.post {
                 action()
             }
         }
