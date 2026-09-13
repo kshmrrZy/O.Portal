@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <!-- Near-opaque plate so parent invalidates do not look like the clock "resets". -->
-    <solid android:color="#B31C1C1E" />
-    <corners android:radius="8dp" />
+    <!-- Same frosted white plate as bottom-right LIVE badge (bg_player_live_badge). -->
+    <solid android:color="#33FFFFFF" />
+    <corners android:radius="6dp" />
 </shape>

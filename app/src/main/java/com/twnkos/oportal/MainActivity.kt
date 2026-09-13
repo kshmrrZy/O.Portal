@@ -4167,11 +4167,11 @@ private fun showDefaultStartupScreen() {
                 channelListProgramTitles = emptyMap()
                 bindChannelListPanelAdapter(preResolvedService = service)
                 gvChannelListPanel.visibility = View.VISIBLE
-                setChannelListPanelSpinnerVisible(false)
-                // Request focus only after the grid is visible — INVISIBLE requestFocus is a no-op on TV.
+                // Hide spinner only after the grid is on screen (same as EPG panel).
                 val focusIdx = gvChannelListPanel.selectedItemPosition.takeIf { it >= 0 } ?: 0
                 gvChannelListPanel.post {
                     if (channelListPanel.visibility != View.VISIBLE) return@post
+                    setChannelListPanelSpinnerVisible(false)
                     if (gvChannelListPanel.adapter != null && gvChannelListPanel.count > 0) {
                         gvChannelListPanel.setSelection(focusIdx.coerceAtMost(gvChannelListPanel.count - 1))
                         gvChannelListPanel.requestFocus()
@@ -4187,31 +4187,24 @@ private fun showDefaultStartupScreen() {
             if (!::channelListPanel.isInitialized || channelListPanel.visibility != View.VISIBLE) {
                 return
             }
-            val needsDiskRestore = channels.isEmpty() &&
-                memCachedChannels.isEmpty() &&
-                cachedCategoryGroups["Все каналы"].isNullOrEmpty()
-            if (!needsDiskRestore) {
-                // Prefer already-warm RAM list — bind on next frame without artificial multi-frame wait.
-                val warm = when {
-                    memCachedChannels.isNotEmpty() -> memCachedChannels
-                    !cachedCategoryGroups["Все каналы"].isNullOrEmpty() ->
-                        cachedCategoryGroups["Все каналы"].orEmpty()
-                    else -> null
-                }
-                if (warm != null) {
-                    thread(name = "channel-list-bind") {
-                        // Keep resolve off UI for filter/merge edge cases.
-                        val service = warm.ifEmpty { resolveInPlayerServiceChannels() }
-                        handler.post { finishWithService(service) }
-                    }
-                    return
-                }
-                thread(name = "channel-list-bind") {
-                    val service = resolveInPlayerServiceChannels()
-                    handler.post { finishWithService(service) }
+            // Instant path (EPG-style): panel chrome + spinner already visible. Prefer the full
+            // playlist cache (not the possibly category-filtered [channels] subset).
+            val instant = when {
+                memCachedChannels.isNotEmpty() -> memCachedChannels
+                !cachedCategoryGroups["Все каналы"].isNullOrEmpty() ->
+                    cachedCategoryGroups["Все каналы"].orEmpty()
+                channels.isNotEmpty() -> channels.toList()
+                else -> null
+            }
+            if (instant != null && instant.isNotEmpty()) {
+                // Next frame: let chrome/spinner paint first, then bind (same feel as EPG).
+                channelListPanel.post {
+                    if (channelListPanel.visibility != View.VISIBLE) return@post
+                    finishWithService(instant)
                 }
                 return
             }
+            // Slow path: list not loaded yet — keep in-panel spinner until the grid is bound.
             val url = lastLoadedPlaylistUrl.ifBlank { resolveCurrentPlaylistUrl() }
             if (url.isBlank()) {
                 logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=empty_channels")
@@ -4250,7 +4243,7 @@ private fun showDefaultStartupScreen() {
             }
         }
 
-        // Start loading immediately — window + in-panel spinner are already on screen.
+        // Panel chrome + spinner are already on screen — start fill immediately.
         loadAndBind()
     }
 
@@ -10600,20 +10593,18 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun startClockUpdater() {
-        // Translucent plate + parent invalidates looked like the clock "blinked". Use an opaque
-        // fill, pin a hardware layer once, give the TextView a fixed width, and only rewrite
-        // text when HH:mm changes.
+        // Frosted white plate (same as LIVE badge). Hardware layer + rewrite only on HH:mm
+        // change avoids the translucent plate looking like it "blinks" over video.
         findViewById<View>(R.id.playerTopTimePlate)?.let { plate ->
             plate.setBackgroundResource(R.drawable.bg_player_time_rect)
             if (plate.layerType != View.LAYER_TYPE_HARDWARE) {
                 plate.setLayerType(View.LAYER_TYPE_HARDWARE, null)
             }
-            plate.setWillNotDraw(false)
         }
         if (::tvSystemTime.isInitialized) {
-            tvSystemTime.minEms = 4
             tvSystemTime.maxLines = 1
             tvSystemTime.includeFontPadding = false
+            tvSystemTime.gravity = android.view.Gravity.CENTER
         }
         handler.post(object : Runnable {
             private var lastShownTime: String? = null
