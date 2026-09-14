@@ -490,6 +490,22 @@
                 android:focusable="true"
                 android:clickable="true"
                 android:nextFocusLeft="@id/btnEpgPlayer"
+                android:nextFocusRight="@id/btnChannelInfo"
+                android:padding="@dimen/player_control_icon_padding" />
+
+            <ImageButton
+                android:id="@+id/btnChannelInfo"
+                android:layout_width="@dimen/player_control_button_size"
+                android:layout_height="@dimen/player_control_button_size"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_player_button_plain"
+                android:contentDescription="Информация о канале"
+                android:defaultFocusHighlightEnabled="false"
+                android:src="@drawable/ic_player_channel_info"
+                android:scaleType="fitCenter"
+                android:focusable="true"
+                android:clickable="true"
+                android:nextFocusLeft="@id/btnAspectRatio"
                 android:nextFocusRight="@id/btnCcSubtitles"
                 android:padding="@dimen/player_control_icon_padding" />
 
@@ -515,7 +531,7 @@
                 android:textColor="#FFFFFF"
                 android:textSize="12sp"
                 android:textStyle="bold"
-                android:nextFocusLeft="@id/btnAspectRatio"
+                android:nextFocusLeft="@id/btnChannelInfo"
                 android:nextFocusRight="@id/btnAudioTrack"
                 android:visibility="gone" />
 
@@ -1473,6 +1489,15 @@
         android:background="@drawable/bg_channel_list_gradient"
         android:visibility="gone"
         android:elevation="50dp" />
+
+    <include
+        layout="@layout/dialog_channel_info"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginStart="40dp"
+        android:layout_marginEnd="40dp"
+        android:visibility="gone" />
 
     <View
         android:id="@+id/playerSettingsOverlay"
