@@ -1344,17 +1344,7 @@ class MainActivity : AppCompatActivity() {
         // Never precache all services at startup (Wink/Only4 OOMs Android 9 TV).
         // Percent progress is only shown when the user opens a specific service.
         if (shouldOpenLastChannelOnStart) {
-            // Restore the playlist the last channel was played from (not the first portal
-            // profile, which is often empty «Избранные»).
-            prefs.getString(PREF_LAST_CHANNEL_PLAYLIST, null)
-                ?.trim()
-                ?.takeIf { it.isNotEmpty() }
-                ?.let { savedPlaylist ->
-                    val profiles = getPlaylistProfiles()
-                    if (profiles.any { it.name == savedPlaylist && it.enabled && it.value.isNotBlank() }) {
-                        setSelectedPlaylistName(savedPlaylist)
-                    }
-                }
+            ensurePlaylistSelectionForLastChannelStart()
             loadPlaylist(showErrors = true, autoPlay = true, showDownloadProgress = false)
         } else {
             showDefaultStartupScreen()
@@ -3285,13 +3275,26 @@ private fun showDefaultStartupScreen() {
         homeChannelTitleInflight.clear()
         handler.removeCallbacks(flushHomeChannelTitlesRunnable)
         homeChannelProgramTitles = emptyMap()
+        // Cold-start last-channel never opened the categories screen, so
+        // allCategoryNamesForSearch may be empty while cachedCategoryGroups is warm —
+        // rebuild tiles from the cache instead of an empty «категории» page.
+        syncSelectedPlaylistNameFromLoadedState()
+        val playlistName = selectedPlaylistDisplayName
+            .ifBlank { getSelectedPlaylistName() }
+            .ifBlank { "Плейлист" }
+        if (cachedCategoryGroups.isEmpty() && channels.isNotEmpty()) {
+            cachedCategoryGroups = buildWarmCategoryGroups(channels.toList(), emptyMap())
+        }
+        if (cachedCategoryGroups.isNotEmpty()) {
+            showCategoryTilesOnHome(playlistName, cachedCategoryGroups)
+            return
+        }
         showPlaylistPageHeader(false)
         gvHomeChannelList.visibility = View.GONE
         gvHomeChannelList.adapter = null
         homePlaylistTilesPanel.visibility = View.VISIBLE
         // Favorites / own-playlists row belongs only on the main playlist home.
         findViewById<View>(R.id.homeBottomTilesRow).visibility = View.GONE
-        val playlistName = getSelectedPlaylistName()
         applyHomeAppTitleStyle(settingsMode = true, settingsTitle = "категории", settingsTitle2 = playlistName)
         enableHomeCategoryBack { showPlaylistPageOnHome() }
         setHomeSearchMode(HomeSearchMode.CATEGORIES, hint = "Поиск категории")
@@ -7183,6 +7186,10 @@ private fun showDefaultStartupScreen() {
                 }
                 playlistOpenInProgress = false
                 hideAppLoadingSpinner()
+                // Keep category tile names warm even when we skip the categories screen
+                // and jump straight into the player (Back → categories must not be empty).
+                selectedPlaylistDisplayName = getSelectedPlaylistName()
+                allCategoryNamesForSearch = groupedCategories.keys.toList()
                 if (!restoreLastChannelAndPlay()) {
                     logDebug("NAV", "startup_last_channel_not_found")
                     showDefaultStartupScreen()
@@ -13266,6 +13273,9 @@ private fun showDefaultStartupScreen() {
         logDebug("NAV", "EXIT_PLAYER_LOCAL_HOME_RESET")
         resetSettingsOverlayState()
 
+        // Make sure category crumbs use the service we actually loaded, not a stale
+        // «Избранные» selection left in prefs from the portal home row.
+        syncSelectedPlaylistNameFromLoadedState()
         // Restore the list the user opened (category / «Все каналы»).
         val restore = resolveCategoryToRestoreAfterPlayerExit()
         if (restore != null) {
@@ -13993,7 +14003,10 @@ private fun showDefaultStartupScreen() {
             .putInt(PREF_LAST_CHANNEL, currentChannelIndex)
             .putString(PREF_LAST_CHANNEL_URL, channel.url)
             .putString(PREF_LAST_CHANNEL_NAME, channel.name)
-            .putString(PREF_LAST_CHANNEL_PLAYLIST, getSelectedPlaylistName())
+            .putString(
+                PREF_LAST_CHANNEL_PLAYLIST,
+                getSelectedPlaylistName().ifBlank { selectedPlaylistDisplayName }
+            )
             .putString(PREF_LAST_CHANNEL_CATEGORY, category)
             .apply()
     }
@@ -14027,22 +14040,115 @@ private fun showDefaultStartupScreen() {
         }
     }
 
+
+    /**
+     * On "start from last channel", pick the playlist that actually contains that channel.
+     * Portal often leaves «Избранные» selected; loading it yields an empty category screen
+     * after Back even though playback came from a service playlist.
+     */
+    private fun ensurePlaylistSelectionForLastChannelStart() {
+        val profiles = getPlaylistProfiles().filter { it.enabled && it.value.isNotBlank() }
+        if (profiles.isEmpty()) return
+
+        val savedPlaylist = prefs.getString(PREF_LAST_CHANNEL_PLAYLIST, null)?.trim().orEmpty()
+        if (savedPlaylist.isNotEmpty() && profiles.any { it.name == savedPlaylist }) {
+            setSelectedPlaylistName(savedPlaylist)
+            selectedPlaylistDisplayName = savedPlaylist
+            return
+        }
+
+        val lastUrl = prefs.getString(PREF_LAST_CHANNEL_URL, null)?.trim().orEmpty()
+        if (lastUrl.isEmpty()) return
+
+        fun profileContainsLastChannel(profile: PlaylistProfile): Boolean {
+            val url = resolvePlaylistProfileUrl(profile)
+            if (url.isBlank()) return false
+            if (memCachedPlaylistUrl == url && memCachedChannels.any { it.url == lastUrl }) {
+                return true
+            }
+            return readChannelsBinaryCache(url).any { it.url == lastUrl }
+        }
+
+        val selected = getSelectedPlaylistName()
+        val selectedProfile = profiles.firstOrNull { it.name == selected }
+        if (selectedProfile != null && profileContainsLastChannel(selectedProfile)) {
+            selectedPlaylistDisplayName = selectedProfile.name
+            return
+        }
+
+        // Prefer a non-favorites service that has the channel in cache.
+        val ordered = profiles.sortedBy { if (it.name.equals("Избранные", ignoreCase = true)) 1 else 0 }
+        for (profile in ordered) {
+            if (!profileContainsLastChannel(profile)) continue
+            setSelectedPlaylistName(profile.name)
+            selectedPlaylistDisplayName = profile.name
+            logDebug(
+                "NAV",
+                "startup_last_channel_playlist_inferred name=${profile.name}"
+            )
+            return
+        }
+    }
+
+    private fun playlistNameMatchingLoadedUrl(): String? {
+        val loaded = lastLoadedPlaylistUrl.trim()
+        if (loaded.isEmpty()) return null
+        return getPlaylistProfiles().firstOrNull { profile ->
+            profile.enabled && resolvePlaylistProfileUrl(profile) == loaded
+        }?.name
+    }
+
+    private fun syncSelectedPlaylistNameFromLoadedState() {
+        val saved = prefs.getString(PREF_LAST_CHANNEL_PLAYLIST, null)?.trim().orEmpty()
+        val fromLoaded = playlistNameMatchingLoadedUrl().orEmpty()
+        val candidate = when {
+            saved.isNotEmpty() &&
+                getPlaylistProfiles().any { it.name == saved && it.enabled } -> saved
+            fromLoaded.isNotEmpty() -> fromLoaded
+            selectedPlaylistDisplayName.isNotBlank() -> selectedPlaylistDisplayName
+            else -> getSelectedPlaylistName()
+        }
+        if (candidate.isNotBlank()) {
+            if (candidate != getSelectedPlaylistName()) {
+                setSelectedPlaylistName(candidate)
+            }
+            selectedPlaylistDisplayName = candidate
+        }
+    }
+
+
     private fun restoreLastChannelAndPlay(): Boolean {
         val index = resolveLastChannelIndex()
         if (index < 0) return false
         currentChannelIndex = index
         val ch = channels[index]
         logDebug("NAV", "startup_restore_last_channel index=$index name=${ch.name}")
-        // Cold-start into player: Back must open «Все каналы», not a random/empty M3U group
-        // (e.g. «Избранные») and not an empty Favorites category screen.
-        lastChannelListCategory = "Все каналы"
-        homeChannelListCategory = "Все каналы"
-        selectedCategoryName = "Все каналы"
+        // Restore the list the user actually played from (saved category), not a hard-coded
+        // «Все каналы» and never a bare M3U groupTitle when the saved list is missing.
+        val savedCategory = prefs.getString(PREF_LAST_CHANNEL_CATEGORY, null)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        val restoreCategory = when {
+            !savedCategory.isNullOrEmpty() &&
+                !cachedCategoryGroups[savedCategory].isNullOrEmpty() -> savedCategory
+            !savedCategory.isNullOrEmpty() ->
+                cachedCategoryGroups.entries.firstOrNull {
+                    it.key.equals(savedCategory, ignoreCase = true) && it.value.isNotEmpty()
+                }?.key
+            else -> null
+        } ?: "Все каналы"
+        lastChannelListCategory = restoreCategory
+        homeChannelListCategory = restoreCategory
+        selectedCategoryName = restoreCategory
         homeReturnTarget = HomeReturnTarget.CHANNEL_LIST
+        selectedPlaylistDisplayName = getSelectedPlaylistName()
         if (cachedCategoryGroups["Все каналы"].isNullOrEmpty() && channels.isNotEmpty()) {
             cachedCategoryGroups = cachedCategoryGroups.toMutableMap().apply {
                 put("Все каналы", channels.toList())
             }
+        }
+        if (allCategoryNamesForSearch.isEmpty() && cachedCategoryGroups.isNotEmpty()) {
+            allCategoryNamesForSearch = cachedCategoryGroups.keys.toList()
         }
         // Same loading chrome as a manual channel pick: LIVE + name + center spinner.
         suppressAutoPlayerUiOnce = true
