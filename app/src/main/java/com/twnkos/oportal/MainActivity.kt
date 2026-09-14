@@ -978,6 +978,8 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_LAST_CHANNEL = "last_channel"
         private const val PREF_LAST_CHANNEL_URL = "last_channel_url"
         private const val PREF_LAST_CHANNEL_NAME = "last_channel_name"
+        private const val PREF_LAST_CHANNEL_PLAYLIST = "last_channel_playlist"
+        private const val PREF_LAST_CHANNEL_CATEGORY = "last_channel_category"
         private const val PREF_SUBTITLE_LANGUAGE = "pref_subtitle_language"
         private const val PREF_SUBTITLE_ENABLED = "pref_subtitle_enabled"
         private const val PREF_QUALITY_HEIGHT = "pref_quality_height"
@@ -1342,6 +1344,17 @@ class MainActivity : AppCompatActivity() {
         // Never precache all services at startup (Wink/Only4 OOMs Android 9 TV).
         // Percent progress is only shown when the user opens a specific service.
         if (shouldOpenLastChannelOnStart) {
+            // Restore the playlist the last channel was played from (not the first portal
+            // profile, which is often empty «Избранные»).
+            prefs.getString(PREF_LAST_CHANNEL_PLAYLIST, null)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { savedPlaylist ->
+                    val profiles = getPlaylistProfiles()
+                    if (profiles.any { it.name == savedPlaylist && it.enabled && it.value.isNotBlank() }) {
+                        setSelectedPlaylistName(savedPlaylist)
+                    }
+                }
             loadPlaylist(showErrors = true, autoPlay = true, showDownloadProgress = false)
         } else {
             showDefaultStartupScreen()
@@ -3848,6 +3861,9 @@ private fun showDefaultStartupScreen() {
         }
         if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
             channelListPanel.bringToFront()
+        }
+        if (::channelInfoPanel.isInitialized && channelInfoPanel.visibility == View.VISIBLE) {
+            channelInfoPanel.bringToFront()
         }
     }
 
@@ -9028,6 +9044,8 @@ private fun showDefaultStartupScreen() {
         val audioParts = listOfNotNull(audioLang, audioChannels, audioCodec, audioBitrate)
         audioView?.text = "Аудио: " + audioParts.joinToString(", ")
 
+        // Same as EPG / channel list — do not let the stall watchdog treat an overlay as a freeze.
+        pausePlaybackStallWatchdogForOverlay()
         hideUI()
         channelInfoPanel.visibility = View.VISIBLE
         channelInfoPanel.bringToFront()
@@ -9037,8 +9055,13 @@ private fun showDefaultStartupScreen() {
 
     private fun hideChannelInfoPanel() {
         if (!::channelInfoPanel.isInitialized) return
+        if (channelInfoPanel.visibility != View.VISIBLE) return
         channelInfoPanel.visibility = View.GONE
-        showUI(preferFocus = if (::btnChannelInfo.isInitialized) btnChannelInfo else null)
+        // Same as EPG / in-player channel list: never retune / re-prepare the stream.
+        resetPlaybackProgressBaseline()
+        hideUI()
+        resumePlaybackStallWatchdogIfNeeded()
+        keepPlayerSubtitlesBehindOverlays()
     }
 
     private fun selectedTrackFormat(trackType: Int): Format? {
@@ -11649,6 +11672,11 @@ private fun showDefaultStartupScreen() {
             handler.removeCallbacks(hideUiRunnable)
             return
         }
+        if (::channelInfoPanel.isInitialized && channelInfoPanel.visibility == View.VISIBLE) {
+            hidePlayerChromeFully()
+            handler.removeCallbacks(hideUiRunnable)
+            return
+        }
         // До первого кадра — только имя канала без программы.
         if (!firstFrameRendered) {
             showPlayerLoadingUi()
@@ -11819,7 +11847,8 @@ private fun showDefaultStartupScreen() {
             homeSettingsScreen.visibility != View.VISIBLE &&
             (!::playerSettingsOverlay.isInitialized || playerSettingsOverlay.visibility != View.VISIBLE) &&
             (!::epgPanel.isInitialized || epgPanel.visibility != View.VISIBLE) &&
-            (!::channelListPanel.isInitialized || channelListPanel.visibility != View.VISIBLE)
+            (!::channelListPanel.isInitialized || channelListPanel.visibility != View.VISIBLE) &&
+            (!::channelInfoPanel.isInitialized || channelInfoPanel.visibility != View.VISIBLE)
 
     private fun isFocusInPlayerControlsRow(): Boolean {
         val focused = currentFocus ?: return false
@@ -13237,7 +13266,7 @@ private fun showDefaultStartupScreen() {
         logDebug("NAV", "EXIT_PLAYER_LOCAL_HOME_RESET")
         resetSettingsOverlayState()
 
-        // Restore the list the user opened (category / «Все каналы» / Favorites group).
+        // Restore the list the user opened (category / «Все каналы»).
         val restore = resolveCategoryToRestoreAfterPlayerExit()
         if (restore != null) {
             prepareHomeShellAfterPlayerExit()
@@ -13253,9 +13282,9 @@ private fun showDefaultStartupScreen() {
     }
 
     /**
-     * Reopens the list the user played from: «Все каналы», a concrete category, or Favorites
-     * category — whichever was last opened via [showHomeChannelList]. Falls back to the
-     * current channel's group only when that memory is missing.
+     * Reopens the list the user played from: «Все каналы» or a concrete category opened via
+     * [showHomeChannelList]. Never falls back to the channel's M3U group-title alone — that
+     * wrongly opens an empty «Избранные» group after cold-start last-channel playback.
      */
     private fun resolveCategoryToRestoreAfterPlayerExit(): Pair<String, List<Channel>>? {
         fun lookup(name: String): Pair<String, List<Channel>>? {
@@ -13266,23 +13295,23 @@ private fun showDefaultStartupScreen() {
             return null
         }
 
-        val candidates = LinkedHashSet<String>()
-        // Prefer the screen the user actually opened (incl. «Все каналы» / Favorites groups).
-        lastChannelListCategory?.takeIf { it.isNotBlank() }?.let { candidates += it }
-        if (homeReturnTarget == HomeReturnTarget.CHANNEL_LIST) {
-            lastChannelListCategory?.takeIf { it.isNotBlank() }?.let { candidates += it }
+        fun allChannelsFallback(): Pair<String, List<Channel>>? {
+            lookup("Все каналы")?.let { return it }
+            if (channels.isNotEmpty()) return "Все каналы" to channels.toList()
+            if (memCachedChannels.isNotEmpty()) return "Все каналы" to memCachedChannels.toList()
+            return null
         }
-        // Fallback: channel's own group when we have no remembered list.
-        val current = channels.getOrNull(currentChannelIndex)
-        val fromChannel = current?.groupTitle?.trim()
-            ?.takeUnless { it.isNullOrBlank() }
-            ?: "Без категории"
-        if (candidates.isEmpty()) candidates += fromChannel
 
-        for (name in candidates) {
-            lookup(name)?.let { return it }
+        val remembered = lastChannelListCategory?.trim().orEmpty()
+        if (remembered.isNotEmpty()) {
+            lookup(remembered)?.let { return it }
+            if (remembered.equals("Все каналы", ignoreCase = true)) {
+                allChannelsFallback()?.let { return it }
+            }
         }
-        return null
+
+        // Cold-start / missing memory: always «Все каналы», never groupTitle (e.g. «Избранные»).
+        return allChannelsFallback()
     }
 
     private fun bindRealPlayerExitButtonListener() {
@@ -13294,6 +13323,10 @@ private fun showDefaultStartupScreen() {
             }
             if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
                 hideChannelListPanel()
+                return@setOnClickListener
+            }
+            if (::channelInfoPanel.isInitialized && channelInfoPanel.visibility == View.VISIBLE) {
+                hideChannelInfoPanel()
                 return@setOnClickListener
             }
             exitPlayerToPlaylist()
@@ -13950,10 +13983,18 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun saveLastChannelPrefs(channel: Channel) {
+        val category = sequenceOf(
+            lastChannelListCategory.orEmpty(),
+            homeChannelListCategory,
+            selectedCategoryName,
+            "Все каналы"
+        ).map { it.trim() }.firstOrNull { it.isNotEmpty() } ?: "Все каналы"
         prefs.edit()
             .putInt(PREF_LAST_CHANNEL, currentChannelIndex)
             .putString(PREF_LAST_CHANNEL_URL, channel.url)
             .putString(PREF_LAST_CHANNEL_NAME, channel.name)
+            .putString(PREF_LAST_CHANNEL_PLAYLIST, getSelectedPlaylistName())
+            .putString(PREF_LAST_CHANNEL_CATEGORY, category)
             .apply()
     }
 
@@ -13992,6 +14033,17 @@ private fun showDefaultStartupScreen() {
         currentChannelIndex = index
         val ch = channels[index]
         logDebug("NAV", "startup_restore_last_channel index=$index name=${ch.name}")
+        // Cold-start into player: Back must open «Все каналы», not a random/empty M3U group
+        // (e.g. «Избранные») and not an empty Favorites category screen.
+        lastChannelListCategory = "Все каналы"
+        homeChannelListCategory = "Все каналы"
+        selectedCategoryName = "Все каналы"
+        homeReturnTarget = HomeReturnTarget.CHANNEL_LIST
+        if (cachedCategoryGroups["Все каналы"].isNullOrEmpty() && channels.isNotEmpty()) {
+            cachedCategoryGroups = cachedCategoryGroups.toMutableMap().apply {
+                put("Все каналы", channels.toList())
+            }
+        }
         // Same loading chrome as a manual channel pick: LIVE + name + center spinner.
         suppressAutoPlayerUiOnce = true
         dismissHomeForPlayback()
