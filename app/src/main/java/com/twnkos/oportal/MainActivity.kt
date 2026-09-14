@@ -245,6 +245,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var liveStatusDot: View
     private lateinit var btnLock: ImageButton
     private lateinit var btnAspectRatio: ImageButton
+    private lateinit var btnChannelInfo: ImageButton
+    private lateinit var channelInfoPanel: View
     private lateinit var btnCcSubtitles: TextView
     private lateinit var btnAudioTrack: TextView
     private lateinit var btnHdQuality: TextView
@@ -1547,6 +1549,9 @@ private fun showDefaultStartupScreen() {
         btnLock = findViewById(R.id.btnLock)
         topGradientOverlay = findViewById(R.id.topGradientOverlay)
         btnAspectRatio = findViewById(R.id.btnAspectRatio)
+        btnChannelInfo = findViewById(R.id.btnChannelInfo)
+        channelInfoPanel = findViewById(R.id.channelInfoPanel)
+        findViewById<View>(R.id.btnChannelInfoBack).setOnClickListener { hideChannelInfoPanel() }
         btnCcSubtitles = findViewById(R.id.btnCcSubtitles)
         btnAudioTrack = findViewById(R.id.btnAudioTrack)
         btnHdQuality = findViewById(R.id.btnHdQuality)
@@ -2001,6 +2006,7 @@ private fun showDefaultStartupScreen() {
 
         btnAspectRatio.setOnClickListener { cycleAspectRatioMode() }
         btnAspectRatio.setOnLongClickListener { true }
+        btnChannelInfo.setOnClickListener { showChannelInfoPanel() }
         btnSleepTimer.setOnClickListener { showTimerDialog() }
 
         btnPlayPause.setOnClickListener {
@@ -3557,6 +3563,10 @@ private fun showDefaultStartupScreen() {
                 hideChannelListPanel()
                 return@addCallback
             }
+            if (::channelInfoPanel.isInitialized && channelInfoPanel.visibility == View.VISIBLE) {
+                hideChannelInfoPanel()
+                return@addCallback
+            }
             if (::playerSettingsOverlay.isInitialized && playerSettingsOverlay.visibility == View.VISIBLE) {
                 handleSettingsBackPress()
                 return@addCallback
@@ -3822,7 +3832,8 @@ private fun showDefaultStartupScreen() {
 
     private fun isPlayerOverlayOpen(): Boolean {
         return (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) ||
-            (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE)
+            (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) ||
+            (::channelInfoPanel.isInitialized && channelInfoPanel.visibility == View.VISIBLE)
     }
 
     /** Keep cue subtitles under EPG / channel-list windows (cue updates must not steal z-order). */
@@ -4120,6 +4131,9 @@ private fun showDefaultStartupScreen() {
             logDebug("NAV", "CHANNEL_LIST_BLOCKED reason=epg_open")
             return
         }
+        if (::channelInfoPanel.isInitialized && channelInfoPanel.visibility == View.VISIBLE) {
+            hideChannelInfoPanel()
+        }
         runCatching {
             // Instant window — same as showEpgPanel: chrome visible in this call, no paint-wait.
             // TV remote (left) and phone swipe both land here.
@@ -4399,6 +4413,9 @@ private fun showDefaultStartupScreen() {
             epgPanelSelectedDate = ""
         }
 
+        if (::channelInfoPanel.isInitialized && channelInfoPanel.visibility == View.VISIBLE) {
+            hideChannelInfoPanel()
+        }
         runCatching {
             // Instant window: panel chrome first; spinner INSIDE the panel until prep finishes.
             if (::epgDismissScrim.isInitialized) epgDismissScrim.visibility = View.VISIBLE
@@ -8947,6 +8964,129 @@ private fun showDefaultStartupScreen() {
         showUI()
     }
 
+
+    private fun showChannelInfoPanel() {
+        val channel = channels.getOrNull(currentChannelIndex) ?: return
+        if (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) hideEpgPanel()
+        if (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) {
+            hideChannelListPanel()
+        }
+        val logoView = findViewById<ImageView>(R.id.ivChannelInfoLogo)
+        val nameView = findViewById<TextView>(R.id.tvChannelInfoName)
+        val serviceView = findViewById<TextView>(R.id.tvChannelInfoService)
+        val categoryView = findViewById<TextView>(R.id.tvChannelInfoCategory)
+        val videoView = findViewById<TextView>(R.id.tvChannelInfoVideo)
+        val audioView = findViewById<TextView>(R.id.tvChannelInfoAudio)
+        val backBtn = findViewById<View>(R.id.btnChannelInfoBack)
+
+        nameView?.text = channel.name
+        val serviceName = getSelectedPlaylistName().ifBlank { "Плейлист" }
+        serviceView?.text = serviceName
+        serviceView?.visibility = View.VISIBLE
+        val categoryName = sequenceOf(
+            selectedCategoryName,
+            homeChannelListCategory,
+            lastChannelListCategory.orEmpty(),
+            channel.groupTitle.orEmpty()
+        ).map { it.trim() }.firstOrNull { it.isNotEmpty() && !it.equals("Все каналы", true) }
+            ?: "Без категории"
+        categoryView?.text = categoryName
+        categoryView?.visibility = View.VISIBLE
+        if (logoView != null) {
+            loadLogoWithGlide(channel.logoFromEpg ?: channel.logoFromPlaylist, logoView)
+        }
+
+        val videoFormat = selectedTrackFormat(C.TRACK_TYPE_VIDEO)
+        val audioFormat = selectedTrackFormat(C.TRACK_TYPE_AUDIO)
+        val videoSize = mediaPlayer?.videoSize
+        val width = when {
+            videoFormat != null && videoFormat.width > 0 -> videoFormat.width
+            videoSize != null && videoSize.width > 0 -> videoSize.width
+            else -> 0
+        }
+        val height = when {
+            videoFormat != null && videoFormat.height > 0 -> videoFormat.height
+            videoSize != null && videoSize.height > 0 -> videoSize.height
+            else -> 0
+        }
+        val videoBitrate = videoFormat?.bitrate?.takeIf { it > 0 }
+        val fps = videoFormat?.frameRate?.takeIf { it > 0f }
+        val resolution = if (width > 0 && height > 0) "$width x $height" else "—"
+        val bitrateLabel = formatBitrateLabel(videoBitrate, video = true)
+        val fpsLabel = if (fps != null) String.format(Locale.US, "%.3f fps", fps) else "—"
+        videoView?.text = "Видео: $resolution, $bitrateLabel, $fpsLabel"
+
+        val audioCodec = audioFormat?.let { formatAudioCodecLabel(it) } ?: "—"
+        val audioBitrate = formatBitrateLabel(audioFormat?.bitrate?.takeIf { it > 0 }, video = false)
+        val audioLang = audioFormat?.language?.takeIf { it.isNotBlank() }?.let { languageLabel(it) }
+        val audioChannels = when (audioFormat?.channelCount ?: 0) {
+            1 -> "Моно"
+            2 -> "Стерео"
+            in 6..8 -> "Surround"
+            else -> null
+        }
+        val audioParts = listOfNotNull(audioLang, audioChannels, audioCodec, audioBitrate)
+        audioView?.text = "Аудио: " + audioParts.joinToString(", ")
+
+        hideUI()
+        channelInfoPanel.visibility = View.VISIBLE
+        channelInfoPanel.bringToFront()
+        keepPlayerSubtitlesBehindOverlays()
+        backBtn?.post { backBtn.requestFocus() }
+    }
+
+    private fun hideChannelInfoPanel() {
+        if (!::channelInfoPanel.isInitialized) return
+        channelInfoPanel.visibility = View.GONE
+        showUI(preferFocus = if (::btnChannelInfo.isInitialized) btnChannelInfo else null)
+    }
+
+    private fun selectedTrackFormat(trackType: Int): Format? {
+        val tracks = mediaPlayer?.currentTracks ?: return null
+        for (group in tracks.groups) {
+            if (group.type != trackType || !group.isSelected) continue
+            for (i in 0 until group.length) {
+                if (group.isTrackSelected(i)) return group.getTrackFormat(i)
+            }
+        }
+        return null
+    }
+
+    private fun formatBitrateLabel(bitrate: Int?, video: Boolean): String {
+        if (bitrate == null || bitrate <= 0) return "—"
+        return if (video || bitrate >= 1_000_000) {
+            String.format(Locale("ru", "RU"), "%.2f Мбит/с", bitrate / 1_000_000.0)
+        } else {
+            "${(bitrate / 1000).coerceAtLeast(1)} кбит/с"
+        }
+    }
+
+    private fun formatAudioCodecLabel(format: Format): String {
+        val codecs = format.codecs?.trim().orEmpty()
+        if (codecs.isNotEmpty()) {
+            val main = codecs.substringBefore('.').substringBefore(',')
+            return when {
+                main.startsWith("mp4a", true) || main.contains("aac", true) -> "AAC"
+                main.contains("ac-3", true) || main.contains("ac3", true) -> "AC-3"
+                main.contains("ec-3", true) || main.contains("eac3", true) -> "E-AC-3"
+                main.contains("opus", true) -> "Opus"
+                main.contains("dts", true) -> "DTS"
+                else -> main.uppercase(Locale.ROOT)
+            }
+        }
+        val mime = format.sampleMimeType.orEmpty().lowercase(Locale.ROOT)
+        return when {
+            "aac" in mime || "mp4a" in mime -> "AAC"
+            "ac3" in mime || "ac-3" in mime -> "AC-3"
+            "eac3" in mime || "ec-3" in mime -> "E-AC-3"
+            "opus" in mime -> "Opus"
+            "dts" in mime -> "DTS"
+            mime.contains('/') -> mime.substringAfter('/').uppercase(Locale.ROOT)
+            else -> "—"
+        }
+    }
+
+
     private fun applyVideoPinchScale() {
         val playerView = findViewById<PlayerView>(R.id.videoLayout)
         if (videoPinchScale > 1.05f) {
@@ -10110,7 +10250,8 @@ private fun showDefaultStartupScreen() {
         btnAudioTrack.text = "AU  $audioLabel"
         btnAudioTrack.alpha = if (hasAudioChoice) 1f else 0.55f
 
-        if (availableQualities.isEmpty()) {
+        // Master playlists often expose a single ladder rung (e.g. only 1080p) — hide HD.
+        if (availableQualities.size < 2) {
             btnHdQuality.visibility = View.GONE
         } else {
             btnHdQuality.visibility = View.VISIBLE
@@ -10120,7 +10261,7 @@ private fun showDefaultStartupScreen() {
                 availableQualities.getOrNull(currentQualityIndex)?.label ?: "HD"
             }
             btnHdQuality.text = "HD  $qualityLabel"
-            btnHdQuality.alpha = if (availableQualities.size > 1) 1f else 0.6f
+            btnHdQuality.alpha = 1f
         }
         updatePlayerControlFocusChain()
         layoutPlayerSubtitlesOverlay()
@@ -10141,16 +10282,18 @@ private fun showDefaultStartupScreen() {
             btnLock.nextFocusRightId = R.id.btnEpgPlayer
         }
 
-        btnAspectRatio.nextFocusRightId = chain.firstOrNull() ?: R.id.btnLiveReload
+        btnAspectRatio.nextFocusRightId = R.id.btnChannelInfo
+        btnChannelInfo.nextFocusLeftId = R.id.btnAspectRatio
+        btnChannelInfo.nextFocusRightId = chain.firstOrNull() ?: R.id.btnLiveReload
         chain.forEachIndexed { index, id ->
             val view = findViewById<View>(id)
-            view.nextFocusLeftId = if (index == 0) R.id.btnAspectRatio else chain[index - 1]
+            view.nextFocusLeftId = if (index == 0) R.id.btnChannelInfo else chain[index - 1]
             view.nextFocusRightId = if (index == chain.lastIndex) R.id.btnLiveReload else chain[index + 1]
         }
-        btnLiveReload.nextFocusLeftId = chain.lastOrNull() ?: R.id.btnAspectRatio
+        btnLiveReload.nextFocusLeftId = chain.lastOrNull() ?: R.id.btnChannelInfo
         // When mid badges are GONE, HdQuality's XML still points at Audio — fix left edge.
         if (chain.isEmpty()) {
-            btnLiveReload.nextFocusLeftId = R.id.btnAspectRatio
+            btnLiveReload.nextFocusLeftId = R.id.btnChannelInfo
         }
 
         // TV: progress bar + Back are focus targets. Scrub while the bar has focus (L/R).
@@ -10164,7 +10307,7 @@ private fun showDefaultStartupScreen() {
             backBtn?.isFocusableInTouchMode = false
             backBtn?.nextFocusDownId = R.id.timelineTrack
             listOf(
-                btnPlayPause, btnBackLeft, btnBackRight, btnEpgPlayer, btnAspectRatio,
+                btnPlayPause, btnBackLeft, btnBackRight, btnEpgPlayer, btnAspectRatio, btnChannelInfo,
                 btnLiveReload, btnCcSubtitles, btnAudioTrack, btnHdQuality
             ).forEach { btn ->
                 if (btn.visibility == View.VISIBLE) {
@@ -10206,6 +10349,7 @@ private fun showDefaultStartupScreen() {
         if (::btnLock.isInitialized && btnLock.visibility == View.VISIBLE) views += btnLock
         if (::btnEpgPlayer.isInitialized) views += btnEpgPlayer
         if (::btnAspectRatio.isInitialized) views += btnAspectRatio
+        if (::btnChannelInfo.isInitialized) views += btnChannelInfo
         if (::btnCcSubtitles.isInitialized) views += btnCcSubtitles
         if (::btnAudioTrack.isInitialized) views += btnAudioTrack
         if (::btnHdQuality.isInitialized) views += btnHdQuality
@@ -10271,7 +10415,7 @@ private fun showDefaultStartupScreen() {
     }
 
     private fun showQualityTrackMenu() {
-        if (availableQualities.isEmpty()) return
+        if (availableQualities.size < 2) return
         val items = mutableListOf(Triple("Авто", currentQualityIndex < 0, -1))
         availableQualities.forEachIndexed { index, option ->
             items.add(Triple(option.label, currentQualityIndex == index, index))
@@ -10400,7 +10544,7 @@ private fun showDefaultStartupScreen() {
         controlsPanel.isFocusable = false
         listOf(
             R.id.btnPlayPause, R.id.btnLiveReload, R.id.btnBackLeft, R.id.btnBackRight,
-            R.id.btnLock, R.id.btnEpgPlayer, R.id.btnAspectRatio,
+            R.id.btnLock, R.id.btnEpgPlayer, R.id.btnAspectRatio, R.id.btnChannelInfo,
             R.id.btnCcSubtitles, R.id.btnAudioTrack, R.id.btnHdQuality
         ).forEach { id ->
             findViewById<View?>(id)?.let { v ->
@@ -11539,7 +11683,7 @@ private fun showDefaultStartupScreen() {
         layoutPlayerSubtitlesOverlay()
         val controlsPanelButtonIds = intArrayOf(
             R.id.btnPlayPause, R.id.btnLiveReload, R.id.btnBackLeft,
-            R.id.btnBackRight, R.id.btnLock, R.id.btnEpgPlayer, R.id.btnAspectRatio,
+            R.id.btnBackRight, R.id.btnLock, R.id.btnEpgPlayer, R.id.btnAspectRatio, R.id.btnChannelInfo,
             R.id.btnCcSubtitles, R.id.btnAudioTrack, R.id.btnHdQuality,
             R.id.timelineTrack, R.id.btnBackToMenu
         )
@@ -11683,7 +11827,7 @@ private fun showDefaultStartupScreen() {
         if (focused.id == R.id.btnBackToMenu) return true
         val controlsPanelButtonIds = intArrayOf(
             R.id.btnPlayPause, R.id.btnLiveReload, R.id.btnBackLeft,
-            R.id.btnBackRight, R.id.btnLock, R.id.btnEpgPlayer, R.id.btnAspectRatio,
+            R.id.btnBackRight, R.id.btnLock, R.id.btnEpgPlayer, R.id.btnAspectRatio, R.id.btnChannelInfo,
             R.id.btnCcSubtitles, R.id.btnAudioTrack, R.id.btnHdQuality
         )
         return controlsPanelButtonIds.any { findViewById<View>(it) === focused }
@@ -12405,6 +12549,10 @@ private fun showDefaultStartupScreen() {
                 hideChannelListPanel()
                 return true
             }
+            if (::channelInfoPanel.isInitialized && channelInfoPanel.visibility == View.VISIBLE) {
+                hideChannelInfoPanel()
+                return true
+            }
             if (controlsPanel.visibility == View.VISIBLE) hideUI() else showUI()
             return true
         }
@@ -12417,7 +12565,8 @@ private fun showDefaultStartupScreen() {
             homeSettingsScreen.visibility == View.VISIBLE ||
             (::playerSettingsOverlay.isInitialized && playerSettingsOverlay.visibility == View.VISIBLE) ||
             (::channelListPanel.isInitialized && channelListPanel.visibility == View.VISIBLE) ||
-            (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE)
+            (::epgPanel.isInitialized && epgPanel.visibility == View.VISIBLE) ||
+            (::channelInfoPanel.isInitialized && channelInfoPanel.visibility == View.VISIBLE)
 
         if (overlayOpen) {
             return super.onKeyDown(keyCode, event)
