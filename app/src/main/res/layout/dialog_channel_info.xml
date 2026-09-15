@@ -23,16 +23,22 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <ImageView
-            android:id="@+id/ivChannelInfoLogo"
+        <!-- Same as channel list: neutral plate + one logo (channel OR O.Portal fallback). -->
+        <FrameLayout
             android:layout_width="56dp"
             android:layout_height="56dp"
-            android:background="@drawable/bg_channel_logo_placeholder"
-            android:contentDescription="@null"
-            android:padding="4dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/ic_channel_logo_default"
-            tools:ignore="ContentDescription" />
+            android:background="@drawable/channel_grid_logo_bg">
+
+            <ImageView
+                android:id="@+id/ivChannelInfoLogo"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@null"
+                android:padding="4dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_channel_logo_default"
+                tools:ignore="ContentDescription" />
+        </FrameLayout>
 
         <LinearLayout
             android:layout_width="0dp"
