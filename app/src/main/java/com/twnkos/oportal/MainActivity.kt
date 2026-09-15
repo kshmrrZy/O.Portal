@@ -280,7 +280,17 @@ class MainActivity : AppCompatActivity() {
     private var publicDebugLogLastScanElapsedMs = 0L
     private var publicDebugLogFailLogged = false
 
-    data class QualityOption(val label: String, val height: Int, val url: String)
+    data class QualityOption(
+        val label: String,
+        val height: Int,
+        val url: String,
+        /** Peak BANDWIDTH from EXT-X-STREAM-INF, or -1 if absent. */
+        val bandwidthBps: Int = -1,
+        /** AVERAGE-BANDWIDTH from EXT-X-STREAM-INF, or -1 if absent. */
+        val averageBandwidthBps: Int = -1,
+        /** FRAME-RATE from EXT-X-STREAM-INF, or -1 if absent. */
+        val frameRate: Float = -1f
+    )
     data class SubtitleOption(val label: String, val language: String?, val url: String)
     data class AudioOption(
         val label: String,
@@ -9016,7 +9026,13 @@ private fun showDefaultStartupScreen() {
         categoryView?.text = categoryName
         categoryView?.visibility = View.VISIBLE
         if (logoView != null) {
-            loadLogoWithGlide(channel.logoFromEpg ?: channel.logoFromPlaylist, logoView)
+            // Neutral plate is on the FrameLayout; ImageView must not keep O.Portal as background.
+            logoView.setBackgroundColor(Color.TRANSPARENT)
+            loadLogoWithGlide(
+                channel.logoFromEpg ?: channel.logoFromPlaylist,
+                logoView,
+                decodeSizeDp = 56
+            )
         }
 
         val videoFormat = selectedTrackFormat(C.TRACK_TYPE_VIDEO)
@@ -9032,15 +9048,21 @@ private fun showDefaultStartupScreen() {
             videoSize != null && videoSize.height > 0 -> videoSize.height
             else -> 0
         }
-        val videoBitrate = videoFormat?.bitrate?.takeIf { it > 0 }
+        // When tuned to a variant media playlist, Format often lacks STREAM-INF fields —
+        // fall back to values parsed from the master for the matching height / selection.
+        val matchedQuality = resolveQualityOptionForInfo(height)
+        val videoBitrate = formatBitrateBps(videoFormat)
+            ?: matchedQuality?.averageBandwidthBps?.takeIf { it > 0 }
+            ?: matchedQuality?.bandwidthBps?.takeIf { it > 0 }
         val fps = videoFormat?.frameRate?.takeIf { it > 0f }
+            ?: matchedQuality?.frameRate?.takeIf { it > 0f }
         val resolution = if (width > 0 && height > 0) "$width x $height" else "—"
         val bitrateLabel = formatBitrateLabel(videoBitrate, video = true)
         val fpsLabel = if (fps != null) String.format(Locale.US, "%.3f fps", fps) else "—"
         videoView?.text = "Видео: $resolution, $bitrateLabel, $fpsLabel"
 
         val audioCodec = audioFormat?.let { formatAudioCodecLabel(it) } ?: "—"
-        val audioBitrate = formatBitrateLabel(audioFormat?.bitrate?.takeIf { it > 0 }, video = false)
+        val audioBitrate = formatBitrateLabel(formatBitrateBps(audioFormat), video = false)
         val audioLang = audioFormat?.language?.takeIf { it.isNotBlank() }?.let { languageLabel(it) }
         val audioChannels = when (audioFormat?.channelCount ?: 0) {
             1 -> "Моно"
@@ -9080,6 +9102,29 @@ private fun showDefaultStartupScreen() {
             }
         }
         return null
+    }
+
+    /** Prefer average / peak / bitrate from the selected Format when present. */
+    private fun formatBitrateBps(format: Format?): Int? {
+        if (format == null) return null
+        format.averageBitrate.takeIf { it > 0 }?.let { return it }
+        format.bitrate.takeIf { it > 0 }?.let { return it }
+        format.peakBitrate.takeIf { it > 0 }?.let { return it }
+        return null
+    }
+
+    /**
+     * Match the playing resolution to a master STREAM-INF entry so info can show
+     * BANDWIDTH / FRAME-RATE when the variant Format itself lacks them.
+     */
+    private fun resolveQualityOptionForInfo(playbackHeight: Int): QualityOption? {
+        if (availableQualities.isEmpty()) return null
+        availableQualities.getOrNull(currentQualityIndex)?.let { return it }
+        if (playbackHeight > 0) {
+            availableQualities.firstOrNull { it.height == playbackHeight }?.let { return it }
+            return availableQualities.minByOrNull { kotlin.math.abs(it.height - playbackHeight) }
+        }
+        return availableQualities.firstOrNull()
     }
 
     private fun formatBitrateLabel(bitrate: Int?, video: Boolean): String {
@@ -10037,7 +10082,7 @@ private fun showDefaultStartupScreen() {
             normalized.endsWith("/icons/favicon-96x96.png")
     }
 
-    private fun loadLogoWithGlide(url: String?, target: ImageView) {
+    private fun loadLogoWithGlide(url: String?, target: ImageView, decodeSizeDp: Int = 40) {
         val placeholder = R.drawable.ic_channel_logo_default
         if (isGenericPortalLogoUrl(url)) {
             Glide.with(this).clear(target)
@@ -10049,7 +10094,7 @@ private fun showDefaultStartupScreen() {
             LazyHeaders.Builder().addHeader("User-Agent", userAgent).build()
         )
         // Small decode size keeps Android 9 TV under OOM while still showing logos.
-        val logoPx = dpToPx(40)
+        val logoPx = dpToPx(decodeSizeDp)
         Glide.with(this)
             .load(glideUrl)
             .override(logoPx, logoPx)
@@ -10060,15 +10105,10 @@ private fun showDefaultStartupScreen() {
             .into(target)
     }
 
-    private fun qualityLabelForHeight(height: Int): String = when {
-        height >= 2160 -> "2160p"
-        height >= 1440 -> "1440p"
-        height >= 1080 -> "1080p"
-        height >= 720 -> "720p"
-        height >= 480 -> "480p"
-        height >= 360 -> "360p"
-        else -> "${height}p"
-    }
+    /** Absolute ladder label (800×450 → «450p»), not bucketed 360p/480p. */
+    private fun qualityLabelForHeight(height: Int): String =
+        if (height > 0) "${height}p" else "—"
+
 
     private fun resolvePlaylistUrl(baseUrl: String, line: String): String {
         if (line.startsWith("http://") || line.startsWith("https://")) return line
@@ -10128,11 +10168,23 @@ private fun showDefaultStartupScreen() {
                             ?: continue
                         val nextLine = lines.getOrNull(i + 1)?.trim()
                         if (nextLine.isNullOrBlank() || nextLine.startsWith("#")) continue
+                        val averageBw = Regex("AVERAGE-BANDWIDTH=(\\d+)")
+                            .find(line)?.groupValues?.get(1)?.toIntOrNull() ?: -1
+                        // Strip AVERAGE-BANDWIDTH so BANDWIDTH= does not match inside it.
+                        val peakBw = line.replace(Regex("AVERAGE-BANDWIDTH=\\d+"), "")
+                            .let { stripped ->
+                                Regex("BANDWIDTH=(\\d+)").find(stripped)?.groupValues?.get(1)?.toIntOrNull()
+                            } ?: -1
+                        val streamFps = Regex("FRAME-RATE=([0-9]+(?:\\.[0-9]+)?)")
+                            .find(line)?.groupValues?.get(1)?.toFloatOrNull() ?: -1f
                         qualities.add(
                             QualityOption(
-                                qualityLabelForHeight(height),
-                                height,
-                                resolvePlaylistUrl(masterUrl, nextLine)
+                                label = qualityLabelForHeight(height),
+                                height = height,
+                                url = resolvePlaylistUrl(masterUrl, nextLine),
+                                bandwidthBps = peakBw,
+                                averageBandwidthBps = averageBw,
+                                frameRate = streamFps
                             )
                         )
                     }
